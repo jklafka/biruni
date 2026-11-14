@@ -94,6 +94,10 @@
       }
       #controls button:hover { background: rgba(40, 56, 88, 0.85); }
       [hidden] { display: none !important; }
+      #controls #compass-needle { display: inline-block; width: 22px; height: 22px; line-height: 0; }
+      #controls #compass svg { width: 22px; height: 22px; }
+      #controls #compass[aria-pressed="true"] { background: var(--panel); }
+      #controls #compass[aria-pressed="false"] { background: rgba(90, 130, 210, 0.6); }
       #controls #share svg { width: 18px; height: 18px; vertical-align: middle; }
       #controls button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #toast, #share-fallback {
@@ -309,6 +313,9 @@
       <div id="search-status" role="status" hidden></div>
     </div>
     <div id="controls">
+      <button id="compass" aria-pressed="true" title="Compass: click to face north (F)" aria-label="Compass. Face north and lock north-up">
+        <span id="compass-needle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 L17 12 L7 12 Z" fill="#e0524a"/><path d="M12 22 L17 12 L7 12 Z" fill="#9aa6bd"/><circle cx="12" cy="12" r="1.6" fill="#10151f"/></svg></span>
+      </button>
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
       <button id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
       <button id="share" title="Share link (S)" aria-label="Share link">
