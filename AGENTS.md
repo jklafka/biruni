@@ -8,7 +8,8 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 | Path | Purpose |
 | --- | --- |
-| `src/main.rs` | Entry point: DOM wiring, input events, the animation loop, URL-hash view state |
+| `src/main.rs` | Entry point: DOM wiring, translating DOM input into `controls::Event`s, the animation loop, URL-hash view state |
+| `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
 | `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
@@ -66,6 +67,7 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 
 - Tests run natively (`cargo test`), not in wasm, so tested code must not call browser APIs. Put pure logic in browser-free functions:
   - `camera.rs`: projection, picking and panning math
+  - `controls.rs`: gestures and animation. Put new interaction logic here, not in `main.rs`
   - `view.rs`: HUD text and URL-hash parsing
   - `geo::decode_shapes`: binary map layers → shapes (the test-only GeoJSON `parse_shapes` is the reference)
 - Every bug fix comes with a test that fails without the fix.
