@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use view::{
     format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_view_hash,
-    scale_bar, share_url, Layer, RedrawFlags, Units, HOME,
+    scale_bar, share_url, Layer, RedrawFlags, SunView, Units, HOME,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -175,12 +175,20 @@ impl App {
     fn toggle_sun(&mut self) {
         self.sun_on = !self.sun_on;
         self.refresh_sun();
+        self.hash_stale = true;
+    }
+
+    fn sun_view(&self) -> SunView {
+        SunView {
+            on: self.sun_on,
+            pin: self.sun_pin,
+        }
     }
 
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        share_url(&page, &self.camera, self.layer)
+        share_url(&page, &self.camera, self.layer, self.sun_view())
     }
 
     /// Enter or leave measure mode. Leaving clears the path.
@@ -309,7 +317,7 @@ impl App {
         }
         if self.hash_stale && !animating && !self.controls.dragging() {
             self.hash_stale = false;
-            let hash = format_view_hash(&self.camera, self.layer);
+            let hash = format_view_hash(&self.camera, self.layer, self.sun_view());
             if hash != self.last_hash {
                 if let Ok(history) = self.window.history() {
                     let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&hash));
@@ -467,7 +475,7 @@ fn start() -> Result<(), JsValue> {
     let sun_hash = window
         .location()
         .hash()
-        .map(|h| sun::parse_hash_sun(&h))
+        .map(|h| SunView::from_hash(&h))
         .unwrap_or_default();
     let mut layer_buttons = Vec::new();
     for layer in Layer::ALL {
@@ -485,8 +493,8 @@ fn start() -> Result<(), JsValue> {
         renderer,
         layer: initial_layer,
         layer_buttons: layer_buttons.clone(),
-        sun_on: sun_hash.enabled.unwrap_or(false),
-        sun_pin: sun_hash.time,
+        sun_on: sun_hash.on,
+        sun_pin: sun_hash.pin,
         sun_button: element(&doc, "sun-toggle")?,
         camera,
         controls: Controls::new(&camera),
@@ -753,6 +761,10 @@ fn start() -> Result<(), JsValue> {
                 let hash = window2.location().hash().unwrap_or_default();
                 let mut a = app.borrow_mut();
                 a.set_layer(parse_hash_layer(&hash).unwrap_or_default());
+                let sun = SunView::from_hash(&hash);
+                a.sun_on = sun.on;
+                a.sun_pin = sun.pin;
+                a.refresh_sun();
                 if let Some(c) = parse_view_hash(&hash) {
                     a.send(Event::FlyTo {
                         lat: c.lat,
