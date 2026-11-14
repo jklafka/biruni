@@ -174,6 +174,9 @@
       }
       #layers button:hover { color: var(--text); }
       #layers button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
+      #layers button[aria-busy="true"] { opacity: 0.7; cursor: progress; }
+      #layers #layer-status { align-self: center; padding: 0 8px; color: var(--muted); font-size: 12px; }
+      #layers #layer-status[hidden] { display: none; }
       #layers button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #search {
         top: 88px;
@@ -292,6 +295,7 @@
     <div id="layers" class="panel" role="group" aria-label="Map layer">
       <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
       <button id="layer-mono" aria-pressed="false" title="Monochrome (2)">Monochrome</button>
+      <div id="layer-status" role="status" hidden></div>
     </div>
     <div id="search" class="panel" role="search">
       <input id="search-input" type="search" role="combobox" aria-label="Search places" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" placeholder="Search places  ( / )" autocomplete="off" autocapitalize="off" spellcheck="false" />
