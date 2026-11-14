@@ -180,6 +180,14 @@ pub fn format_view_hash(c: &Camera, layer: Layer) -> String {
     hash
 }
 
+/// Full shareable link for the current view: `page_url` without any
+/// existing `#fragment`, plus the view hash. Built from the live camera, so
+/// it is current even if the debounced URL hash has not been written yet.
+pub fn share_url(page_url: &str, c: &Camera, layer: Layer) -> String {
+    let base = page_url.split('#').next().unwrap_or("");
+    format!("{base}{}", format_view_hash(c, layer))
+}
+
 /// Parse a view hash. Altitude is optional; out-of-range values are clamped
 /// and anything malformed yields `None`.
 pub fn parse_view_hash(hash: &str) -> Option<Camera> {
@@ -335,6 +343,47 @@ mod tests {
         assert_eq!(parse_hash_layer(&hash), Some(Layer::Monochrome));
         let back = parse_view_hash(&hash).unwrap();
         assert!(close(back.alt, c.alt, 1e-6));
+    }
+
+    #[test]
+    fn share_url_replaces_old_fragment() {
+        let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
+        assert_eq!(
+            share_url(
+                "https://example.com/maps/#1,2,3&layer=mono",
+                &c,
+                Layer::Political
+            ),
+            "https://example.com/maps/#46.8000,8.2000,600"
+        );
+        assert_eq!(
+            share_url("https://example.com/?a=1", &c, Layer::Monochrome),
+            "https://example.com/?a=1#46.8000,8.2000,600&layer=mono"
+        );
+        assert_eq!(
+            share_url("https://example.com/#", &c, Layer::Political),
+            "https://example.com/#46.8000,8.2000,600"
+        );
+    }
+
+    #[test]
+    fn share_url_round_trips_seam_and_poles() {
+        for (lat, lon) in [
+            (0.0, 180.0),
+            (0.0, -180.0),
+            (85.0, 179.9),
+            (-85.0, -179.9),
+            (90.0, 0.0),
+        ] {
+            let c = Camera::new(lat, lon, 400.0 / EARTH_RADIUS_KM);
+            let url = share_url("https://x.test/", &c, Layer::Monochrome);
+            let hash = &url[url.find('#').unwrap()..];
+            let back = parse_view_hash(hash).expect("parses");
+            assert!(back.lat.abs() <= 85f64.to_radians() + 1e-9);
+            // Longitude agrees modulo the seam.
+            assert!(wrap_angle(back.lon - c.lon).abs() < 1e-3, "{url}");
+            assert_eq!(parse_hash_layer(hash), Some(Layer::Monochrome));
+        }
     }
 
     #[test]

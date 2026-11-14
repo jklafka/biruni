@@ -3,6 +3,7 @@
 mod camera;
 mod geo;
 mod render;
+mod share;
 mod view;
 
 use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
@@ -10,7 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use view::{
     format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_view_hash,
-    scale_bar, Layer, RedrawFlags, Units, HOME,
+    scale_bar, share_url, Layer, RedrawFlags, Units, HOME,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -78,6 +79,7 @@ struct App {
     layers: Option<Rc<geo::Layers>>,
     /// The `#loading` panel, reused for context-loss status.
     status: HtmlElement,
+    share_ui: Rc<share::ShareUi>,
 }
 
 impl App {
@@ -162,6 +164,12 @@ impl App {
         }
         self.redraw.mark_render();
         self.hash_stale = true;
+    }
+
+    /// Link to the live view (not `location.hash`, which is debounced).
+    fn current_share_url(&self) -> String {
+        let page = self.window.location().href().unwrap_or_default();
+        share_url(&page, &self.camera, self.layer)
     }
 
     fn reset(&mut self) {
@@ -461,6 +469,7 @@ fn start() -> Result<(), JsValue> {
         units: Units::Metric,
         layers: None,
         status: loading.clone(),
+        share_ui: share::ShareUi::new(&window, &doc, canvas.clone().into())?,
     }));
 
     app.borrow_mut().set_layer(initial_layer);
@@ -582,6 +591,13 @@ fn start() -> Result<(), JsValue> {
                     a.redraw.mark_hud();
                     return;
                 }
+                "s" | "S" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    // Sharing never changes the view, so no redraw.
+                    let (ui, url) = (a.share_ui.clone(), a.current_share_url());
+                    drop(a);
+                    share::share(&ui, url);
+                    return;
+                }
                 "l" | "L" => {
                     let next = a.layer.next();
                     a.set_layer(next);
@@ -628,6 +644,19 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(button.as_ref(), "click", true, move |_: MouseEvent| {
             action(&mut app.borrow_mut())
+        })?;
+    }
+
+    // Share button.
+    {
+        let button: HtmlElement = element(&doc, "share")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            let (ui, url) = {
+                let a = app.borrow();
+                (a.share_ui.clone(), a.current_share_url())
+            };
+            share::share(&ui, url);
         })?;
     }
 
