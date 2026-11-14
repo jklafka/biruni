@@ -21,6 +21,18 @@ cargo test              # unit tests (run natively)
 
 Every pull request runs CI (format, clippy, tests, shader validation and a release build). `main` only accepts pull requests that pass all of it. See [AGENTS.md](AGENTS.md) for contribution guidelines.
 
+## Deployment
+
+The site is hosted on [Cloudflare Pages](https://pages.cloudflare.com). Cloudflare's build image has no Rust toolchain, so `.github/workflows/deploy.yml` builds `dist/` in GitHub Actions and uploads it with `wrangler pages deploy`. Pushes to `main` publish to production. Pull requests from this repository get a preview deployment, and the preview URL is posted as a PR comment. Fork PRs are not deployed. If the secrets below are missing, the deploy step is skipped and the workflow still passes. `assets/_headers` sets the MIME type and cache headers.
+
+One-time setup for the repository owner:
+
+1. In the Cloudflare dashboard, go to Workers & Pages, then create a **Pages** project named `maps` using **Direct Upload** (any placeholder upload). Set its production branch to `main`. A different name needs a matching change to `PAGES_PROJECT` in the workflow.
+2. Create an API token (My Profile, API Tokens) with the permission **Account, Cloudflare Pages, Edit**.
+3. Copy your Account ID from the dashboard.
+4. In GitHub, under Settings, Secrets and variables, Actions, add the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+5. Optionally, add the **Deploy to Cloudflare Pages** job as a required check in the `main` branch protection, and put the live URL here.
+
 ## Controls
 
 | Action | Mouse / trackpad | Touch | Keyboard |
