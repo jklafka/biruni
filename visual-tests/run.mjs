@@ -118,6 +118,11 @@ try {
     page.on("pageerror", (e) => problems.push(String(e)));
     page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
 
+    // Park the virtual mouse outside the viewport. Chromium replays a
+    // synthetic mouse move at the last known position after layout changes,
+    // and that position is (0, 0) if the mouse never moved. (0, 0) lands on
+    // the globe and would hover-highlight a country.
+    await page.mouse.move(-20, -20);
     await page.goto(base + view.hash);
     // The app hides #loading once the map texture is uploaded (or marks it
     // .error on failure). Then wait for two animation frames so the redraw
@@ -134,6 +139,13 @@ try {
     await page.evaluate(
       () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
     );
+    // No pointer may be over the globe: hover would tint a country and show
+    // a cursor readout. Fail loudly instead of comparing a tinted frame.
+    const cursor = (await page.locator("#hud-cursor").innerText()).trim();
+    if (cursor !== "\u2014") {
+      console.error(`FAIL ${view.name}: pointer over the globe (HUD cursor "${cursor}")`);
+      failed = true;
+    }
     const shot = await page.screenshot({ animations: "disabled" });
     await page.close();
 
