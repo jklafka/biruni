@@ -43,6 +43,8 @@ features = [
   "DomTokenList",
   "History",
   "Location",
+  "Navigator",
+  "HtmlInputElement",
 ]
 
 [dev-dependencies]

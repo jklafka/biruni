@@ -93,6 +93,24 @@
         -webkit-backdrop-filter: blur(8px);
       }
       #controls button:hover { background: rgba(40, 56, 88, 0.85); }
+      [hidden] { display: none !important; }
+      #controls #share svg { width: 18px; height: 18px; vertical-align: middle; }
+      #controls button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #toast, #share-fallback {
+        bottom: 150px;
+        left: 16px;
+        max-width: calc(100vw - 88px);
+      }
+      #share-fallback { pointer-events: auto; width: 340px; display: flex; }
+      #share-fallback input {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.35);
+        color: var(--text);
+        font: inherit;
+      }
       #layers {
         top: 16px;
         right: 16px;
@@ -148,7 +166,14 @@
     <div id="controls">
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
       <button id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <button id="share" title="Share link (S)" aria-label="Share link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      </button>
       <button id="reset" title="Reset view (R)" aria-label="Reset view">⟲</button>
+    </div>
+    <div id="toast" class="panel" role="status" aria-live="polite" hidden></div>
+    <div id="share-fallback" class="panel" hidden>
+      <input id="share-url" type="text" readonly aria-label="Link to this view. Press Ctrl+C or Cmd+C to copy." />
     </div>
     <div id="loading" class="panel">Loading map data…</div>
   </body>
