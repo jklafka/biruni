@@ -59,6 +59,7 @@ One-time setup for the repository owner:
 | Switch map layer | layer picker (top right; under the title on phones) | layer picker | `1`, `2`, or `L` to cycle |
 | Share a link to the current view | share button (bottom right) | share button (opens the share sheet where supported, else copies) | `S` |
 | Switch scale bar between km and mi | click the scale bar | tap the scale bar | `U` |
+| Measure distance | ruler button, then click points; the panel lists each leg and the total (km or mi, follows `U`) | ruler button, then tap points | `M` to start, `Enter` or `Space` to drop a point at the crosshair, `Backspace` to undo, `Esc` to clear and exit |
 
 The HUD shows a scale bar (a round 1/2/5 × 10ⁿ distance) for the ground distance at the screen center. It is hidden when you are zoomed out far enough (above about 1 globe radius of altitude) that the scale varies too much across the view.
 

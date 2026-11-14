@@ -98,7 +98,7 @@ impl Units {
     }
 }
 
-const KM_PER_MILE: f64 = 1.609_344;
+pub const KM_PER_MILE: f64 = 1.609_344;
 /// Above this altitude (globe radii) the scale varies too much across the
 /// view to be meaningful, so no scale bar is shown.
 pub const SCALE_MAX_ALT: f64 = 1.0;
