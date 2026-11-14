@@ -38,7 +38,7 @@ If Homebrew's `rust` and `rustup` are both installed, Homebrew's `cargo` may com
 - Create a short, descriptive branch with a prefix, such as `feat/flat-map-mode`, `fix/pinch-jump` or `docs/readme`.
 - Keep each PR focused on one feature or fix. Split unrelated changes into separate PRs.
 - Write commit messages in the imperative mood ("Add place search"), with a summary line of about 72 characters or less. Add a body when the reason for the change isn't obvious.
-- The PR description says what changed, why, and how it was verified. Include a screenshot for visual changes.
+- The PR description says what changed, why, and how it was verified. Include a screenshot for visual changes. If it resolves a GitHub issue, include `Fixes #N` (see **GitHub issues and beads**).
 - Do not add attribution lines to commits or PR descriptions: no `Co-Authored-By` trailers and no "Generated with" footers.
 - Before opening a PR, make sure every check in **Before you open a PR** below passes.
 - Never commit `dist/` or `target/`. Never commit secrets or API keys.
@@ -117,3 +117,103 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 - Update `README.md` when you change commands, controls or architecture.
 - Update this file when you change a convention it describes.
+
+## GitHub issues and beads
+
+GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/maps`. The token is not stored. Pass it from `gh` on each call.
+
+```sh
+# Start of a session: bring new and updated GitHub issues into beads (local only)
+GITHUB_TOKEN=$(gh auth token) bd github sync --pull-only
+
+# Re-pull specific issues, e.g. after a label rename, which the incremental pull misses
+GITHUB_TOKEN=$(gh auth token) bd github pull <bead-id>...
+
+# Turn a specific bead into a GitHub issue, or push its changes to the linked issue
+GITHUB_TOKEN=$(gh auth token) bd github push --dry-run <bead-id>...
+GITHUB_TOKEN=$(gh auth token) bd github push <bead-id>...
+```
+
+- Pull freely. Pulling changes only the local beads database.
+- Pushing writes to GitHub. Push only named beads, and only when asked or when a bead should become a public issue. Agent subtasks stay local. Don't run `bd github sync` without `--pull-only`: it pushes every bead and rewrites every linked issue.
+- Priority comes from GitHub labels of the form `priority::<value>` (double colon): `critical` → P0, `high` → P1, `medium` → P2, `low` → P3, `none` → P4. Issues without one are P2. A pull overwrites the local priority, so change priority by editing the label on GitHub, then pull that issue again.
+- To finish work on a mirrored issue, write `Fixes #N` in the PR description. Merging closes the GitHub issue, and the next pull closes the bead. If you `bd close` the bead first, that doesn't close the GitHub issue.
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
+
+## Agent Context Profiles
+
+The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
+
+- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
+- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
+- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
+
+## Session Completion
+
+This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
+
+1. **File issues for remaining work** - Create beads for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **Handle git/sync by active profile**:
+   ```bash
+   # Conservative/minimal/default: report status and proposed commands; wait for approval.
+   git status
+
+   # Team-maintainer opt-in only, unless current instructions forbid it:
+   git pull --rebase
+   git push
+   git status
+   ```
+5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
+
+**Critical rules:**
+- Explicit user or orchestrator instructions override this Beads block.
+- Do not commit or push without clear authority from the active profile or the current user request.
+- If a required sync or push is blocked, stop and report the exact command and error.
+<!-- END BEADS INTEGRATION -->
+
+<!-- BEGIN BEADS CODEX SETUP: generated by bd setup codex -->
+## Beads Issue Tracker
+
+Use Beads (`bd`) for durable task tracking in repositories that include it. Use the `beads` skill at `.agents/skills/beads/SKILL.md` (project install) or `~/.agents/skills/beads/SKILL.md` (global install) for Beads workflow guidance, then use the `bd` CLI for issue operations.
+
+### Quick Reference
+
+```bash
+bd ready                # Find available work
+bd show <id>            # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>           # Complete work
+bd prime                # Refresh Beads context
+```
+
+### Rules
+
+- Use `bd` for all task tracking; do not create markdown TODO lists.
+- Run `bd prime` when Beads context is missing or stale. Codex 0.129.0+ can load Beads context automatically through native hooks; use `/hooks` to inspect or toggle them.
+- Keep persistent project memory in Beads via `bd remember`; do not create ad hoc memory files.
+
+**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
+<!-- END BEADS CODEX SETUP -->
