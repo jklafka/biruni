@@ -316,8 +316,43 @@ impl Camera {
     }
 }
 
+/// Factor the shader applies to the longitude (u) texture gradient at
+/// latitude `lat` (radians) so the sampled footprint matches surface area:
+/// a degree of longitude spans cos(lat) of a degree of latitude. Clamped so
+/// the LOD stays finite at the poles. Mirrors `uScale` in `globe.frag`
+/// (test-only: the shader is the real implementation).
+#[cfg(test)]
+pub fn polar_u_scale(lat: f64) -> f64 {
+    let c = lat.cos();
+    if c.is_nan() {
+        1.0
+    } else {
+        c.max(0.02)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn polar_u_scale_matches_surface_footprint() {
+        assert_eq!(polar_u_scale(0.0), 1.0);
+        let lat = 60f64.to_radians();
+        assert!((polar_u_scale(lat) - 0.5).abs() < 1e-12);
+        // East-west ground distance per unit u shrinks by exactly this factor.
+        let lat = 85f64.to_radians();
+        assert!((polar_u_scale(lat) - lat.cos()).abs() < 1e-12);
+        // Poles and bad input stay finite and positive.
+        for l in [
+            std::f64::consts::FRAC_PI_2,
+            -std::f64::consts::FRAC_PI_2,
+            f64::NAN,
+            f64::INFINITY,
+        ] {
+            let s = polar_u_scale(l);
+            assert!(s.is_finite() && s > 0.0 && s <= 1.0);
+        }
+    }
+
     use super::*;
 
     fn cam() -> Camera {
