@@ -38,7 +38,7 @@ If Homebrew's `rust` and `rustup` are both installed, Homebrew's `cargo` may com
 - Create a short, descriptive branch with a prefix, such as `feat/flat-map-mode`, `fix/pinch-jump` or `docs/readme`.
 - Keep each PR focused on one feature or fix. Split unrelated changes into separate PRs.
 - Write commit messages in the imperative mood ("Add place search"), with a summary line of about 72 characters or less. Add a body when the reason for the change isn't obvious.
-- The PR description says what changed, why, and how it was verified. Include a screenshot for visual changes.
+- The PR description says what changed, why, and how it was verified. Include a screenshot for visual changes. If it resolves a GitHub issue, include `Fixes #N` (see **GitHub issues and beads**).
 - Do not add attribution lines to commits or PR descriptions: no `Co-Authored-By` trailers and no "Generated with" footers.
 - Before opening a PR, make sure every check in **Before you open a PR** below passes.
 - Never commit `dist/` or `target/`. Never commit secrets or API keys.
@@ -117,6 +117,27 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 - Update `README.md` when you change commands, controls or architecture.
 - Update this file when you change a convention it describes.
+
+## GitHub issues and beads
+
+GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/maps`. The token is not stored. Pass it from `gh` on each call.
+
+```sh
+# Start of a session: bring new and updated GitHub issues into beads (local only)
+GITHUB_TOKEN=$(gh auth token) bd github sync --pull-only
+
+# Re-pull specific issues, e.g. after a label rename, which the incremental pull misses
+GITHUB_TOKEN=$(gh auth token) bd github pull <bead-id>...
+
+# Turn a specific bead into a GitHub issue, or push its changes to the linked issue
+GITHUB_TOKEN=$(gh auth token) bd github push --dry-run <bead-id>...
+GITHUB_TOKEN=$(gh auth token) bd github push <bead-id>...
+```
+
+- Pull freely. Pulling changes only the local beads database.
+- Pushing writes to GitHub. Push only named beads, and only when asked or when a bead should become a public issue. Agent subtasks stay local. Don't run `bd github sync` without `--pull-only`: it pushes every bead and rewrites every linked issue.
+- Priority comes from GitHub labels of the form `priority::<value>` (double colon): `critical` → P0, `high` → P1, `medium` → P2, `low` → P3, `none` → P4. Issues without one are P2. A pull overwrites the local priority, so change priority by editing the label on GitHub, then pull that issue again.
+- To finish work on a mirrored issue, write `Fixes #N` in the PR description. Merging closes the GitHub issue, and the next pull closes the bead. If you `bd close` the bead first, that doesn't close the GitHub issue.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
