@@ -199,7 +199,10 @@ impl SunView {
     }
 }
 
-/// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`. A non-default layer
+/// `#lat,lon,altitude_km[,bearing]` — e.g. `#48.8566,2.3522,800`. The
+/// bearing is the compass direction at the top of the screen in degrees
+/// (0 to 360) and is written only when the view is not facing north, so
+/// links to a north-up view stay short and old links keep working. A non-default layer
 /// is appended as `&layer=<id>`. When the terminator is on, `&sun=on` is
 /// appended, plus `&t=<unix seconds>` only if the time is pinned: a live
 /// clock never writes `t`, so the hash does not change every minute. When
@@ -212,6 +215,11 @@ pub fn format_view_hash(c: &Camera, layer: Layer, sun: SunView) -> String {
         wrap_angle(c.lon).to_degrees(),
         c.alt * EARTH_RADIUS_KM
     );
+    let bearing = format!("{:.1}", c.bearing_deg());
+    if bearing != "0.0" && bearing != "360.0" {
+        hash.push(',');
+        hash.push_str(&bearing);
+    }
     if layer != Layer::default() {
         hash.push_str("&layer=");
         hash.push_str(layer.id());
@@ -233,8 +241,9 @@ pub fn share_url(page_url: &str, c: &Camera, layer: Layer, sun: SunView) -> Stri
     format!("{base}{}", format_view_hash(c, layer, sun))
 }
 
-/// Parse a view hash. Altitude is optional; out-of-range values are clamped
-/// and anything malformed yields `None`.
+/// Parse a view hash. Altitude and bearing are optional; out-of-range values
+/// are clamped (latitude to the poles) or wrapped (longitude, bearing), and
+/// anything malformed yields `None`. A nonzero bearing means free mode.
 pub fn parse_view_hash(hash: &str) -> Option<Camera> {
     let view = hash.trim_start_matches('#').split('&').next().unwrap_or("");
     let mut parts = view.split(',').map(|p| p.trim().parse::<f64>());
@@ -244,14 +253,23 @@ pub fn parse_view_hash(hash: &str) -> Option<Camera> {
         Some(v) => v.ok()?,
         None => HOME.2 * EARTH_RADIUS_KM,
     };
-    if parts.next().is_some() || !(lat.is_finite() && lon.is_finite() && alt_km.is_finite()) {
+    let bearing = match parts.next() {
+        Some(v) => v.ok()?,
+        None => 0.0,
+    };
+    if parts.next().is_some()
+        || !(lat.is_finite() && lon.is_finite() && alt_km.is_finite() && bearing.is_finite())
+    {
         return None;
     }
-    Some(Camera::new(
-        lat.clamp(-85.0, 85.0),
-        wrap_angle(lon.to_radians()).to_degrees(),
-        (alt_km / EARTH_RADIUS_KM).clamp(MIN_ALT, MAX_ALT),
-    ))
+    Some(
+        Camera::new(
+            lat.clamp(-90.0, 90.0),
+            wrap_angle(lon.to_radians()).to_degrees(),
+            (alt_km / EARTH_RADIUS_KM).clamp(MIN_ALT, MAX_ALT),
+        )
+        .with_bearing(bearing),
+    )
 }
 
 /// Tracks what the next frame must redo. Moving the cursor over the globe
@@ -549,7 +567,10 @@ mod tests {
             let url = share_url("https://x.test/", &c, Layer::Monochrome, SunView::default());
             let hash = &url[url.find('#').unwrap()..];
             let back = parse_view_hash(hash).expect("parses");
-            assert!(back.lat.abs() <= 85f64.to_radians() + 1e-9);
+            assert!(
+                (back.lat - c.lat).abs() < 1e-9,
+                "poles are reachable: {url}"
+            );
             // Longitude agrees modulo the seam.
             assert!(wrap_angle(back.lon - c.lon).abs() < 1e-3, "{url}");
             assert_eq!(parse_hash_layer(hash), Some(Layer::Monochrome));
@@ -585,7 +606,12 @@ mod tests {
     #[test]
     fn hash_clamps_out_of_range_values() {
         let c = parse_view_hash("#95,540,1").unwrap();
-        assert!(close(c.lat.to_degrees(), 85.0, 1e-9));
+        assert!(close(c.lat.to_degrees(), 90.0, 1e-9));
+        assert!(close(
+            parse_view_hash("#-95,0").unwrap().lat.to_degrees(),
+            -90.0,
+            1e-9
+        ));
         assert!(close(c.lon.to_degrees().abs(), 180.0, 1e-9));
         assert!(close(c.alt, MIN_ALT, 1e-12));
         let far = parse_view_hash("#0,0,1e9").unwrap();
@@ -603,9 +629,63 @@ mod tests {
             "#10,20,km",
             "#NaN,0",
             "#0,inf",
-            "#1,2,3,4",
+            "#1,2,3,4,5",
+            "#1,2,3,x",
+            "#1,2,3,NaN",
+            "#1,2,3,inf",
         ] {
             assert!(parse_view_hash(bad).is_none(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn hash_bearing_is_optional_and_backward_compatible() {
+        let old = parse_view_hash("#46.8,8.2,600").unwrap();
+        assert_eq!(old.bearing, 0.0);
+        assert!(old.north_up);
+        let c = parse_view_hash("#46.8,8.2,600,90").unwrap();
+        assert!(close(c.bearing.to_degrees(), 90.0, 1e-9));
+        assert!(!c.north_up, "a bearing means free mode");
+        let wrapped = parse_view_hash("#0,0,600,-90").unwrap();
+        assert!(close(wrapped.bearing_deg(), 270.0, 1e-9));
+        let big = parse_view_hash("#0,0,600,450").unwrap();
+        assert!(close(big.bearing_deg(), 90.0, 1e-9));
+        assert!(parse_view_hash("#0,0,600,0").unwrap().north_up);
+        // Other fields still follow the view.
+        assert!(parse_view_hash("#1,2,3,4&layer=mono").is_some());
+    }
+
+    #[test]
+    fn hash_writes_bearing_only_when_not_north() {
+        let north = Camera::new(10.0, 20.0, 0.1);
+        let h = format_view_hash(&north, Layer::default(), SunView::default());
+        assert_eq!(h.matches(',').count(), 2, "{h}");
+        let turned = Camera::new(10.0, 20.0, 0.1).with_bearing(-30.0);
+        let h = format_view_hash(&turned, Layer::Monochrome, SunView::default());
+        assert!(h.contains(",330.0&layer=mono"), "{h}");
+    }
+
+    #[test]
+    fn hash_round_trips_poles_and_bearings() {
+        for (lat, lon, b) in [
+            (90.0, 0.0, 0.0),
+            (-90.0, 123.0, 0.0),
+            (90.0, -45.0, 37.5),
+            (-90.0, 179.0, 359.0),
+            (30.0, 179.9, 180.0),
+            (-12.0, -179.9, 12.3),
+        ] {
+            let c = Camera::new(lat, lon, 400.0 / EARTH_RADIUS_KM).with_bearing(b);
+            let url = share_url("https://x.test/", &c, Layer::default(), SunView::default());
+            let back = parse_view_hash(&url[url.find('#').unwrap()..]).expect("parses");
+            assert!((back.lat - c.lat).abs() < 1e-6, "{url}");
+            assert!(wrap_angle(back.lon - c.lon).abs() < 1e-3, "{url}");
+            assert!(
+                wrap_angle(back.bearing - c.bearing).abs() < 2e-3,
+                "{url}: {} vs {}",
+                back.bearing,
+                c.bearing
+            );
         }
     }
 

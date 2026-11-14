@@ -2,7 +2,16 @@
 //!
 //! World space: +Y is the north pole, longitude 0 lies on +Z and 90°E on +X.
 //! Camera space: the camera sits at `(0, 0, dist)` looking down -Z, with +Y
-//! pointing north on screen ("north up").
+//! pointing up on screen.
+//!
+//! The orientation is stored as the view center (`lat`, `lon`) plus a
+//! `bearing`, the compass direction at the top of the screen. Bearing 0 is
+//! "north up". Every orientation is representable, including exactly on a
+//! pole, where `lon` only picks which meridian bearing 0 refers to. Panning
+//! is a trackball rotation that carries the grabbed surface point with the
+//! pointer. In north-up mode the roll is then snapped back to bearing 0, or
+//! to 180° after the view has tilted over a pole (north then points down).
+//! In free mode the roll is left alone.
 //!
 //! The same conventions are used by `shaders/globe.frag`, so picking and
 //! projection here match what is drawn pixel-for-pixel.
@@ -16,8 +25,9 @@ pub const MAX_ALT: f64 = 6.0;
 /// tan(fov / 2) for a 40° field of view across the shorter screen axis.
 pub const TAN_HALF_FOV: f64 = 0.363_970_234_266_202_4;
 pub const EARTH_RADIUS_KM: f64 = 6371.0;
-/// Keep the view center away from the poles so north-up stays well defined.
-const MAX_LAT: f64 = 85.0 * PI / 180.0;
+/// Closer to a pole than this (radians), the meridian direction is
+/// undefined, so the north-up snap leaves the bearing alone.
+const POLE_EPS: f64 = 1e-7;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Camera {
@@ -25,6 +35,12 @@ pub struct Camera {
     pub lat: f64,
     /// Longitude of the point under the screen center, radians.
     pub lon: f64,
+    /// Compass direction at the top of the screen, radians clockwise from
+    /// north, wrapped into [-π, π]. 0 is north up.
+    pub bearing: f64,
+    /// North-up lock: panning snaps the bearing to 0 (or π, tilted over a
+    /// pole). Off means free, trackball-style rotation.
+    pub north_up: bool,
     /// Height above the surface, in globe radii.
     pub alt: f64,
     /// Viewport size in CSS pixels.
@@ -60,10 +76,24 @@ impl Camera {
         Self {
             lat: lat_deg.to_radians(),
             lon: lon_deg.to_radians(),
+            bearing: 0.0,
+            north_up: true,
             alt,
             width: 1.0,
             height: 1.0,
         }
+    }
+
+    /// A camera with a bearing in degrees. A nonzero bearing means free mode.
+    pub fn with_bearing(mut self, bearing_deg: f64) -> Self {
+        self.bearing = wrap_angle(bearing_deg.to_radians());
+        self.north_up = self.bearing == 0.0;
+        self
+    }
+
+    /// Bearing in degrees in [0, 360), as shown by the compass.
+    pub fn bearing_deg(&self) -> f64 {
+        wrap_angle(self.bearing).to_degrees().rem_euclid(360.0)
     }
 
     pub fn dist(&self) -> f64 {
@@ -81,15 +111,81 @@ impl Camera {
         self.alt * TAN_HALF_FOV / self.half_min() * EARTH_RADIUS_KM
     }
 
-    /// Camera axes expressed in world space: east, north, and out of the screen.
+    /// Camera axes expressed in world space: right, up, and out of the screen.
     fn basis(&self) -> [V3; 3] {
         let (sl, cl) = self.lat.sin_cos();
         let (so, co) = self.lon.sin_cos();
-        [
-            [co, 0.0, -so],
-            [-sl * so, cl, -sl * co],
-            [cl * so, sl, cl * co],
-        ]
+        let east = [co, 0.0, -so];
+        let north = [-sl * so, cl, -sl * co];
+        let out = [cl * so, sl, cl * co];
+        let (sb, cb) = self.bearing.sin_cos();
+        let mut right = [0.0; 3];
+        let mut up = [0.0; 3];
+        for i in 0..3 {
+            right[i] = cb * east[i] - sb * north[i];
+            up[i] = sb * east[i] + cb * north[i];
+        }
+        [right, up, out]
+    }
+
+    /// Set center and bearing from an orthonormal basis (right, up, out).
+    /// Within `POLE_EPS` of a pole the old longitude is kept, so the result
+    /// is stable there and the bearing carries the whole orientation.
+    fn set_basis(&mut self, b: [V3; 3]) {
+        let out = b[2];
+        let h = out[0].hypot(out[2]);
+        self.lat = out[1].atan2(h);
+        if h > 1e-9 {
+            self.lon = out[0].atan2(out[2]);
+        }
+        let (sl, cl) = self.lat.sin_cos();
+        let (so, co) = self.lon.sin_cos();
+        let east = [co, 0.0, -so];
+        let north = [-sl * so, cl, -sl * co];
+        self.bearing = dot(b[1], east).atan2(dot(b[1], north));
+    }
+
+    /// Spin the view about the screen center. Positive is clockwise on
+    /// screen, like a twist of two fingers.
+    pub fn twist(&mut self, angle: f64) {
+        self.bearing = wrap_angle(self.bearing - angle);
+    }
+
+    /// Snap the roll to north up (bearing 0), or to 180° when the view has
+    /// tilted over a pole. Leaves the bearing alone on a pole itself.
+    pub fn snap_north_up(&mut self) {
+        if self.lat.cos() > POLE_EPS {
+            self.bearing = if self.bearing.cos() >= 0.0 { 0.0 } else { PI };
+        }
+    }
+
+    /// Rotate the globe about a camera-space axis `(ax, ay, 0)`, by its length.
+    fn trackball(&mut self, ax: f64, ay: f64) {
+        let theta = ax.hypot(ay);
+        if theta == 0.0 || !theta.is_finite() {
+            return;
+        }
+        let k = [ax / theta, ay / theta, 0.0];
+        let (s, c) = theta.sin_cos();
+        let b = self.basis();
+        let mut nb = [[0.0; 3]; 3];
+        for (j, col) in nb.iter_mut().enumerate() {
+            // m = Rot(-axis, theta) * e_j, in camera coordinates.
+            let mut e = [0.0; 3];
+            e[j] = 1.0;
+            let kxe = [
+                k[1] * e[2] - k[2] * e[1],
+                k[2] * e[0] - k[0] * e[2],
+                k[0] * e[1] - k[1] * e[0],
+            ];
+            let kde = dot(k, e);
+            let m: [f64; 3] =
+                std::array::from_fn(|i| e[i] * c - kxe[i] * s + k[i] * kde * (1.0 - c));
+            for (i, v) in col.iter_mut().enumerate() {
+                *v = m[0] * b[0][i] + m[1] * b[1][i] + m[2] * b[2][i];
+            }
+        }
+        self.set_basis(nb);
     }
 
     /// Camera-to-world rotation as a column-major 3×3 matrix for GLSL.
@@ -151,11 +247,14 @@ impl Camera {
     /// Move the globe so its surface follows the pointer by (dx, dy) pixels.
     ///
     /// The rate is exact at the screen center, which makes dragging feel like
-    /// grabbing the surface at every zoom level.
+    /// grabbing the surface at every zoom level. This is a trackball rotation,
+    /// so it is well defined everywhere, including over the poles.
     pub fn pan_pixels(&mut self, dx: f64, dy: f64) {
         let rate = self.alt * TAN_HALF_FOV / self.half_min();
-        self.lat = (self.lat + dy * rate).clamp(-MAX_LAT, MAX_LAT);
-        self.lon = wrap_angle(self.lon - dx * rate / self.lat.cos().max(0.2));
+        self.trackball(dy * rate, dx * rate);
+        if self.north_up {
+            self.snap_north_up();
+        }
     }
 
     /// Nudge the view so that a surface point sits under a screen position.
@@ -309,14 +408,310 @@ mod tests {
     }
 
     #[test]
-    fn pan_clamps_latitude_and_stays_finite() {
+    fn pan_stays_finite_and_crosses_the_poles() {
         let mut c = cam();
+        let mut max_lat: f64 = 0.0;
         for _ in 0..1000 {
             c.pan_pixels(37.0, 500.0);
+            assert!(c.lat.is_finite() && c.lon.is_finite() && c.bearing.is_finite());
+            assert!(c.lat.abs() <= PI / 2.0 + 1e-12);
+            assert!((-PI..=PI).contains(&c.lon));
+            max_lat = max_lat.max(c.lat.abs());
         }
-        assert!(c.lat <= MAX_LAT + 1e-12);
-        assert!(c.lat.is_finite() && c.lon.is_finite());
-        assert!((-PI..PI).contains(&c.lon));
+        assert!(max_lat > 85f64.to_radians(), "reaches past the old clamp");
+    }
+
+    /// A deterministic spread of cameras: poles, seam, odd bearings.
+    fn many_cams() -> Vec<Camera> {
+        let mut out = Vec::new();
+        for &lat in &[90.0, -90.0, 89.999, -89.5, 85.0, 45.0, 0.0, -30.0] {
+            for &lon in &[0.0, 90.0, 179.999, -180.0, -135.0, 20.0] {
+                for &b in &[0.0, 17.0, 90.0, 180.0, -100.0, 359.0] {
+                    for &alt in &[MIN_ALT, 0.5, 2.0] {
+                        let mut c = Camera::new(lat, lon, alt).with_bearing(b);
+                        c.width = 900.0;
+                        c.height = 600.0;
+                        out.push(c);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn pick_and_project_round_trip_everywhere() {
+        for c in many_cams() {
+            for &(sx, sy) in &[
+                (450.0, 300.0),
+                (300.0, 200.0),
+                (560.0, 380.0),
+                (451.0, 90.0),
+            ] {
+                let Some((lat, lon)) = c.pick(sx, sy) else {
+                    continue;
+                };
+                let (px, py) = c.project(lat, lon).expect("picked point faces the camera");
+                assert!(
+                    (px - sx).abs() < 1e-4 && (py - sy).abs() < 1e-4,
+                    "{c:?}: ({sx},{sy}) -> ({px},{py})"
+                );
+            }
+            let (lat, lon) = c.pick(450.0, 300.0).unwrap();
+            let want = spherical(c.lat, c.lon);
+            let got = spherical(lat, lon);
+            assert!((dot(want, got) - 1.0).abs() < 1e-12, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn pole_is_centered_exactly() {
+        for (lat, sign) in [(90.0, 1.0), (-90.0, -1.0)] {
+            let mut c = Camera::new(lat, 33.0, 1.0);
+            c.width = 800.0;
+            c.height = 800.0;
+            let (px, py) = c.project(sign * PI / 2.0, 0.0).unwrap();
+            assert!((px - 400.0).abs() < 1e-9 && (py - 400.0).abs() < 1e-9);
+            let (plat, _) = c.pick(400.0, 400.0).unwrap();
+            assert!((plat - sign * PI / 2.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn bearing_rotates_the_view_about_the_center() {
+        // At bearing 90 east is up the screen and north is to the left.
+        let mut c = Camera::new(10.0, 20.0, 1.5).with_bearing(90.0);
+        c.width = 1000.0;
+        c.height = 1000.0;
+        let (cx, cy) = c.project(c.lat, c.lon).unwrap();
+        let (ex, ey) = c.project(c.lat, c.lon + 0.05).unwrap();
+        assert!(ey < cy && (ex - cx).abs() < 1.0, "east is up at bearing 90");
+        let (nx, ny) = c.project(c.lat + 0.05, c.lon).unwrap();
+        assert!(
+            nx < cx && (ny - cy).abs() < 1.0,
+            "north is left at bearing 90"
+        );
+        assert!((c.bearing_deg() - 90.0).abs() < 1e-9);
+        assert!(!c.north_up, "a bearing means free mode");
+    }
+
+    #[test]
+    fn rotation_matches_the_shader_model_at_any_bearing() {
+        // globe.frag and line.vert only see `rotation()`: ray through a pixel,
+        // hit the sphere, rotate into world space. Replicate that in f32 and
+        // check it agrees with `pick` for every orientation.
+        for c in many_cams().into_iter().step_by(7) {
+            let r = c.rotation();
+            let col = |i: usize| [r[3 * i] as f64, r[3 * i + 1] as f64, r[3 * i + 2] as f64];
+            let (sx, sy) = (c.width * 0.5 + 40.0, c.height * 0.5 - 25.0);
+            let Some((lat, lon)) = c.pick(sx, sy) else {
+                continue;
+            };
+            let rd = c.ray(sx, sy);
+            let d = c.dist();
+            let b = d * rd[2];
+            let t = -b - (b * b - (d * d - 1.0)).sqrt();
+            let n = [t * rd[0], t * rd[1], d + t * rd[2]];
+            // u_rot * n
+            let w: V3 =
+                std::array::from_fn(|i| col(0)[i] * n[0] + col(1)[i] * n[1] + col(2)[i] * n[2]);
+            let want = spherical(lat, lon);
+            assert!(dot(w, want) > 1.0 - 1e-6, "{c:?}");
+            // line.vert: transpose(u_rot) * p, then the same projection.
+            let back = [dot(col(0), want), dot(col(1), want), dot(col(2), want)];
+            let depth = d - back[2];
+            let px = c.width * 0.5 + back[0] / depth / TAN_HALF_FOV * c.half_min();
+            let py = c.height * 0.5 - back[1] / depth / TAN_HALF_FOV * c.half_min();
+            assert!((px - sx).abs() < 0.05 && (py - sy).abs() < 0.05, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn rotation_is_orthonormal_at_poles_and_bearings() {
+        for c in many_cams() {
+            let r = c.rotation();
+            let col = |i: usize| [r[3 * i] as f64, r[3 * i + 1] as f64, r[3 * i + 2] as f64];
+            for i in 0..3 {
+                for j in 0..3 {
+                    let e = if i == j { 1.0 } else { 0.0 };
+                    assert!((dot(col(i), col(j)) - e).abs() < 1e-6);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn drag_follows_the_cursor_at_the_poles() {
+        // Free mode follows the cursor in every direction, on the pole too.
+        // North-up cannot follow a sideways drag of the pole itself (the
+        // globe can only spin about its axis there), so it is checked with
+        // vertical drags, and with sideways drags a little way off the pole.
+        for north_up in [true, false] {
+            for &(lat, b) in &[(90.0, 0.0), (-90.0, 0.0), (90.0, 40.0), (89.99, 0.0)] {
+                if north_up && b != 0.0 {
+                    continue;
+                }
+                for alt in [MIN_ALT, 0.4, 2.0] {
+                    let mut c = Camera::new(lat, 25.0, alt).with_bearing(b);
+                    c.north_up = north_up;
+                    c.width = 1000.0;
+                    c.height = 700.0;
+                    let (sx, sy) = (500.0, 350.0);
+                    let (glat, glon) = c.pick(sx, sy).unwrap();
+                    let drags: &[(f64, f64)] = if north_up {
+                        &[(0.0, -5.0), (0.0, 4.0)]
+                    } else {
+                        &[(5.0, 0.0), (0.0, -5.0), (-3.0, 4.0)]
+                    };
+                    for &(dx, dy) in drags {
+                        let mut d = c;
+                        d.pan_pixels(dx, dy);
+                        let (px, py) = d.project(glat, glon).unwrap();
+                        assert!(
+                            (px - (sx + dx)).abs() < 0.05 && (py - (sy + dy)).abs() < 0.05,
+                            "lat {lat} b {b} alt {alt} nu {north_up}: ({px},{py})"
+                        );
+                    }
+                }
+            }
+        }
+        let mut c = Camera::new(85.0, 25.0, MIN_ALT);
+        c.width = 1000.0;
+        c.height = 700.0;
+        let (glat, glon) = c.pick(500.0, 350.0).unwrap();
+        c.pan_pixels(5.0, 0.0);
+        let (px, py) = c.project(glat, glon).unwrap();
+        assert!((px - 505.0).abs() < 0.1 && (py - 350.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn drag_follows_the_cursor_off_center_near_the_pole() {
+        let mut c = Camera::new(88.0, 10.0, 0.4);
+        c.north_up = false;
+        c.width = 1000.0;
+        c.height = 700.0;
+        let (sx, sy) = (620.0, 300.0);
+        let (glat, glon) = c.pick(sx, sy).unwrap();
+        c.pan_pixels(6.0, 4.0);
+        let (px, py) = c.project(glat, glon).unwrap();
+        // A trackball is exact at the center; elsewhere the error is small.
+        assert!((px - (sx + 6.0)).abs() < 1.5 && (py - (sy + 4.0)).abs() < 1.5);
+    }
+
+    #[test]
+    fn dragging_straight_across_the_pole_is_continuous() {
+        // Keep dragging down with the pointer at the screen center: the
+        // surface under it follows each step, the view center never jumps,
+        // and north-up tilts through the pole to bearing 180.
+        let mut c = Camera::new(89.0, 0.0, 0.5);
+        c.width = 800.0;
+        c.height = 800.0;
+        let mut crossed = false;
+        let mut prev_center = spherical(c.lat, c.lon);
+        let mut min_lat = f64::MAX;
+        for _ in 0..400 {
+            let (glat, glon) = c.pick(400.0, 400.0).unwrap();
+            c.pan_pixels(0.0, 1.0);
+            let (px, py) = c.project(glat, glon).unwrap();
+            assert!((py - 401.0).abs() < 1e-6 && (px - 400.0).abs() < 1e-6);
+            let now = spherical(c.lat, c.lon);
+            let step = dot(prev_center, now).clamp(-1.0, 1.0).acos();
+            assert!(step < 0.01, "center jumped by {step}");
+            prev_center = now;
+            min_lat = min_lat.min((PI / 2.0 - c.lat).abs());
+            if c.bearing.abs() > 3.0 {
+                crossed = true;
+            }
+        }
+        assert!(c.north_up);
+        assert!(crossed, "north-up tilts over the pole to bearing 180");
+        assert!(min_lat < 0.01, "the drag went through the pole");
+    }
+
+    fn lcg(s: &mut u64) -> u64 {
+        *s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        *s >> 33
+    }
+
+    #[test]
+    fn north_up_keeps_bearing_zero_or_flipped() {
+        let mut c = cam();
+        let mut s = 1u64;
+        for _ in 0..2000 {
+            let dx = (lcg(&mut s) % 200) as f64 - 100.0;
+            let dy = (lcg(&mut s) % 200) as f64 - 100.0;
+            c.pan_pixels(dx, dy);
+            let on_pole = c.lat.cos() <= POLE_EPS;
+            assert!(
+                on_pole || c.bearing == 0.0 || c.bearing == PI,
+                "bearing {}",
+                c.bearing
+            );
+        }
+    }
+
+    #[test]
+    fn free_mode_pan_never_nans_and_keeps_orthonormal_basis() {
+        let mut c = Camera::new(70.0, 10.0, 0.3).with_bearing(33.0);
+        c.width = 900.0;
+        c.height = 600.0;
+        let mut s = 7u64;
+        for _ in 0..5000 {
+            let dx = (lcg(&mut s) % 400) as f64 - 200.0;
+            let dy = (lcg(&mut s) % 400) as f64 - 200.0;
+            c.pan_pixels(dx, dy);
+            assert!(c.lat.is_finite() && c.lon.is_finite() && c.bearing.is_finite());
+        }
+        let r = c.rotation();
+        let l = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
+        assert!((l - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn free_mode_pan_does_not_roll_the_view() {
+        // Trackball: a small closed loop of drags rolls the view only by the
+        // enclosed area, which is tiny.
+        let mut c = Camera::new(30.0, 0.0, 1.0).with_bearing(50.0);
+        c.width = 1000.0;
+        c.height = 1000.0;
+        let before = c.bearing;
+        for &(dx, dy) in &[(3.0, 0.0), (0.0, 3.0), (-3.0, 0.0), (0.0, -3.0)] {
+            c.pan_pixels(dx, dy);
+        }
+        assert!((c.bearing - before).abs() < 1e-3);
+    }
+
+    #[test]
+    fn twist_changes_only_the_bearing() {
+        let mut c = cam();
+        c.north_up = false;
+        let center = c.pick(600.0, 400.0).unwrap();
+        c.twist(0.5);
+        let after = c.pick(600.0, 400.0).unwrap();
+        assert!((center.0 - after.0).abs() < 1e-12 && (center.1 - after.1).abs() < 1e-12);
+        assert!(
+            (c.bearing + 0.5).abs() < 1e-12,
+            "clockwise twist lowers the bearing"
+        );
+        c.twist(10.0);
+        assert!((-PI..=PI).contains(&c.bearing));
+    }
+
+    #[test]
+    fn set_basis_round_trips_orientation() {
+        for c in many_cams().into_iter().step_by(3) {
+            let mut d = Camera::new(0.0, 0.0, c.alt);
+            d.lon = c.lon;
+            d.set_basis(c.basis());
+            let (a, b) = (c.basis(), d.basis());
+            for i in 0..3 {
+                for j in 0..3 {
+                    assert!((a[i][j] - b[i][j]).abs() < 1e-9, "{c:?} vs {d:?}");
+                }
+            }
+        }
     }
 
     #[test]
