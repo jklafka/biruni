@@ -11,6 +11,7 @@ mod layer_loader;
 mod lines;
 mod measure;
 mod overlay;
+mod quality;
 mod render;
 mod search;
 mod search_ui;
@@ -66,6 +67,9 @@ struct App {
     /// Drag, pinch, inertia, zoom and flight state; mutates `camera`.
     controls: Controls,
     last_frame_ms: Option<f64>,
+    /// Dynamic resolution policy and the scale of the last drawn frame.
+    quality: quality::Quality,
+    drawn_scale: f64,
     cursor: Option<(f64, f64)>,
     /// The last pointer was a mouse, so the cursor position means hover.
     mouse_hover: bool,
@@ -386,6 +390,15 @@ impl App {
         if animating {
             self.update_hover(); // the globe moved under a still cursor
         }
+        // Dynamic resolution: draw at a lower scale while the view moves, and
+        // once more at full resolution after it has settled.
+        let moving = self.controls.in_motion(&self.camera);
+        let scale = self
+            .quality
+            .scale(moving, now_ms, dt, pw as f64 * ph as f64);
+        if scale != self.drawn_scale {
+            self.redraw.mark_render();
+        }
         let (draw, hud) = self.redraw.take();
         let relayout = self
             .keepout
@@ -395,7 +408,8 @@ impl App {
             self.labels.update(&self.camera, dt, pw, ph, dpr);
         }
         if draw {
-            self.renderer.draw(&self.camera, pw, ph, dpr);
+            self.renderer.draw(&self.camera, pw, ph, dpr, scale);
+            self.drawn_scale = scale;
             self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
             self.hash_stale = true;
         }
@@ -591,6 +605,10 @@ fn start() -> Result<(), JsValue> {
         camera,
         controls: Controls::new(&camera),
         last_frame_ms: None,
+        quality: quality::Quality::new(quality::parse_setting(
+            &window.location().search().unwrap_or_default(),
+        )),
+        drawn_scale: 1.0,
         cursor: None,
         mouse_hover: false,
         countries: None,

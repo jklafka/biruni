@@ -13,6 +13,7 @@ uniform sampler2D u_lines;    // RG8, screen-sized: R = coastlines, G = borders 
 uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
+uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
 uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform int u_highlight;      // country ID to highlight, 0 = none
@@ -64,7 +65,7 @@ void main() {
     float aa = max(fwidth(dmin), 1e-6);
     float coverage = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, dmin);
 
-    vec3 bg = space(gl_FragCoord.xy);
+    vec3 bg = space(gl_FragCoord.xy / u_scale);
     bg += ATMOSPHERE * 0.55 * exp(-max(dmin - 1.0, 0.0) * 22.0);
 
     // No early-out for background pixels: derivatives (fwidth, implicit mip

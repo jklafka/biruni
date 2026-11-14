@@ -3,6 +3,7 @@
 use crate::camera::{Camera, TAN_HALF_FOV};
 use crate::geo::Layers;
 use crate::lines::{lod_for, LineLevels, LineSet};
+use crate::quality::scaled_size;
 use crate::view::Layer;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
@@ -12,6 +13,8 @@ use web_sys::{
 
 const VERT_SRC: &str = include_str!("shaders/globe.vert");
 const FRAG_SRC: &str = include_str!("shaders/globe.frag");
+const SPACE_FRAG_SRC: &str = include_str!("shaders/space.frag");
+const BLIT_FRAG_SRC: &str = include_str!("shaders/blit.frag");
 const LINE_VERT_SRC: &str = include_str!("shaders/line.vert");
 const LINE_FRAG_SRC: &str = include_str!("shaders/line.frag");
 
@@ -127,7 +130,38 @@ struct Uniforms {
     highlight: Option<WebGlUniformLocation>,
     sun: Option<WebGlUniformLocation>,
     sun_on: Option<WebGlUniformLocation>,
+    bounds: Option<WebGlUniformLocation>,
+    scale: Option<WebGlUniformLocation>,
 }
+
+/// Fills the screen with space and stars; the globe quad is drawn over it.
+struct SpacePass {
+    program: WebGlProgram,
+    bounds: Option<WebGlUniformLocation>,
+    dpr: Option<WebGlUniformLocation>,
+    scale: Option<WebGlUniformLocation>,
+}
+
+/// Upscales the reduced-resolution globe render onto the canvas.
+struct BlitPass {
+    program: WebGlProgram,
+    bounds: Option<WebGlUniformLocation>,
+    src: Option<WebGlUniformLocation>,
+    res: Option<WebGlUniformLocation>,
+}
+
+/// RGBA8 render target for the reduced-resolution globe pass.
+struct ColorTarget {
+    fbo: WebGlFramebuffer,
+    tex: WebGlTexture,
+    w: i32,
+    h: i32,
+}
+
+/// NDC rectangle covering the whole screen.
+const FULL_SCREEN: [f32; 4] = [-1.0, -1.0, 1.0, 1.0];
+/// Space color, same as the base of `space()` in the shaders.
+const SPACE_COLOR: [f32; 3] = [0.006, 0.010, 0.024];
 
 struct LineUniforms {
     res: Option<WebGlUniformLocation>,
@@ -223,6 +257,8 @@ fn upload_levels(gl: &GL, pass: &LinePass, levels: &LineLevels) -> Result<Vec<Li
 /// GL objects that die with the context and must be rebuilt after a restore.
 struct Resources {
     line_pass: LinePass,
+    space: SpacePass,
+    blit: BlitPass,
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
@@ -252,6 +288,30 @@ impl Resources {
             highlight: u("u_highlight"),
             sun: u("u_sun"),
             sun_on: u("u_sunOn"),
+            bounds: u("u_bounds"),
+            scale: u("u_scale"),
+        };
+        let space = {
+            let fs = compile(gl, GL::FRAGMENT_SHADER, SPACE_FRAG_SRC)?;
+            let program = link(gl, &vs, &fs)?;
+            let su = |name: &str| gl.get_uniform_location(&program, name);
+            SpacePass {
+                bounds: su("u_bounds"),
+                dpr: su("u_dpr"),
+                scale: su("u_scale"),
+                program,
+            }
+        };
+        let blit = {
+            let fs = compile(gl, GL::FRAGMENT_SHADER, BLIT_FRAG_SRC)?;
+            let program = link(gl, &vs, &fs)?;
+            let bu = |name: &str| gl.get_uniform_location(&program, name);
+            BlitPass {
+                bounds: bu("u_bounds"),
+                src: bu("u_src"),
+                res: bu("u_res"),
+                program,
+            }
         };
         let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
         let line_pass = LinePass::create(gl)?;
@@ -292,6 +352,8 @@ impl Resources {
 
         Ok(Self {
             line_pass,
+            space,
+            blit,
             program,
             vao,
             uniforms,
@@ -357,6 +419,13 @@ pub struct Renderer {
     lines: Option<LineGpu>,
     /// Line-pass render target, resized to the canvas on demand.
     target: Option<LineTarget>,
+    /// Same for reduced-resolution frames, kept apart so switching between
+    /// the two sizes never reallocates.
+    target_lo: Option<LineTarget>,
+    /// Reduced-resolution globe render, upscaled by the blit pass.
+    color_lo: Option<ColorTarget>,
+    space: SpacePass,
+    blit: BlitPass,
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
@@ -394,6 +463,10 @@ impl Renderer {
             line_pass: r.line_pass,
             lines: None,
             target: None,
+            target_lo: None,
+            color_lo: None,
+            space: r.space,
+            blit: r.blit,
             program: r.program,
             vao: r.vao,
             uniforms: r.uniforms,
@@ -435,6 +508,8 @@ impl Renderer {
         let r = Resources::create(&self.gl)?;
         self.program = r.program;
         self.line_pass = r.line_pass;
+        self.space = r.space;
+        self.blit = r.blit;
         self.vao = r.vao;
         self.uniforms = r.uniforms;
         self.map = r.map;
@@ -443,6 +518,8 @@ impl Renderer {
         // Buffers and the render target died with the old context.
         self.lines = None;
         self.target = None;
+        self.target_lo = None;
+        self.color_lo = None;
         if let (Some(ids), true) = (ids, self.ctx.ids_need_upload()) {
             self.upload_country_ids(ids, self.budget.ids_width)?;
         }
@@ -577,19 +654,25 @@ impl Renderer {
 
     /// Make sure the line target matches the canvas size.
     fn ensure_target(&mut self, w: i32, h: i32) -> Result<(), JsValue> {
-        if self.target.as_ref().is_some_and(|t| t.w == w && t.h == h) {
+        ensure_line_target(&self.gl, &mut self.target, w, h)
+    }
+
+    /// Make sure the scaled color target (and its line target) exist at this size.
+    fn ensure_scaled(&mut self, w: i32, h: i32) -> Result<(), JsValue> {
+        ensure_line_target(&self.gl, &mut self.target_lo, w, h)?;
+        if self.color_lo.as_ref().is_some_and(|t| t.w == w && t.h == h) {
             return Ok(());
         }
         let gl = &self.gl;
-        if let Some(old) = self.target.take() {
+        if let Some(old) = self.color_lo.take() {
             gl.delete_framebuffer(Some(&old.fbo));
             gl.delete_texture(Some(&old.tex));
         }
         let tex = gl.create_texture().ok_or("failed to create texture")?;
         gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
-        gl.tex_storage_2d(GL::TEXTURE_2D, 1, GL::RG8, w, h);
-        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
-        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+        gl.tex_storage_2d(GL::TEXTURE_2D, 1, GL::RGBA8, w, h);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
         let fbo = gl
             .create_framebuffer()
             .ok_or("failed to create framebuffer")?;
@@ -602,13 +685,13 @@ impl Renderer {
             0,
         );
         gl.bind_framebuffer(GL::FRAMEBUFFER, None);
-        self.target = Some(LineTarget { fbo, tex, w, h });
+        self.color_lo = Some(ColorTarget { fbo, tex, w, h });
         Ok(())
     }
 
     /// Render coastlines (R) and borders (G) into the line target.
-    fn draw_lines(&self, camera: &Camera, w: u32, h: u32, dpr: f64) {
-        let (Some(gpu), Some(target)) = (&self.lines, &self.target) else {
+    fn draw_lines(&self, target: &LineTarget, camera: &Camera, w: u32, h: u32, dpr: f64) {
+        let Some(gpu) = &self.lines else {
             return;
         };
         let gl = &self.gl;
@@ -693,22 +776,64 @@ impl Renderer {
         self.sun = sun;
     }
 
-    pub fn draw(&mut self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
+    /// Draw the globe. `scale` below 1 shades it at that fraction of the
+    /// canvas resolution into an offscreen target and upscales it; the line
+    /// target is scaled the same way so `globe.frag` still reads it
+    /// one-to-one with `texelFetch`.
+    pub fn draw(&mut self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64, scale: f64) {
         if self.ctx.is_lost() {
             return;
         }
-        if self.lines.is_some()
-            && self
+        let (rw, rh) = scaled_size(width_px, height_px, scale);
+        let mut scaled = (rw, rh) != (width_px, height_px);
+        if scaled && self.ensure_scaled(rw as i32, rh as i32).is_err() {
+            scaled = false; // fall back to full resolution
+        }
+        let (rw, rh) = if scaled {
+            (rw, rh)
+        } else {
+            (width_px, height_px)
+        };
+        let s = rw as f64 / width_px.max(1) as f64;
+        let mut have_lines = false;
+        if self.lines.is_some() {
+            if scaled {
+                have_lines = true;
+                if let Some(t) = &self.target_lo {
+                    self.draw_lines(t, camera, rw, rh, dpr * s);
+                }
+            } else if self
                 .ensure_target(width_px as i32, height_px as i32)
                 .is_ok()
-        {
-            self.draw_lines(camera, width_px, height_px, dpr);
+            {
+                have_lines = true;
+                if let Some(t) = &self.target {
+                    self.draw_lines(t, camera, rw, rh, dpr);
+                }
+            }
         }
         let gl = &self.gl;
+        gl.bind_vertex_array(Some(&self.vao));
+        let b = camera.globe_bounds(rw as f64, rh as f64).map(|v| v as f32);
+        match (&self.color_lo, scaled) {
+            (Some(c), true) => {
+                gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&c.fbo));
+                gl.viewport(0, 0, rw as i32, rh as i32);
+                // Texels the upscaler may touch outside the globe quad.
+                gl.clear_color(SPACE_COLOR[0], SPACE_COLOR[1], SPACE_COLOR[2], 1.0);
+                gl.clear(GL::COLOR_BUFFER_BIT);
+            }
+            _ => {
+                gl.bind_framebuffer(GL::FRAMEBUFFER, None);
+                gl.viewport(0, 0, width_px as i32, height_px as i32);
+                self.draw_space(b, dpr);
+            }
+        }
         let u = &self.uniforms;
-        gl.viewport(0, 0, width_px as i32, height_px as i32);
         gl.use_program(Some(&self.program));
-        gl.uniform2f(u.res.as_ref(), width_px as f32, height_px as f32);
+        gl.uniform4f(u.bounds.as_ref(), b[0], b[1], b[2], b[3]);
+        gl.uniform1f(u.scale.as_ref(), s as f32);
+        gl.uniform2f(u.res.as_ref(), rw as f32, rh as f32);
         gl.uniform1f(u.dist.as_ref(), camera.dist() as f32);
         gl.uniform1f(u.tan_half_fov.as_ref(), TAN_HALF_FOV as f32);
         gl.uniform_matrix3fv_with_f32_array(u.rot.as_ref(), false, &camera.rotation());
@@ -730,14 +855,85 @@ impl Renderer {
         gl.uniform1i(u.ids.as_ref(), 1);
         // The line target; unbound (reads as zero) until lines are uploaded.
         gl.active_texture(GL::TEXTURE2);
-        let lines_tex = self.target.as_ref().filter(|_| self.lines.is_some());
+        let line_target = if scaled {
+            &self.target_lo
+        } else {
+            &self.target
+        };
+        let lines_tex = line_target.as_ref().filter(|_| have_lines);
         gl.bind_texture(GL::TEXTURE_2D, lines_tex.map(|t| &t.tex));
         gl.uniform1i(u.lines.as_ref(), 2);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         gl.active_texture(GL::TEXTURE0);
-        gl.bind_vertex_array(Some(&self.vao));
-        gl.draw_arrays(GL::TRIANGLES, 0, 3);
+        gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
+
+        if let (Some(c), true) = (&self.color_lo, scaled) {
+            gl.bind_framebuffer(GL::FRAMEBUFFER, None);
+            gl.viewport(0, 0, width_px as i32, height_px as i32);
+            let full = camera
+                .globe_bounds(width_px as f64, height_px as f64)
+                .map(|v| v as f32);
+            self.draw_space(full, dpr);
+            let bl = &self.blit;
+            gl.use_program(Some(&bl.program));
+            gl.uniform4f(bl.bounds.as_ref(), full[0], full[1], full[2], full[3]);
+            gl.uniform2f(bl.res.as_ref(), width_px as f32, height_px as f32);
+            gl.active_texture(GL::TEXTURE0);
+            gl.bind_texture(GL::TEXTURE_2D, Some(&c.tex));
+            gl.uniform1i(bl.src.as_ref(), 0);
+            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
+        }
     }
+
+    /// Fill the canvas with space and stars, unless the globe quad `bounds`
+    /// already covers the whole screen.
+    fn draw_space(&self, bounds: [f32; 4], dpr: f64) {
+        if bounds == FULL_SCREEN {
+            return;
+        }
+        let gl = &self.gl;
+        let sp = &self.space;
+        gl.use_program(Some(&sp.program));
+        gl.uniform4f(sp.bounds.as_ref(), -1.0, -1.0, 1.0, 1.0);
+        gl.uniform1f(sp.dpr.as_ref(), dpr as f32);
+        gl.uniform1f(sp.scale.as_ref(), 1.0);
+        gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
+    }
+}
+
+/// Create or resize a line-pass target so it is exactly `w × h`.
+fn ensure_line_target(
+    gl: &GL,
+    slot: &mut Option<LineTarget>,
+    w: i32,
+    h: i32,
+) -> Result<(), JsValue> {
+    if slot.as_ref().is_some_and(|t| t.w == w && t.h == h) {
+        return Ok(());
+    }
+    if let Some(old) = slot.take() {
+        gl.delete_framebuffer(Some(&old.fbo));
+        gl.delete_texture(Some(&old.tex));
+    }
+    let tex = gl.create_texture().ok_or("failed to create texture")?;
+    gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+    gl.tex_storage_2d(GL::TEXTURE_2D, 1, GL::RG8, w, h);
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+    let fbo = gl
+        .create_framebuffer()
+        .ok_or("failed to create framebuffer")?;
+    gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&fbo));
+    gl.framebuffer_texture_2d(
+        GL::FRAMEBUFFER,
+        GL::COLOR_ATTACHMENT0,
+        GL::TEXTURE_2D,
+        Some(&tex),
+        0,
+    );
+    gl.bind_framebuffer(GL::FRAMEBUFFER, None);
+    *slot = Some(LineTarget { fbo, tex, w, h });
+    Ok(())
 }
 
 fn compile(gl: &GL, kind: u32, src: &str) -> Result<WebGlShader, JsValue> {
@@ -866,6 +1062,7 @@ mod tests {
     fn uniforms_are_declared_in_shader() {
         let declared: Vec<&str> = FRAG_SRC
             .lines()
+            .chain(VERT_SRC.lines())
             .filter_map(|l| l.trim().strip_prefix("uniform "))
             .filter_map(|l| l.split(';').next()?.split_whitespace().last())
             .collect();
@@ -884,12 +1081,54 @@ mod tests {
             "u_highlight",
             "u_sun",
             "u_sunOn",
+            "u_bounds",
+            "u_scale",
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");
             assert!(
                 include_str!("render.rs").contains(&lookup),
                 "{name} not looked up"
+            );
+        }
+    }
+
+    /// The space and blit programs share the vertex shader with the globe.
+    #[test]
+    fn space_and_blit_uniforms_are_declared() {
+        let render_src = include_str!("render.rs");
+        for (src, names, prefix) in [
+            (SPACE_FRAG_SRC, ["u_dpr", "u_scale"], "su"),
+            (BLIT_FRAG_SRC, ["u_src", "u_res"], "bu"),
+        ] {
+            for name in names {
+                let decl = format!(" {name};");
+                assert!(src.contains(&decl), "{name} undeclared");
+                let lookup = format!("{prefix}(\"{name}\")");
+                assert!(render_src.contains(&lookup), "{name} not looked up");
+            }
+            assert!(render_src.contains(&format!("{prefix}(\"u_bounds\")")));
+        }
+        assert!(VERT_SRC.contains(" u_bounds;"));
+    }
+
+    /// Text of a top-level GLSL function, from its signature to the closing
+    /// brace at column 0.
+    fn glsl_fn<'a>(src: &'a str, signature: &str) -> &'a str {
+        let start = src.find(signature).expect("function present");
+        let end = start + src[start..].find("\n}").expect("function end") + 2;
+        &src[start..end]
+    }
+
+    /// Stars are drawn by two shaders (under the globe quad and outside it).
+    /// They must agree exactly, or the quad edge would show.
+    #[test]
+    fn star_code_matches_between_globe_and_space_shaders() {
+        for sig in ["float hash(vec2 p)", "vec3 space(vec2 frag)"] {
+            assert_eq!(
+                glsl_fn(FRAG_SRC, sig),
+                glsl_fn(SPACE_FRAG_SRC, sig),
+                "{sig}"
             );
         }
     }
