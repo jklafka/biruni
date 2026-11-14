@@ -9,10 +9,15 @@
 //! An idle globe costs nothing.
 
 use crate::camera::Camera;
-use crate::labels::{self, Kind, Label};
+use crate::labels::{self, Kind, Label, Rect};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MediaQueryList};
+use web_sys::{
+    CanvasRenderingContext2d, Element, HtmlCanvasElement, MediaQueryList, ResizeObserver,
+};
 
 const FAMILY: &str = "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif";
 
@@ -24,6 +29,8 @@ pub struct LabelLayer {
     alpha: HashMap<usize, f64>,
     /// Labels selected on the last update (fading in or fully shown).
     target: HashSet<usize>,
+    /// Screen rectangles covered by UI panels; no label is placed under them.
+    blocked: Vec<Rect>,
     reduced_motion: Option<MediaQueryList>,
     animating: bool,
     has_content: bool,
@@ -55,6 +62,7 @@ impl LabelLayer {
             labels: Vec::new(),
             alpha: HashMap::new(),
             target: HashSet::new(),
+            blocked: Vec::new(),
             reduced_motion,
             animating: false,
             has_content: false,
@@ -79,6 +87,16 @@ impl LabelLayer {
         self.target.clear();
     }
 
+    /// Replace the panel rectangles. Returns true if they changed, in which
+    /// case the next `update` re-selects labels.
+    pub fn set_blocked(&mut self, blocked: Vec<Rect>) -> bool {
+        if blocked == self.blocked {
+            return false;
+        }
+        self.blocked = blocked;
+        true
+    }
+
     /// A fade is running, so the next frame must update again.
     pub fn animating(&self) -> bool {
         self.animating
@@ -100,7 +118,9 @@ impl LabelLayer {
             .map(|m| m.matches())
             .unwrap_or(false);
 
-        let picked = labels::select(cam, &self.labels, |i| self.target.contains(&i));
+        let picked = labels::select(cam, &self.labels, &self.blocked, |i| {
+            self.target.contains(&i)
+        });
         self.target = picked.iter().map(|p| p.index).collect();
         let facing: HashMap<usize, f64> = picked.iter().map(|p| (p.index, p.facing)).collect();
 
@@ -186,4 +206,70 @@ pub async fn load() -> Result<Vec<Label>, JsValue> {
     let text =
         String::from_utf8(bytes).map_err(|_| JsValue::from_str("labels.tsv is not UTF-8"))?;
     labels::parse(&text).map_err(|e| JsValue::from_str(&format!("data/labels.tsv: {e}")))
+}
+
+/// Ids of the UI panels labels must stay out from under.
+const PANELS: &[&str] = &[
+    "title",
+    "search",
+    "layers",
+    "hud",
+    "controls",
+    "country-info",
+    "measure",
+    "toast",
+    "share-fallback",
+];
+
+/// Watches the UI panels and reports their screen rectangles. The DOM is
+/// read only after a panel changes size or is shown or hidden (a
+/// `ResizeObserver` fires for both), never every frame.
+pub struct KeepOut {
+    elements: Vec<Element>,
+    dirty: Rc<Cell<bool>>,
+    _observer: ResizeObserver,
+}
+
+impl KeepOut {
+    pub fn new(doc: &web_sys::Document) -> Result<Self, JsValue> {
+        let dirty = Rc::new(Cell::new(true));
+        let flag = dirty.clone();
+        let cb = Closure::<dyn FnMut()>::new(move || flag.set(true));
+        let observer = ResizeObserver::new(cb.as_ref().unchecked_ref())?;
+        cb.forget(); // lives for the whole page
+        let mut elements = Vec::new();
+        for id in PANELS {
+            let el = doc
+                .get_element_by_id(id)
+                .ok_or_else(|| JsValue::from_str(&format!("missing #{id}")))?;
+            observer.observe(&el);
+            elements.push(el);
+        }
+        Ok(Self {
+            elements,
+            dirty,
+            _observer: observer,
+        })
+    }
+
+    /// Ask for a re-read on the next `take`, e.g. after the window resized.
+    pub fn invalidate(&self) {
+        self.dirty.set(true);
+    }
+
+    /// The rectangles of the visible panels if anything changed since the last call.
+    pub fn take(&self, width: f64, height: f64) -> Option<Vec<Rect>> {
+        if !self.dirty.replace(false) {
+            return None;
+        }
+        Some(
+            self.elements
+                .iter()
+                .filter_map(|el| {
+                    let r = el.get_bounding_client_rect();
+                    Rect::from_dom(r.x(), r.y(), r.width(), r.height(), width, height)
+                })
+                .collect(),
+        )
+    }
 }

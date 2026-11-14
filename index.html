@@ -106,6 +106,8 @@
         max-width: calc(100vw - 88px);
       }
       #share-fallback { pointer-events: auto; width: 340px; display: flex; }
+      /* The toast sits above the link box when both show. */
+      body:has(#share-fallback:not([hidden])) #toast { bottom: 210px; }
       #share-fallback input {
         width: 100%;
         padding: 6px 8px;
@@ -142,6 +144,10 @@
         font-variant-numeric: tabular-nums;
       }
       #measure[hidden] { display: none; }
+      /* Stack above the share toast and link box instead of covering them. */
+      body:has(#toast:not([hidden])) #measure { bottom: 204px; }
+      body:has(#share-fallback:not([hidden])) #measure { bottom: 214px; }
+      body:has(#share-fallback:not([hidden])):has(#toast:not([hidden])) #measure { bottom: 264px; }
       #measure-total { font-size: 16px; font-weight: 600; }
       #measure-hint, #measure-legs { color: var(--muted); }
       #measure-legs { margin: 4px 0 0; padding: 0; list-style: none; }
