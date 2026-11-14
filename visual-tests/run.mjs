@@ -32,6 +32,10 @@ const VIEWS = [
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
   { name: "mono-mid-zoom", hash: "#38.5,22.5,1500&layer=mono" },
+  // The sun is pinned with &t=<unix seconds> so these never depend on the
+  // clock: 2024-06-21 18:00 UTC, sun over about 90 W.
+  { name: "day-night", hash: "#30,0,9000&sun=on&t=1718992800" },
+  { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
 ];
 
 const MIME = {

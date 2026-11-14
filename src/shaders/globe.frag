@@ -15,6 +15,8 @@ uniform float u_dpr;
 uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform int u_highlight;      // country ID to highlight, 0 = none
+uniform vec3 u_sun;           // unit vector toward the sun, world space
+uniform float u_sunOn;        // 1 = shade the night side
 
 out vec4 outColor;
 
@@ -152,6 +154,14 @@ void main() {
     col *= 0.38 + 0.72 * diffuse;
     vec3 refl = reflect(-L, n);
     col += vec3(0.55, 0.65, 0.80) * pow(max(dot(refl, -rd), 0.0), 36.0) * 0.22 * (1.0 - land);
+
+    // Day/night terminator. sunElev is the sine of the sun's elevation at
+    // this point; the smooth band spans roughly civil to nautical twilight
+    // (about +2 to -10 degrees of sun elevation).
+    float sunElev = dot(w, u_sun);
+    float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn;
+    vec3 nightTint = u_layer == 1 ? vec3(0.50, 0.53, 0.62) : vec3(0.22, 0.26, 0.42);
+    col *= mix(vec3(1.0), nightTint, night);
 
     // Atmospheric scattering toward the limb.
     float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);

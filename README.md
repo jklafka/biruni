@@ -23,7 +23,7 @@ Every pull request runs CI (format, clippy, tests, shader validation, a release 
 
 ## Visual regression tests
 
-`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at five fixed views set by the URL hash: the whole globe, mid zoom, closest zoom, the antimeridian and the monochrome layer. It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
+`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at seven fixed views set by the URL hash: the whole globe, mid zoom, closest zoom, the antimeridian, the monochrome layer, and the day/night terminator in both layers (with the sun pinned by `&t=`). It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
 
 ```sh
 trunk build --release
@@ -59,6 +59,7 @@ One-time setup for the repository owner:
 | Country info | hover highlights a country; click opens the info panel | tap a country | `I` for the country at the view center |
 | Close the info panel | × button | × button | `Esc` |
 | Switch map layer | layer picker (top right; under the title on phones) | layer picker | `1`, `2`, or `L` to cycle |
+| Day/night terminator | day/night button (bottom right) | day/night button | `N` |
 | Share a link to the current view | share button (bottom right) | share button (opens the share sheet where supported, else copies) | `S` |
 | Switch scale bar between km and mi | click the scale bar | tap the scale bar | `U` |
 | Measure distance | ruler button, then click points; the panel lists each leg and the total (km or mi, follows `U`) | ruler button, then tap points | `M` to start, `Enter` or `Space` to drop a point at the crosshair, `Backspace` to undo, `Esc` to clear and exit |
@@ -69,12 +70,15 @@ The HUD shows a scale bar (a round 1/2/5 × 10ⁿ distance) for the ground dista
 
 The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can link straight to a place, e.g. `#46.8,8.2,600`. A non-default layer is added as `&layer=<id>`, e.g. `#46.8,8.2,600&layer=mono`. Switching layers never moves the camera.
 
+The day/night terminator is off by default. `&sun=on` turns it on at load, and `&t=<unix seconds>` pins the sun to a fixed time instead of the clock (the visual tests use this so screenshots are deterministic). These two parameters are read at load only; the app does not write them back into the hash. While on, the sun follows the clock and is refreshed once a minute by a timer. That timer is the only work the app does while idle, and it only redraws when the terminator is on.
+
 ## How it works
 
 - **`src/camera.rs`**: an orbit camera that keeps north up. It handles picking (screen point → lat/lon), projection (lat/lon → screen point), and panning that makes the surface follow your cursor. When you zoom, the point under the cursor stays where it is.
 - **`src/geo.rs`**: fetches the compact binary layers (converted from [Natural Earth](https://www.naturalearthdata.com/) GeoJSON) and rasterizes them with Canvas 2D into an 8192×4096 equirectangular texture. The red channel holds land with lakes cut out; the green channel holds country borders.
 - **`src/country.rs`**: decodes the country polygons and attribute table (also lazy-loaded), hit-tests a lat/lon against them (bounding-box prefilter, then even-odd point-in-polygon over outer rings and holes), and rasterizes a country ID per texel (`index + 1`, 4096×2048, one byte each) with a scanline fill. `src/info_panel.rs` fills the panel in `index.html`.
 - **`src/render.rs`** and **`src/shaders/`**: WebGL2 draws one full-screen triangle. The fragment shader ray-traces the sphere for each pixel, converts the hit point to lat/lon, and samples the texture. Close up, it thresholds the mask so coastlines stay crisp. It also adds the graticule, lighting and atmosphere. The country-ID raster is a second 8 MB `R8` texture; the shader tints the texels whose ID equals `u_highlight`, bilinearly blended so the edge stays smooth. Hover only changes that uniform, so it redraws once per country change, not per mouse move.
+- **`src/sun.rs`**: low-precision solar position (declination, plus equation of time via right ascension minus sidereal time) giving the subsolar point and the world-space sun direction for the `u_sun` uniform. Accurate to about 0.01°.
 - **`src/view.rs`**: formats the HUD text, picks the scale bar length, parses the URL hash, and defines the `Layer` enum. A layer is a shader palette selected by the `u_layer` uniform; layers that need their own data should lazy-load it on first selection.
 - **`src/main.rs`**: wires up the DOM, input events (pointer, wheel, keyboard) and the animation loop. The loop gives zoom easing, fly-to and pan inertia, and only redraws when something changes.
 

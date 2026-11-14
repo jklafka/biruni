@@ -8,6 +8,7 @@ mod measure;
 mod overlay;
 mod render;
 mod share;
+mod sun;
 mod view;
 
 use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
@@ -57,6 +58,8 @@ struct Flight {
 
 /// Longest the scale bar may be, in CSS pixels.
 const SCALE_MAX_PX: f64 = 100.0;
+/// How often the terminator follows the clock, in milliseconds.
+const SUN_REFRESH_MS: i32 = 60_000;
 /// A press that moves less than this many CSS pixels is a tap, not a drag.
 const TAP_SLOP_PX: f64 = 6.0;
 
@@ -66,6 +69,10 @@ struct App {
     renderer: render::Renderer,
     layer: Layer,
     layer_buttons: Vec<(Layer, HtmlElement)>,
+    sun_on: bool,
+    /// Fixed time from `&t=`; `None` follows the clock.
+    sun_pin: Option<f64>,
+    sun_button: HtmlElement,
     camera: Camera,
     target_alt: f64,
     anchor: Option<Anchor>,
@@ -196,6 +203,27 @@ impl App {
         }
         self.redraw.mark_render();
         self.hash_stale = true;
+    }
+
+    /// Push the current sun direction (or none when off) to the renderer
+    /// and schedule a redraw.
+    fn refresh_sun(&mut self) {
+        let dir = if self.sun_on {
+            let t = self.sun_pin.unwrap_or_else(|| js_sys::Date::now() / 1000.0);
+            sun::sun_direction(t)
+        } else {
+            None
+        };
+        self.renderer.set_sun(dir);
+        let _ = self
+            .sun_button
+            .set_attribute("aria-pressed", if self.sun_on { "true" } else { "false" });
+        self.redraw.mark_render();
+    }
+
+    fn toggle_sun(&mut self) {
+        self.sun_on = !self.sun_on;
+        self.refresh_sun();
     }
 
     /// Link to the live view (not `location.hash`, which is debounced).
@@ -592,6 +620,11 @@ fn start() -> Result<(), JsValue> {
         .ok()
         .and_then(|h| parse_hash_layer(&h))
         .unwrap_or_default();
+    let sun_hash = window
+        .location()
+        .hash()
+        .map(|h| sun::parse_hash_sun(&h))
+        .unwrap_or_default();
     let mut layer_buttons = Vec::new();
     for layer in Layer::ALL {
         let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
@@ -608,6 +641,9 @@ fn start() -> Result<(), JsValue> {
         renderer,
         layer: initial_layer,
         layer_buttons: layer_buttons.clone(),
+        sun_on: sun_hash.enabled.unwrap_or(false),
+        sun_pin: sun_hash.time,
+        sun_button: element(&doc, "sun-toggle")?,
         camera,
         target_alt: camera.alt,
         anchor: None,
@@ -645,6 +681,31 @@ fn start() -> Result<(), JsValue> {
     }));
 
     app.borrow_mut().set_layer(initial_layer);
+    app.borrow_mut().refresh_sun();
+
+    // The one piece of idle work: once a minute, move the terminator. It
+    // only marks a render while the terminator is on and follows the clock.
+    {
+        let app = app.clone();
+        let tick = Closure::<dyn FnMut()>::new(move || {
+            let mut a = app.borrow_mut();
+            if a.sun_on && a.sun_pin.is_none() {
+                a.refresh_sun();
+            }
+        });
+        window.set_interval_with_callback_and_timeout_and_arguments_0(
+            tick.as_ref().unchecked_ref(),
+            SUN_REFRESH_MS,
+        )?;
+        tick.forget();
+    }
+    {
+        let button: HtmlElement = element(&doc, "sun-toggle")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            app.borrow_mut().toggle_sun();
+        })?;
+    }
     for (layer, button) in layer_buttons {
         let app = app.clone();
         listen(button.as_ref(), "click", true, move |_: MouseEvent| {
@@ -781,6 +842,7 @@ fn start() -> Result<(), JsValue> {
                     share::share(&ui, url);
                     return;
                 }
+                "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
                 "m" | "M" => a.toggle_measure(),
                 "Escape" if a.measure.active => a.toggle_measure(),
                 "Escape" => {
