@@ -73,6 +73,53 @@ struct App {
     hud_scale_bar: HtmlElement,
     hud_scale_label: HtmlElement,
     units: Units,
+    /// Decoded map data, kept so a restored context can re-upload it
+    /// without refetching.
+    layers: Option<Rc<geo::Layers>>,
+    /// The `#loading` panel, reused for context-loss status.
+    status: HtmlElement,
+}
+
+impl App {
+    fn context_lost(&mut self) {
+        self.renderer.context_lost();
+        self.velocity = (0.0, 0.0);
+        self.status.set_text_content(Some("Restoring map…"));
+        let _ = self.status.class_list().remove_2("hidden", "error");
+    }
+
+    fn context_restored(&mut self) {
+        let layers = self.layers.clone();
+        match self.renderer.context_restored(layers.as_deref()) {
+            Ok(()) => {
+                if layers.is_some() {
+                    let _ = self.status.class_list().add_1("hidden");
+                } else {
+                    // Still downloading; the loader hides the panel when done.
+                    self.status.set_text_content(Some("Loading map data…"));
+                }
+                self.redraw.mark_render();
+            }
+            Err(e) => {
+                web_sys::console::error_1(&e);
+                self.status
+                    .set_text_content(Some("Could not restore the map. Reload the page."));
+                let _ = self.status.class_list().add_1("error");
+            }
+        }
+    }
+
+    /// Store freshly loaded map data and upload it (deferred while lost).
+    fn map_loaded(&mut self, layers: geo::Layers) -> Result<(), JsValue> {
+        let layers = Rc::new(layers);
+        self.layers = Some(layers.clone());
+        self.renderer.upload_map(&layers)?;
+        if !self.renderer.is_lost() {
+            let _ = self.status.class_list().add_1("hidden");
+        }
+        self.redraw.mark_render();
+        Ok(())
+    }
 }
 
 impl App {
@@ -412,6 +459,8 @@ fn start() -> Result<(), JsValue> {
         hud_scale_bar: element(&doc, "hud-scale-bar")?,
         hud_scale_label: element(&doc, "hud-scale-label")?,
         units: Units::Metric,
+        layers: None,
+        status: loading.clone(),
     }));
 
     app.borrow_mut().set_layer(initial_layer);
@@ -488,6 +537,29 @@ fn start() -> Result<(), JsValue> {
             a.units = a.units.toggled();
             a.redraw.mark_hud();
         })?;
+    }
+
+    // WebGL context loss: preventDefault is required for restoration.
+    {
+        let app = app.clone();
+        listen(
+            target,
+            "webglcontextlost",
+            false,
+            move |e: web_sys::Event| {
+                e.prevent_default();
+                app.borrow_mut().context_lost();
+            },
+        )?;
+    }
+    {
+        let app = app.clone();
+        listen(
+            target,
+            "webglcontextrestored",
+            true,
+            move |_: web_sys::Event| app.borrow_mut().context_restored(),
+        )?;
     }
 
     // Keyboard.
@@ -577,14 +649,11 @@ fn start() -> Result<(), JsValue> {
     // Load and rasterize the map data in the background.
     wasm_bindgen_futures::spawn_local(async move {
         let result = match geo::Layers::load().await {
-            Ok(layers) => app.borrow_mut().renderer.upload_map(&layers),
+            Ok(layers) => app.borrow_mut().map_loaded(layers),
             Err(e) => Err(e),
         };
         match result {
-            Ok(()) => {
-                let _ = loading.class_list().add_1("hidden");
-                app.borrow_mut().redraw.mark_render();
-            }
+            Ok(()) => {}
             Err(e) => {
                 let msg = e.as_string().unwrap_or_else(|| format!("{e:?}"));
                 web_sys::console::error_1(&e);

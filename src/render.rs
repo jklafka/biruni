@@ -28,30 +28,19 @@ struct Uniforms {
     layer: Option<WebGlUniformLocation>,
 }
 
-pub struct Renderer {
-    gl: GL,
+/// GL objects that die with the context and must be rebuilt after a restore.
+struct Resources {
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
     map: WebGlTexture,
-    has_map: bool,
-    layer: Layer,
 }
 
-impl Renderer {
-    pub fn new(canvas: &HtmlCanvasElement) -> Result<Self, JsValue> {
-        let opts = js_sys::Object::new();
-        js_sys::Reflect::set(&opts, &"antialias".into(), &false.into())?;
-        js_sys::Reflect::set(&opts, &"alpha".into(), &false.into())?;
-        js_sys::Reflect::set(&opts, &"depth".into(), &false.into())?;
-        let gl: GL = canvas
-            .get_context_with_context_options("webgl2", &opts)?
-            .ok_or("WebGL2 is not supported by this browser")?
-            .dyn_into()?;
-
-        let vs = compile(&gl, GL::VERTEX_SHADER, VERT_SRC)?;
-        let fs = compile(&gl, GL::FRAGMENT_SHADER, FRAG_SRC)?;
-        let program = link(&gl, &vs, &fs)?;
+impl Resources {
+    fn create(gl: &GL) -> Result<Self, JsValue> {
+        let vs = compile(gl, GL::VERTEX_SHADER, VERT_SRC)?;
+        let fs = compile(gl, GL::FRAGMENT_SHADER, FRAG_SRC)?;
+        let program = link(gl, &vs, &fs)?;
         let u = |name: &str| gl.get_uniform_location(&program, name);
         let uniforms = Uniforms {
             res: u("u_res"),
@@ -83,16 +72,109 @@ impl Renderer {
         )?;
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
-
         Ok(Self {
-            gl,
             program,
             vao,
             uniforms,
             map,
+        })
+    }
+}
+
+/// Tracks whether the WebGL context is usable. Browser-free so it can be
+/// unit tested natively.
+///
+/// A context can be lost at any time (GPU reset, backgrounded mobile tab).
+/// While lost no GL call may be made. Map data may finish loading while the
+/// context is lost; it is then uploaded once the context is restored.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ContextState {
+    lost: bool,
+    /// The decoded map is held in memory and ready to be rasterized.
+    map_loaded: bool,
+}
+
+impl ContextState {
+    pub fn is_lost(&self) -> bool {
+        self.lost
+    }
+
+    pub fn on_lost(&mut self) {
+        self.lost = true;
+    }
+
+    /// Returns true if the map must be uploaded again after rebuilding.
+    pub fn on_restored(&mut self) -> bool {
+        self.lost = false;
+        self.map_loaded
+    }
+
+    /// Record that the map data is available. Returns true if it can be
+    /// uploaded right now, false if that must wait for a restore.
+    pub fn on_map_loaded(&mut self) -> bool {
+        self.map_loaded = true;
+        !self.lost
+    }
+}
+
+pub struct Renderer {
+    gl: GL,
+    program: WebGlProgram,
+    vao: WebGlVertexArrayObject,
+    uniforms: Uniforms,
+    map: WebGlTexture,
+    has_map: bool,
+    layer: Layer,
+    ctx: ContextState,
+}
+
+impl Renderer {
+    pub fn new(canvas: &HtmlCanvasElement) -> Result<Self, JsValue> {
+        let opts = js_sys::Object::new();
+        js_sys::Reflect::set(&opts, &"antialias".into(), &false.into())?;
+        js_sys::Reflect::set(&opts, &"alpha".into(), &false.into())?;
+        js_sys::Reflect::set(&opts, &"depth".into(), &false.into())?;
+        let gl: GL = canvas
+            .get_context_with_context_options("webgl2", &opts)?
+            .ok_or("WebGL2 is not supported by this browser")?
+            .dyn_into()?;
+        let r = Resources::create(&gl)?;
+        Ok(Self {
+            gl,
+            program: r.program,
+            vao: r.vao,
+            uniforms: r.uniforms,
+            map: r.map,
             has_map: false,
             layer: Layer::default(),
+            ctx: ContextState::default(),
         })
+    }
+
+    pub fn is_lost(&self) -> bool {
+        self.ctx.is_lost()
+    }
+
+    /// The context was lost: stop issuing GL calls until it is restored.
+    pub fn context_lost(&mut self) {
+        self.ctx.on_lost();
+    }
+
+    /// The context came back: rebuild every GL object and, if the map data
+    /// is already in memory, upload it again without refetching. The layer
+    /// and camera live outside GL, so the view is unchanged.
+    pub fn context_restored(&mut self, layers: Option<&Layers>) -> Result<(), JsValue> {
+        let upload = self.ctx.on_restored();
+        let r = Resources::create(&self.gl)?;
+        self.program = r.program;
+        self.vao = r.vao;
+        self.uniforms = r.uniforms;
+        self.map = r.map;
+        self.has_map = false;
+        match layers {
+            Some(l) if upload => self.upload_map(l),
+            _ => Ok(()),
+        }
     }
 
     /// Width of the map texture to build: 8192×4096 where the GPU allows it.
@@ -114,7 +196,13 @@ impl Renderer {
     ///
     /// The map is drawn as two square halves so no single canvas exceeds the
     /// 16.7 MP limit some mobile browsers enforce.
+    ///
+    /// If the context is currently lost the upload is deferred until it is
+    /// restored.
     pub fn upload_map(&mut self, layers: &Layers) -> Result<(), JsValue> {
+        if !self.ctx.on_map_loaded() || self.gl.is_context_lost() {
+            return Ok(());
+        }
         let gl = &self.gl;
         let width = self.map_width();
         let height = width / 2;
@@ -183,6 +271,9 @@ impl Renderer {
     }
 
     pub fn draw(&self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
+        if self.ctx.is_lost() {
+            return;
+        }
         let gl = &self.gl;
         let u = &self.uniforms;
         gl.viewport(0, 0, width_px as i32, height_px as i32);
@@ -264,6 +355,53 @@ mod tests {
                 include_str!("render.rs").contains(&lookup),
                 "{name} not looked up"
             );
+        }
+    }
+
+    #[test]
+    fn draws_are_blocked_only_while_lost() {
+        let mut c = ContextState::default();
+        assert!(!c.is_lost());
+        c.on_lost();
+        assert!(c.is_lost());
+        assert!(!c.on_restored());
+        assert!(!c.is_lost());
+    }
+
+    #[test]
+    fn restore_reuploads_a_loaded_map() {
+        let mut c = ContextState::default();
+        assert!(c.on_map_loaded());
+        c.on_lost();
+        assert!(c.on_restored(), "loaded map must be uploaded again");
+    }
+
+    #[test]
+    fn restore_before_map_loaded_uploads_nothing() {
+        let mut c = ContextState::default();
+        c.on_lost();
+        assert!(!c.on_restored());
+        // Data arriving later uploads immediately.
+        assert!(c.on_map_loaded());
+    }
+
+    #[test]
+    fn map_loaded_while_lost_is_deferred_until_restore() {
+        let mut c = ContextState::default();
+        c.on_lost();
+        assert!(!c.on_map_loaded(), "no GL calls while lost");
+        assert!(c.on_restored(), "deferred map uploads on restore");
+    }
+
+    #[test]
+    fn repeated_loss_and_restore_cycles() {
+        let mut c = ContextState::default();
+        c.on_map_loaded();
+        for _ in 0..3 {
+            c.on_lost();
+            c.on_lost(); // duplicate events are harmless
+            assert!(c.on_restored());
+            assert!(!c.is_lost());
         }
     }
 
