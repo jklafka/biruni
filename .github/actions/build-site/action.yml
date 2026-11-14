@@ -1,0 +1,28 @@
+name: Build site
+description: Install the Rust wasm toolchain and Trunk, then run `trunk build --release`.
+
+inputs:
+  trunk-version:
+    description: Trunk release tag to install.
+    default: v0.22.1
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    - uses: Swatinem/rust-cache@v2
+    - name: Install Trunk
+      shell: bash
+      env:
+        TRUNK_VERSION: ${{ inputs.trunk-version }}
+      run: |
+        mkdir -p "$HOME/.local/bin"
+        curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+          | tar -xz -C "$HOME/.local/bin" trunk
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/trunk" --version
+    - name: Release build
+      shell: bash
+      run: trunk build --release

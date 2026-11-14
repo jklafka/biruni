@@ -1,0 +1,17 @@
+name: Visual test setup
+description: Install Node, the visual-tests dependencies and Chromium. Needs a checkout first.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: visual-tests/package-lock.json
+    - name: Install test dependencies and Chromium
+      shell: bash
+      working-directory: visual-tests
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium

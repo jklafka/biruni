@@ -34,7 +34,13 @@ npm test                                    # compare with baselines
 
 New screenshots go to `visual-tests/actual/` and diff images to `visual-tests/diff/` (both git-ignored). CI uploads them as the `visual-screenshots` artifact.
 
-**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch, download the `visual-screenshots` artifact from the CI run (`gh run download <run-id> -n visual-screenshots`), copy `actual/*.png` into `visual-tests/baselines/`, look at them, and commit. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
+**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, open the pull request and add the `update-baselines` label. The `Update visual baselines` workflow (`.github/workflows/update-baselines.yml`) builds the site as CI does, runs `npm run update`, commits any changed PNGs in `visual-tests/baselines/` to the PR branch, starts CI again on the new commit, comments on the PR and removes the label. Look at the new PNGs in the Files tab before merging. Notes:
+
+- It only runs for PRs from branches of this repository that target `main`; it ignores fork PRs and never touches `main`.
+- A push made with the workflow's `GITHUB_TOKEN` does not trigger the usual PR checks, so the workflow starts `ci.yml` itself with `workflow_dispatch`. If the new checks don't appear on the PR, run `gh workflow run ci.yml --ref <branch>`.
+- If you push to the branch while it runs, its push fails instead of overwriting your commit. Pull and add the label again.
+- The labelled commit must contain your rendering change; labelling does not rebase or merge anything.
+- Manual fallback: download the `visual-screenshots` artifact (`gh run download <run-id> -n visual-screenshots`), copy `actual/*.png` into `visual-tests/baselines/`, and commit. `npm run update` rewrites baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
 
 ## Deployment
 

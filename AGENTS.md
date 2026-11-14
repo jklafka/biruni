@@ -58,7 +58,7 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
 5. **Build:** `trunk build --release`
 6. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
-   `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, copy `actual/*.png` from the `visual-screenshots` CI artifact into `visual-tests/baselines/` (see README).
+   `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, add the `update-baselines` label to your PR. The `update-baselines.yml` workflow regenerates the PNGs on Linux, pushes them to the PR branch and re-runs CI (see README). Review the new PNGs before merging. Shared build steps live in `.github/actions/`, so `ci.yml` and that workflow can't drift.
 
 Don't weaken or skip a check to get a PR through. Fix the cause. If a check really is wrong, change it in its own PR and explain why.
 
