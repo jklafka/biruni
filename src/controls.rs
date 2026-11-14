@@ -215,6 +215,18 @@ impl Controls {
         !self.pointers.is_empty()
     }
 
+    /// True while the view is changing and a lower-quality frame is
+    /// acceptable: a drag or pinch past the tap slop, a flight, a fling, or a
+    /// zoom still easing toward its target. A press that has not moved yet
+    /// (a click in the making) does not count.
+    pub fn in_motion(&self, cam: &Camera) -> bool {
+        let zooming = (self.target_alt.ln() - cam.alt.ln()).abs() > 1e-4;
+        (self.dragging() && self.press.is_none())
+            || self.flight.is_some()
+            || self.velocity != (0.0, 0.0)
+            || zooming
+    }
+
     /// Whether the view is moving on its own (flight or fling).
     #[cfg(test)]
     fn animating(&self) -> bool {
@@ -544,6 +556,46 @@ impl Controls {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_motion_covers_drag_fling_flight_and_zoom_but_not_a_press() {
+        let (mut c, mut k) = setup();
+        assert!(!k.in_motion(&c));
+        // A press that has not moved is not motion.
+        down(&mut k, &mut c, 1, 500.0, 300.0, 0.0);
+        assert!(!k.in_motion(&c));
+        mv(&mut k, &mut c, 1, 540.0, 300.0, 10.0);
+        assert!(k.in_motion(&c));
+        mv(&mut k, &mut c, 1, 580.0, 300.0, 20.0);
+        up(&mut k, &mut c, 1, 22.0);
+        assert!(k.in_motion(&c), "fling");
+        for _ in 0..400 {
+            tick(&mut k, &mut c, 16.0);
+        }
+        assert!(!k.in_motion(&c), "came to rest");
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 10.0,
+                lon: 50.0,
+                alt: 0.5,
+                bearing: None,
+            },
+        );
+        assert!(k.in_motion(&c), "flight and zoom");
+        for _ in 0..600 {
+            tick(&mut k, &mut c, 16.0);
+        }
+        assert!(!k.in_motion(&c));
+        k.handle(
+            &mut c,
+            Event::Zoom {
+                factor: 0.5,
+                toward: None,
+            },
+        );
+        assert!(k.in_motion(&c), "zoom easing");
+    }
 
     fn setup() -> (Camera, Controls) {
         let mut c = Camera::new(20.0, 10.0, 1.0);
@@ -1202,6 +1254,30 @@ mod tests {
         assert_eq!((c.lat, c.lon), center, "alt-drag never pans");
         up(&mut k, &mut c, 1, t + 1.0);
         assert_eq!(k.velocity, (0.0, 0.0), "no fling from a rotation");
+    }
+
+    #[test]
+    fn rotation_inputs_count_as_motion() {
+        let (mut c, mut k) = setup();
+        down(&mut k, &mut c, 1, 800.0, 350.0, 0.0);
+        mv_alt(&mut k, &mut c, 1, 790.0, 400.0, 16.0);
+        mv_alt(&mut k, &mut c, 1, 770.0, 450.0, 32.0);
+        assert!(k.in_motion(&c), "alt-drag");
+        up(&mut k, &mut c, 1, 33.0);
+        settle(&mut k, &mut c);
+        assert!(!k.in_motion(&c));
+        down(&mut k, &mut c, 1, 400.0, 350.0, 0.0);
+        down(&mut k, &mut c, 2, 600.0, 350.0, 0.0);
+        mv(&mut k, &mut c, 2, 590.0, 420.0, 16.0);
+        assert!(k.in_motion(&c), "twist");
+        up(&mut k, &mut c, 2, 20.0);
+        up(&mut k, &mut c, 1, 21.0);
+        settle(&mut k, &mut c);
+        k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+        assert!(k.in_motion(&c), "keyboard rotation");
+        settle(&mut k, &mut c);
+        k.handle(&mut c, Event::NorthUp);
+        assert!(k.in_motion(&c), "compass");
     }
 
     #[test]

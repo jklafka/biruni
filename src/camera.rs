@@ -28,6 +28,14 @@ pub const EARTH_RADIUS_KM: f64 = 6371.0;
 /// Closer to a pole than this (radians), the meridian direction is
 /// undefined, so the north-up snap leaves the bearing alone.
 const POLE_EPS: f64 = 1e-7;
+/// How far the atmosphere halo reaches beyond the surface, in globe radii.
+/// `globe.frag` adds `0.55 * exp(-22 * (dmin - 1))` of blue to the space
+/// color; at 0.42 radii that is below 6e-5 (a 65 000th of full scale, far under
+/// half of an 8-bit step), so nothing past it is shaded.
+pub const HALO_EXTENT: f64 = 0.42;
+/// Extra margin around the globe quad, in device pixels, so edge pixels
+/// whose centers fall just inside the true silhouette are never clipped.
+const QUAD_PAD_PX: f64 = 2.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Camera {
@@ -274,6 +282,28 @@ impl Camera {
         }
     }
 
+    /// Screen rectangle `[x0, y0, x1, y1]` in normalized device coordinates
+    /// (y up) that bounds the globe and its atmosphere halo, for a render
+    /// target of `w_px × h_px` pixels. The camera looks straight at the
+    /// center, so the silhouette is a circle around the screen center:
+    /// a ray with closest approach `r` to the center leaves the optical axis
+    /// at angle `asin(r / dist)`. If the camera is inside the halo radius the
+    /// whole screen is covered.
+    pub fn globe_bounds(&self, w_px: f64, h_px: f64) -> [f64; 4] {
+        let full = [-1.0, -1.0, 1.0, 1.0];
+        let r = 1.0 + HALO_EXTENT;
+        let d = self.dist();
+        if !(d.is_finite() && w_px >= 1.0 && h_px >= 1.0) || d <= r {
+            return full;
+        }
+        // Radius on screen in units of half the shorter side.
+        let rp = r / (d * d - r * r).sqrt() / TAN_HALF_FOV;
+        let half_min = 0.5 * w_px.min(h_px);
+        let hx = ((rp * half_min + QUAD_PAD_PX) / (0.5 * w_px)).min(1.0);
+        let hy = ((rp * half_min + QUAD_PAD_PX) / (0.5 * h_px)).min(1.0);
+        [-hx, -hy, hx, hy]
+    }
+
     /// Graticule spacing in degrees appropriate for the current zoom.
     pub fn grid_step_deg(&self) -> f64 {
         match self.alt {
@@ -295,6 +325,147 @@ mod tests {
         c.width = 1200.0;
         c.height = 800.0;
         c
+    }
+
+    /// Closest approach of the ray through a screen point to the globe center.
+    fn ray_dmin(c: &Camera, sx: f64, sy: f64) -> f64 {
+        let rd = c.ray(sx, sy);
+        let b = c.dist() * rd[2];
+        (c.dist() * c.dist() - b * b).max(0.0).sqrt()
+    }
+
+    /// Bounds in CSS pixels for a camera whose buffer equals its viewport.
+    fn bounds_px(c: &Camera) -> [f64; 4] {
+        let b = c.globe_bounds(c.width, c.height);
+        let to = |n: f64, size: f64| (n + 1.0) * 0.5 * size;
+        [
+            to(b[0], c.width),
+            to(-b[3], c.height),
+            to(b[2], c.width),
+            to(-b[1], c.height),
+        ]
+    }
+
+    /// Every pixel outside the bounds is shaded identically to empty space
+    /// (halo below threshold), and the whole visible globe is inside.
+    #[test]
+    fn bounds_contain_globe_and_halo_at_every_altitude() {
+        for (w, h) in [(1200.0, 800.0), (390.0, 844.0), (900.0, 900.0)] {
+            for alt in [MIN_ALT, 0.2, 0.5, 1.0, 1.5, 3.0, MAX_ALT] {
+                let mut c = Camera::new(20.0, 30.0, alt);
+                c.width = w;
+                c.height = h;
+                let [x0, y0, x1, y1] = bounds_px(&c);
+                let mut x = 0.5;
+                while x < w {
+                    let mut y = 0.5;
+                    while y < h {
+                        let inside = x >= x0 && x <= x1 && y >= y0 && y <= y1;
+                        if !inside {
+                            assert!(
+                                ray_dmin(&c, x, y) > 1.0 + HALO_EXTENT,
+                                "alt {alt} {w}x{h}: ({x},{y}) outside bounds but within halo"
+                            );
+                            assert!(c.pick(x, y).is_none());
+                        }
+                        y += 3.0;
+                    }
+                    x += 3.0;
+                }
+            }
+        }
+    }
+
+    /// Surface points project (via `project`) inside the bounds, including
+    /// points right at the limb.
+    #[test]
+    fn projected_surface_points_lie_inside_bounds() {
+        for alt in [MIN_ALT, 0.3, 1.0, 2.5, MAX_ALT] {
+            let mut c = Camera::new(-35.0, 100.0, alt);
+            c.width = 1000.0;
+            c.height = 700.0;
+            let [x0, y0, x1, y1] = bounds_px(&c);
+            for lat in (-89..=89).step_by(2) {
+                for lon in (-180..180).step_by(3) {
+                    if let Some((sx, sy)) = c.project(lat as f64, lon as f64) {
+                        if !(0.0..=c.width).contains(&sx) || !(0.0..=c.height).contains(&sy) {
+                            continue; // off screen anyway
+                        }
+                        assert!(
+                            sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1,
+                            "alt {alt}: ({lat},{lon}) -> ({sx},{sy}) outside"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The bound is tight: far away it is much smaller than the screen, and
+    /// its edge sits where the halo radius leaves the viewport axis.
+    #[test]
+    fn bounds_are_tight_and_centered() {
+        let mut c = Camera::new(0.0, 0.0, MAX_ALT);
+        c.width = 1200.0;
+        c.height = 800.0;
+        let [x0, y0, x1, y1] = bounds_px(&c);
+        assert!((x0 + x1 - 1200.0).abs() < 1e-6 && (y0 + y1 - 800.0).abs() < 1e-6);
+        assert!(x1 - x0 < 0.4 * 1200.0, "{}", x1 - x0);
+        // A pixel just inside the edge (beyond the 2 px pad) is still halo.
+        let edge = x1 - QUAD_PAD_PX;
+        let dmin = ray_dmin(&c, edge, 400.0);
+        assert!((dmin - (1.0 + HALO_EXTENT)).abs() < 5e-3, "{dmin}");
+    }
+
+    #[test]
+    fn bounds_cover_the_screen_when_inside_the_halo() {
+        let mut c = Camera::new(0.0, 0.0, 0.3); // dist 1.3 < 1.42
+        c.width = 800.0;
+        c.height = 600.0;
+        assert_eq!(c.globe_bounds(800.0, 600.0), [-1.0, -1.0, 1.0, 1.0]);
+        // Degenerate inputs fall back to the full screen, never a panic.
+        c.alt = f64::NAN;
+        assert_eq!(c.globe_bounds(800.0, 600.0), [-1.0, -1.0, 1.0, 1.0]);
+        c.alt = 2.0;
+        assert_eq!(c.globe_bounds(0.0, 0.0), [-1.0, -1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn bounds_and_silhouette_ignore_bearing_and_pole_position() {
+        // The silhouette is a circle about the screen center, so the bounds
+        // must not depend on orientation, and surface points must stay inside
+        // them at any bearing, poles included.
+        for c in many_cams() {
+            let mut north = c;
+            north.bearing = 0.0;
+            north.lat = 0.0;
+            assert_eq!(
+                c.globe_bounds(c.width, c.height),
+                north.globe_bounds(c.width, c.height)
+            );
+            let [x0, y0, x1, y1] = bounds_px(&c);
+            for &(lat, lon) in &[(c.lat, c.lon), (c.lat + 0.9, c.lon + 0.4), (-c.lat, c.lon)] {
+                if let Some((px, py)) = c
+                    .project(lat.clamp(-PI / 2.0, PI / 2.0), lon)
+                    .filter(|&(x, y)| x >= 0.0 && x <= c.width && y >= 0.0 && y <= c.height)
+                {
+                    assert!(px >= x0 && px <= x1 && py >= y0 && py <= y1, "{c:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bounds_scale_with_buffer_size() {
+        // Same camera at half-size buffer gives the same NDC rect (up to pad).
+        let mut c = Camera::new(0.0, 0.0, 3.0);
+        c.width = 1000.0;
+        c.height = 600.0;
+        let a = c.globe_bounds(1000.0, 600.0);
+        let b = c.globe_bounds(500.0, 300.0);
+        for i in 0..4 {
+            assert!((a[i] - b[i]).abs() < 0.01, "{a:?} {b:?}");
+        }
     }
 
     #[test]
