@@ -1,0 +1,42 @@
+# maps
+
+A web app for exploring maps, written in Rust and compiled to WebAssembly.
+
+The first map is an interactive 3D globe. Drag to rotate it, and scroll or pinch to zoom from orbit down to about 400 km.
+
+## Running locally
+
+Prerequisites:
+
+- Rust via [rustup](https://rustup.rs) with the wasm target: `rustup target add wasm32-unknown-unknown`
+- [Trunk](https://trunkrs.dev): `brew install trunk` or `cargo install trunk`
+
+```sh
+trunk serve --open      # dev server with live reload at http://127.0.0.1:8080
+trunk build --release   # optimized static site in dist/
+cargo test              # camera math unit tests (runs natively)
+```
+
+> If `rustup` and Homebrew's `rust` are both installed, make sure rustup's toolchain comes first on your `PATH`. Homebrew's `rust` has no `wasm32` target.
+
+## Controls
+
+| Action | Mouse / trackpad | Touch | Keyboard |
+| --- | --- | --- | --- |
+| Rotate | drag | one-finger drag | arrow keys |
+| Zoom | scroll wheel, trackpad pinch | pinch | `+` / `-` |
+| Fly to a point | double-click (shift + double-click zooms out) | double-tap | |
+| Reset view | ⟲ button | ⟲ button | `R` |
+
+The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can link straight to a place, e.g. `#46.8,8.2,600`.
+
+## How it works
+
+- **`src/camera.rs`**: an orbit camera that keeps north up. It handles picking (screen point → lat/lon), projection (lat/lon → screen point), and panning that makes the surface follow your cursor. When you zoom, the point under the cursor stays where it is.
+- **`src/geo.rs`**: fetches the [Natural Earth](https://www.naturalearthdata.com/) GeoJSON layers and rasterizes them with Canvas 2D into an 8192×4096 equirectangular texture. The red channel holds land with lakes cut out; the green channel holds country borders.
+- **`src/render.rs`** and **`src/shaders/`**: WebGL2 draws one full-screen triangle. The fragment shader ray-traces the sphere for each pixel, converts the hit point to lat/lon, and samples the texture. Close up, it thresholds the mask so coastlines stay crisp. It also adds the graticule, lighting and atmosphere.
+- **`src/main.rs`**: wires up the DOM, input events (pointer, wheel, keyboard) and the animation loop. The loop gives zoom easing, fly-to and pan inertia, and only redraws when something changes.
+
+## Data
+
+Map data is from [Natural Earth](https://www.naturalearthdata.com/) (1:50m land, lakes and admin-0 boundary lines). It is in the public domain.
