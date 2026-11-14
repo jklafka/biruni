@@ -987,13 +987,11 @@ fn start() -> Result<(), JsValue> {
         if ok {
             match country::load().await {
                 Ok(countries) => {
-                    let ids = countries.rasterize_ids(country::ID_RASTER_WIDTH);
                     let mut a = app.borrow_mut();
+                    let ids_width = a.renderer.ids_width();
+                    let ids = countries.rasterize_ids(ids_width);
                     // No-op while the context is lost; context_restored uploads it.
-                    if let Err(e) = a
-                        .renderer
-                        .upload_country_ids(&ids, country::ID_RASTER_WIDTH)
-                    {
+                    if let Err(e) = a.renderer.upload_country_ids(&ids, ids_width) {
                         web_sys::console::error_1(&e);
                     }
                     a.ids = Some(Rc::new(ids));

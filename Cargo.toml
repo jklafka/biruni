@@ -44,6 +44,7 @@ features = [
   "History",
   "Location",
   "Navigator",
+  "MediaQueryList",
   "HtmlInputElement",
   "HtmlTextAreaElement",
   "Node",

@@ -116,7 +116,7 @@ void main() {
     ground = mix(ground, borderCol, border * borderMix);
 
     // Highlighted country: bilinear blend of "texel is this country" so the
-    // edge of the 4096-wide ID raster stays smooth when magnified. The branch
+    // edge of the ID raster (2048 or 4096 wide) stays smooth when magnified. The branch
     // depends only on a uniform, so derivatives elsewhere are unaffected.
     if (u_highlight > 0) {
         ivec2 isz = textureSize(u_ids, 0);

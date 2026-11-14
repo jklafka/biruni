@@ -104,7 +104,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 ### Rendering and performance
 
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
-- The map texture is 8192×4096 RG8 with mipmaps (about 85 MB of GPU memory), falling back to 4096 on GPUs that can't handle it. Don't increase it without a plan for mobile.
+- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 RG8 with mipmaps (about 85 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 21 MB) plus a 2048-wide ID raster (2 MB), 23 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
 - Rasterize on canvases of 4096×4096 or smaller, because some mobile browsers cap a canvas at 16.7 MP. That's why the map is drawn in two halves.
 - Debounce `history.replaceState` (see `hash_stale` and `last_hash`), because Safari throttles it.
 
