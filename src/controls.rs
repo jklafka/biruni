@@ -174,6 +174,18 @@ impl Controls {
         !self.pointers.is_empty()
     }
 
+    /// True while the view is changing and a lower-quality frame is
+    /// acceptable: a drag or pinch past the tap slop, a flight, a fling, or a
+    /// zoom still easing toward its target. A press that has not moved yet
+    /// (a click in the making) does not count.
+    pub fn in_motion(&self, cam: &Camera) -> bool {
+        let zooming = (self.target_alt.ln() - cam.alt.ln()).abs() > 1e-4;
+        (self.dragging() && self.press.is_none())
+            || self.flight.is_some()
+            || self.velocity != (0.0, 0.0)
+            || zooming
+    }
+
     /// Whether the view is moving on its own (flight or fling).
     #[cfg(test)]
     fn animating(&self) -> bool {
@@ -401,6 +413,45 @@ impl Controls {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_motion_covers_drag_fling_flight_and_zoom_but_not_a_press() {
+        let (mut c, mut k) = setup();
+        assert!(!k.in_motion(&c));
+        // A press that has not moved is not motion.
+        down(&mut k, &mut c, 1, 500.0, 300.0, 0.0);
+        assert!(!k.in_motion(&c));
+        mv(&mut k, &mut c, 1, 540.0, 300.0, 10.0);
+        assert!(k.in_motion(&c));
+        mv(&mut k, &mut c, 1, 580.0, 300.0, 20.0);
+        up(&mut k, &mut c, 1, 22.0);
+        assert!(k.in_motion(&c), "fling");
+        for _ in 0..400 {
+            tick(&mut k, &mut c, 16.0);
+        }
+        assert!(!k.in_motion(&c), "came to rest");
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 10.0,
+                lon: 50.0,
+                alt: 0.5,
+            },
+        );
+        assert!(k.in_motion(&c), "flight and zoom");
+        for _ in 0..600 {
+            tick(&mut k, &mut c, 16.0);
+        }
+        assert!(!k.in_motion(&c));
+        k.handle(
+            &mut c,
+            Event::Zoom {
+                factor: 0.5,
+                toward: None,
+            },
+        );
+        assert!(k.in_motion(&c), "zoom easing");
+    }
 
     fn setup() -> (Camera, Controls) {
         let mut c = Camera::new(20.0, 10.0, 1.0);
