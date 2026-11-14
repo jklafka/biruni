@@ -12,7 +12,8 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
 | `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
-| `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
+| `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
+| `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile` and the binary decoder. Copied to `dist/` by Trunk |
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
 | `src/labels.rs` | Browser-free label selection: altitude gate, horizon test, priority, greedy collision, fade steps |
 | `src/label_layer.rs` | Draws labels on the `#labels` canvas (no pointer events), fade state, loads `labels.tsv` |
@@ -110,6 +111,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
 - Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB), 13 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
+- Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask is drawn in the worker, and `assets/raster-worker.js` and `geo::draw_tile` must stay pixel-identical (the main-thread fallback is the reference).
 - Rasterize on canvases of 4096×4096 or smaller, because some mobile browsers cap a canvas at 16.7 MP. That's why the map is drawn in two halves.
 - Debounce `history.replaceState` (see `hash_stale` and `last_hash`), because Safari throttles it.
 
@@ -121,7 +123,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 ## Data
 
 - Map data comes from [Natural Earth](https://www.naturalearthdata.com/) (1:50m), which is public domain. If you add another dataset, check that its license allows redistribution, and credit it in `README.md`.
-- Edit the GeoJSON in `data-src/`, never the `.bin` files. After changing it, or the format, run `python3 scripts/convert_geojson.py` and commit the regenerated `assets/data/*.bin`. If you change the format, update `decode_shapes`, the script and the format doc in `geo.rs` together and bump the version byte.
+- Edit the GeoJSON in `data-src/`, never the `.bin` files. After changing it, or the format, run `python3 scripts/convert_geojson.py` and commit the regenerated `assets/data/*.bin`. If you change the format, update `decode_shapes`, the script, the format doc in `geo.rs` and the decoder in `assets/raster-worker.js` together and bump the version byte.
 - Keep large data out of the wasm binary. Fetch it at runtime from `assets/` instead of using `include_str!`/`include_bytes!`.
 - If you change data files or how they are loaded, note the download size in the PR.
 

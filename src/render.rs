@@ -487,6 +487,12 @@ impl Renderer {
         self.budget.ids_width
     }
 
+    /// Width of the map texture this device uses. Pass it to
+    /// `Layers::load` so the land mask is rasterized at this size.
+    pub fn map_width(&self) -> u32 {
+        self.budget.map_width
+    }
+
     pub fn is_lost(&self) -> bool {
         self.ctx.is_lost()
     }
@@ -578,31 +584,12 @@ impl Renderer {
         );
         let levels = 32 - width.leading_zeros() as i32; // log2(width) + 1
 
-        let doc = web_sys::window()
-            .ok_or("no window")?
-            .document()
-            .ok_or("no document")?;
-        let tile: HtmlCanvasElement = doc.create_element("canvas")?.dyn_into()?;
-        tile.set_width(height);
-        tile.set_height(height);
-
         let tex = gl.create_texture().ok_or("failed to create texture")?;
         gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
         gl.tex_storage_2d(GL::TEXTURE_2D, levels, GL::R8, width as i32, height as i32);
         gl.pixel_storei(GL::UNPACK_COLORSPACE_CONVERSION_WEBGL, GL::NONE as i32);
         gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
-        for x in [0, height] {
-            layers.draw_tile(&tile, width as f64, height as f64, x as f64)?;
-            gl.tex_sub_image_2d_with_u32_and_u32_and_html_canvas_element(
-                GL::TEXTURE_2D,
-                0,
-                x as i32,
-                0,
-                GL::RED,
-                GL::UNSIGNED_BYTE,
-                &tile,
-            )?;
-        }
+        layers.fill_texture(gl, width, height)?;
         gl.generate_mipmap(GL::TEXTURE_2D);
         gl.tex_parameteri(
             GL::TEXTURE_2D,

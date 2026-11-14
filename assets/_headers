@@ -5,8 +5,13 @@
   Content-Type: application/wasm
   Cache-Control: public, max-age=31536000, immutable
 
-/*.js
+# Only Trunk's content-hashed bundle is immutable; raster-worker.js keeps a
+# fixed name, so it must revalidate.
+/maps-*.js
   Cache-Control: public, max-age=31536000, immutable
+
+/raster-worker.js
+  Cache-Control: public, max-age=300, must-revalidate
 
 /
   Cache-Control: public, max-age=300, must-revalidate
