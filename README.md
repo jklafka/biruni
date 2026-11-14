@@ -34,7 +34,14 @@ npm test                                    # compare with baselines
 
 New screenshots go to `visual-tests/actual/` and diff images to `visual-tests/diff/` (both git-ignored). CI uploads them as the `visual-screenshots` artifact.
 
-**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch, download the `visual-screenshots` artifact from the CI run (`gh run download <run-id> -n visual-screenshots`), copy `actual/*.png` into `visual-tests/baselines/`, look at them, and commit. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
+**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch and open the PR. Wait for CI to finish (the Visual regression job fails, which is expected), then run this from a clean checkout of the PR branch:
+
+```sh
+scripts/update-baselines.sh <PR number>          # commit the CI screenshots locally
+scripts/update-baselines.sh <PR number> --push   # ... and push
+```
+
+It needs `gh`. It finds the latest completed CI run for the PR's head commit, downloads the `visual-screenshots` artifact, copies `actual/*.png` into `visual-tests/baselines/`, lists what changed and commits it as you (nothing if the baselines already match). It refuses to run if the current branch isn't the PR's branch or the tree is dirty, and it says so if CI has no artifact yet. Look at the new PNGs before you push, then wait for CI to pass on the new commit. The commit is made by you, not a bot, so it doesn't trip the repository's extra-approval rule for unattributed changes. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
 
 ## Deployment
 
@@ -83,7 +90,8 @@ The day/night terminator is off by default. `&sun=on` turns it on at load, and `
 - **`src/sun.rs`**: low-precision solar position (declination, plus equation of time via right ascension minus sidereal time) giving the subsolar point and the world-space sun direction for the `u_sun` uniform. Accurate to about 0.01°.
 - **`src/view.rs`**: formats the HUD text, picks the scale bar length, parses the URL hash, and defines the `Layer` enum. A layer is a shader palette selected by the `u_layer` uniform; layers that need their own data should lazy-load it on first selection.
 - **`src/search.rs`** and **`src/search_ui.rs`**: offline place search. `search.rs` is browser-free: it parses `data/places.tsv`, folds case and accents (`zurich` finds `Zürich`), and ranks exact, then prefix, then word-prefix, then substring matches, with population as the tiebreak. `search_ui.rs` wires the search box and results list, and fetches `places.tsv` the first time the box gets focus, not at startup.
-- **`src/main.rs`**: wires up the DOM, input events (pointer, wheel, keyboard) and the animation loop. The loop gives zoom easing, fly-to and pan inertia, and only redraws when something changes.
+- **`src/controls.rs`**: a browser-free input state machine. It takes plain events (pointer down/move/up, wheel, tick, zoom, fly-to, reset, key nudges) and mutates a `Camera`: drag, pinch, fling inertia, zoom anchoring and flights. It is unit tested natively.
+- **`src/main.rs`**: wires up the DOM, translates input events (pointer, wheel, keyboard) into `controls::Event`s and runs the animation loop, which only redraws when something changes.
 
 ## Data
 

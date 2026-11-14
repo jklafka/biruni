@@ -8,7 +8,8 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 | Path | Purpose |
 | --- | --- |
-| `src/main.rs` | Entry point: DOM wiring, input events, the animation loop, URL-hash view state |
+| `src/main.rs` | Entry point: DOM wiring, translating DOM input into `controls::Event`s, the animation loop, URL-hash view state |
+| `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
 | `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
@@ -59,7 +60,7 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
 5. **Build:** `trunk build --release`
 6. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
-   `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, copy `actual/*.png` from the `visual-screenshots` CI artifact into `visual-tests/baselines/` (see README).
+   `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, push your branch, wait for CI, then run `scripts/update-baselines.sh <PR number>` (add `--push` to push). It copies `actual/*.png` from the PR's `visual-screenshots` CI artifact into `visual-tests/baselines/` and commits them as you. Review the new PNGs before pushing (see README). Shared build steps live in `.github/actions/`, so `ci.yml` stays consistent.
 
 Don't weaken or skip a check to get a PR through. Fix the cause. If a check really is wrong, change it in its own PR and explain why.
 
@@ -67,6 +68,7 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 
 - Tests run natively (`cargo test`), not in wasm, so tested code must not call browser APIs. Put pure logic in browser-free functions:
   - `camera.rs`: projection, picking and panning math
+  - `controls.rs`: gestures and animation. Put new interaction logic here, not in `main.rs`
   - `view.rs`: HUD text and URL-hash parsing
   - `geo::decode_shapes`: binary map layers → shapes (the test-only GeoJSON `parse_shapes` is the reference)
 - Every bug fix comes with a test that fails without the fix.
