@@ -2,11 +2,14 @@
 
 mod camera;
 mod geo;
+mod measure;
+mod overlay;
 mod render;
 mod share;
 mod view;
 
 use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
+use measure::Measure;
 use std::cell::RefCell;
 use std::rc::Rc;
 use view::{
@@ -45,6 +48,8 @@ struct Flight {
 
 /// Longest the scale bar may be, in CSS pixels.
 const SCALE_MAX_PX: f64 = 100.0;
+/// A press that moves less than this many CSS pixels is a tap, not a drag.
+const TAP_SLOP_PX: f64 = 6.0;
 
 struct App {
     window: Window,
@@ -80,6 +85,12 @@ struct App {
     /// The `#loading` panel, reused for context-loss status.
     status: HtmlElement,
     share_ui: Rc<share::ShareUi>,
+    measure: Measure,
+    overlay: overlay::Overlay,
+    measure_panel: overlay::Panel,
+    /// Where a single pointer went down in measure mode; a release near it
+    /// without dragging is a tap that places a point.
+    tap_start: Option<(f64, f64)>,
 }
 
 impl App {
@@ -172,6 +183,40 @@ impl App {
         share_url(&page, &self.camera, self.layer)
     }
 
+    /// Enter or leave measure mode. Leaving clears the path.
+    fn toggle_measure(&mut self) {
+        if self.measure.active {
+            self.measure.exit();
+        } else {
+            self.measure.active = true;
+        }
+        self.measure_changed();
+    }
+
+    fn measure_changed(&mut self) {
+        let _ = if self.measure.active {
+            self.canvas.class_list().add_1("measuring")
+        } else {
+            self.canvas.class_list().remove_1("measuring")
+        };
+        self.redraw.mark_render();
+    }
+
+    /// Place a measurement point under a screen position, if it hits the globe.
+    fn measure_add_at(&mut self, sx: f64, sy: f64) {
+        if let Some((lat, lon)) = self.camera.pick(sx, sy) {
+            if self.measure.add(lat, lon) {
+                self.measure_changed();
+            }
+        }
+    }
+
+    fn measure_undo(&mut self) {
+        if self.measure.active && self.measure.undo() {
+            self.measure_changed();
+        }
+    }
+
     fn reset(&mut self) {
         self.fly_to(HOME.0.to_radians(), HOME.1.to_radians(), HOME.2);
     }
@@ -252,6 +297,7 @@ impl App {
         let (draw, hud) = self.redraw.take();
         if draw {
             self.renderer.draw(&self.camera, pw, ph, dpr);
+            self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
             self.hash_stale = true;
         }
         if hud {
@@ -269,7 +315,8 @@ impl App {
         }
     }
 
-    fn update_hud(&self) {
+    fn update_hud(&mut self) {
+        self.measure_panel.update(&self.measure, self.units);
         let cursor = self
             .cursor
             .and_then(|(x, y)| self.camera.pick(x, y))
@@ -310,6 +357,8 @@ impl App {
             y: e.client_y() as f64,
         });
         self.pinch = None;
+        self.tap_start = (self.measure.active && self.pointers.len() == 1)
+            .then(|| (e.client_x() as f64, e.client_y() as f64));
         self.last_move_ms = self.now();
         let _ = self.canvas.class_list().add_1("dragging");
     }
@@ -319,6 +368,11 @@ impl App {
         self.cursor = Some((x, y));
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
+        if let Some((tx, ty)) = self.tap_start {
+            if (x - tx).hypot(y - ty) > TAP_SLOP_PX {
+                self.tap_start = None;
+            }
+        }
 
         let Some(idx) = self.pointers.iter().position(|p| p.id == e.pointer_id()) else {
             return;
@@ -365,6 +419,15 @@ impl App {
     }
 
     fn pointer_up(&mut self, e: &PointerEvent) {
+        if let Some((tx, ty)) = self.tap_start.take() {
+            let (x, y) = (e.client_x() as f64, e.client_y() as f64);
+            if e.type_() == "pointerup"
+                && self.pointers.len() == 1
+                && (x - tx).hypot(y - ty) <= TAP_SLOP_PX
+            {
+                self.measure_add_at(x, y);
+            }
+        }
         self.pointers.retain(|p| p.id != e.pointer_id());
         if self.pinch.is_some() || self.now() - self.last_move_ms > 80.0 {
             self.velocity = (0.0, 0.0); // no fling after a pinch or a pause
@@ -441,6 +504,10 @@ fn start() -> Result<(), JsValue> {
         layer_buttons.push((layer, b));
     }
 
+    let overlay_canvas: HtmlCanvasElement = element(&doc, "overlay")?;
+    let overlay = overlay::Overlay::new(overlay_canvas)?;
+    let measure_panel = overlay::Panel::new(&doc)?;
+
     let app = Rc::new(RefCell::new(App {
         window: window.clone(),
         canvas: canvas.clone(),
@@ -470,6 +537,10 @@ fn start() -> Result<(), JsValue> {
         layers: None,
         status: loading.clone(),
         share_ui: share::ShareUi::new(&window, &doc, canvas.clone().into())?,
+        measure: Measure::default(),
+        overlay,
+        measure_panel,
+        tap_start: None,
     }));
 
     app.borrow_mut().set_layer(initial_layer);
@@ -530,6 +601,9 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(target, "dblclick", true, move |e: MouseEvent| {
             let mut a = app.borrow_mut();
+            if a.measure.active {
+                return; // the taps already placed points
+            }
             if let Some((lat, lon)) = a.camera.pick(e.client_x() as f64, e.client_y() as f64) {
                 let alt = a.camera.alt * if e.shift_key() { 2.5 } else { 0.4 };
                 a.fly_to(lat, lon, alt);
@@ -598,6 +672,22 @@ fn start() -> Result<(), JsValue> {
                     share::share(&ui, url);
                     return;
                 }
+                "m" | "M" => a.toggle_measure(),
+                "Escape" if a.measure.active => a.toggle_measure(),
+                "Backspace" if a.measure.active => a.measure_undo(),
+                "Enter" | " " if a.measure.active => {
+                    // Keyboard path: drop a point at the view center. Skip when
+                    // a button has focus, where Enter/Space activates it.
+                    let on_canvas = e.target().is_some_and(|t| {
+                        let c: &EventTarget = a.canvas.as_ref();
+                        &t == c
+                    });
+                    if !on_canvas {
+                        return;
+                    }
+                    let (cx, cy) = (a.camera.width * 0.5, a.camera.height * 0.5);
+                    a.measure_add_at(cx, cy);
+                }
                 "l" | "L" => {
                     let next = a.layer.next();
                     a.set_layer(next);
@@ -634,7 +724,14 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 3] = [
+    let buttons: [(&str, Action); 6] = [
+        ("measure-toggle", |a| a.toggle_measure()),
+        ("measure-undo", |a| a.measure_undo()),
+        ("measure-exit", |a| {
+            if a.measure.active {
+                a.toggle_measure()
+            }
+        }),
         ("zoom-in", |a| a.zoom(0.5, None)),
         ("zoom-out", |a| a.zoom(2.0, None)),
         ("reset", |a| a.reset()),
