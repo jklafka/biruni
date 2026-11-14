@@ -33,6 +33,88 @@ pub fn format_altitude(alt: f64) -> String {
     out
 }
 
+/// Unit system for the scale bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Units {
+    Metric,
+    Imperial,
+}
+
+impl Units {
+    pub fn toggled(self) -> Self {
+        match self {
+            Units::Metric => Units::Imperial,
+            Units::Imperial => Units::Metric,
+        }
+    }
+}
+
+const KM_PER_MILE: f64 = 1.609_344;
+/// Above this altitude (globe radii) the scale varies too much across the
+/// view to be meaningful, so no scale bar is shown.
+pub const SCALE_MAX_ALT: f64 = 1.0;
+
+/// A scale bar: its width in CSS pixels and its label, e.g. `50 km`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScaleBar {
+    pub px: f64,
+    pub label: String,
+}
+
+/// Largest 1/2/5 × 10^n not exceeding `max`. `None` if `max` is not a
+/// positive finite number.
+pub fn nice_length(max: f64) -> Option<f64> {
+    if !(max.is_finite() && max > 0.0) {
+        return None;
+    }
+    let mut exp = max.log10().floor() as i32;
+    let pow = |e: i32| 10f64.powi(e.abs());
+    let scaled = |e: i32| if e >= 0 { max / pow(e) } else { max * pow(e) };
+    // Correct for rounding in log10 at exact powers of ten.
+    let mut m = scaled(exp);
+    if m >= 10.0 {
+        exp += 1;
+        m = scaled(exp);
+    } else if m < 1.0 {
+        exp -= 1;
+        m = scaled(exp);
+    }
+    let lead = if m >= 5.0 {
+        5.0
+    } else if m >= 2.0 {
+        2.0
+    } else {
+        1.0
+    };
+    Some(if exp >= 0 {
+        lead * pow(exp)
+    } else {
+        lead / pow(exp)
+    })
+}
+
+/// Scale bar for the ground distance at the view center, at most `max_px`
+/// wide. `None` when zoomed out too far for a scale to mean anything
+/// (`alt > SCALE_MAX_ALT`) or for non-finite input.
+pub fn scale_bar(cam: &Camera, units: Units, max_px: f64) -> Option<ScaleBar> {
+    let km_per_px = cam.km_per_pixel();
+    if !(cam.alt.is_finite() && cam.alt > 0.0 && cam.alt <= SCALE_MAX_ALT)
+        || !(km_per_px.is_finite() && km_per_px > 0.0)
+        || !(max_px.is_finite() && max_px > 0.0)
+    {
+        return None;
+    }
+    let (per_px, suffix) = match units {
+        Units::Metric => (km_per_px, "km"),
+        Units::Imperial => (km_per_px / KM_PER_MILE, "mi"),
+    };
+    let len = nice_length(max_px * per_px)?;
+    Some(ScaleBar {
+        px: len / per_px,
+        label: format!("{len} {suffix}"),
+    })
+}
+
 /// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`.
 pub fn format_view_hash(c: &Camera) -> String {
     format!(
@@ -219,5 +301,126 @@ mod tests {
     #[test]
     fn first_frame_draws() {
         assert_eq!(RedrawFlags::new().take(), (true, true));
+    }
+
+    fn sized(lat: f64, alt: f64, w: f64, h: f64) -> Camera {
+        let mut c = Camera::new(lat, 10.0, alt);
+        c.width = w;
+        c.height = h;
+        c
+    }
+
+    #[test]
+    fn nice_lengths() {
+        assert_eq!(nice_length(1.0), Some(1.0));
+        assert_eq!(nice_length(1.9), Some(1.0));
+        assert_eq!(nice_length(2.0), Some(2.0));
+        assert_eq!(nice_length(4.99), Some(2.0));
+        assert_eq!(nice_length(5.0), Some(5.0));
+        assert_eq!(nice_length(99.0), Some(50.0));
+        assert_eq!(nice_length(100.0), Some(100.0));
+        assert_eq!(nice_length(1000.0), Some(1000.0));
+        assert_eq!(nice_length(0.35), Some(0.2));
+        assert_eq!(nice_length(0.05), Some(0.05));
+        assert_eq!(nice_length(0.001), Some(0.001));
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(nice_length(bad), None);
+        }
+    }
+
+    #[test]
+    fn scale_bar_matches_ground_distance() {
+        for alt in [0.06, 0.1, 0.3, 0.7, 1.0] {
+            let c = sized(30.0, alt, 1200.0, 800.0);
+            for units in [Units::Metric, Units::Imperial] {
+                let bar = scale_bar(&c, units, 120.0).unwrap();
+                assert!(bar.px <= 120.0 + 1e-9 && bar.px >= 120.0 / 2.5, "{bar:?}");
+                // Bar length in km must equal px * km/px, and be a nice number.
+                let value: f64 = bar.label.split(' ').next().unwrap().parse().unwrap();
+                let km = match units {
+                    Units::Metric => value,
+                    Units::Imperial => value * KM_PER_MILE,
+                };
+                assert!((bar.px * c.km_per_pixel() - km).abs() / km < 1e-9);
+                assert_eq!(nice_length(value), Some(value));
+            }
+        }
+    }
+
+    #[test]
+    fn scale_bar_agrees_with_picking() {
+        // Two pixels apart at the center should be ~km_per_pixel apart on the ground.
+        let c = sized(20.0, 0.1, 1000.0, 700.0);
+        let (la1, lo1) = c.pick(500.0, 350.0).unwrap();
+        let (la2, lo2) = c.pick(600.0, 350.0).unwrap();
+        let (p, q) = (
+            crate::camera::spherical(la1, lo1),
+            crate::camera::spherical(la2, lo2),
+        );
+        let chord = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt();
+        let km = chord * EARTH_RADIUS_KM;
+        assert!((km / 100.0 - c.km_per_pixel()).abs() / c.km_per_pixel() < 0.03);
+    }
+
+    #[test]
+    fn scale_bar_known_value_and_units() {
+        // alt 0.1, 800 px shorter side: 0.1*0.36397/400*6371 = 0.5797 km/px.
+        let c = sized(0.0, 0.1, 1200.0, 800.0);
+        let m = scale_bar(&c, Units::Metric, 100.0).unwrap();
+        assert_eq!(m.label, "50 km");
+        let i = scale_bar(&c, Units::Imperial, 100.0).unwrap();
+        assert_eq!(i.label, "20 mi");
+    }
+
+    #[test]
+    fn scale_bar_uses_shorter_axis_and_ignores_latitude() {
+        let a = scale_bar(&sized(0.0, 0.2, 1200.0, 800.0), Units::Metric, 100.0);
+        let b = scale_bar(&sized(0.0, 0.2, 800.0, 1200.0), Units::Metric, 100.0);
+        assert_eq!(a, b);
+        for lat in [-85.0, 0.0, 85.0] {
+            let c = scale_bar(&sized(lat, 0.2, 1200.0, 800.0), Units::Metric, 100.0);
+            assert_eq!(c, a);
+        }
+    }
+
+    #[test]
+    fn scale_bar_hidden_when_zoomed_out() {
+        assert!(scale_bar(
+            &sized(0.0, SCALE_MAX_ALT, 800.0, 600.0),
+            Units::Metric,
+            100.0
+        )
+        .is_some());
+        assert!(scale_bar(&sized(0.0, 1.01, 800.0, 600.0), Units::Metric, 100.0).is_none());
+        assert!(scale_bar(&sized(0.0, 2.4, 800.0, 600.0), Units::Metric, 100.0).is_none());
+        assert!(scale_bar(&sized(0.0, MAX_ALT, 800.0, 600.0), Units::Metric, 100.0).is_none());
+    }
+
+    #[test]
+    fn scale_bar_closest_zoom_and_tiny_viewport() {
+        let c = sized(0.0, MIN_ALT, 800.0, 600.0);
+        let bar = scale_bar(&c, Units::Metric, 100.0).unwrap();
+        assert!(bar.px > 0.0 && bar.px <= 100.0);
+        // Degenerate viewports must not panic.
+        assert!(scale_bar(&sized(0.0, MIN_ALT, 0.0, 0.0), Units::Metric, 100.0).is_some());
+    }
+
+    #[test]
+    fn scale_bar_rejects_non_finite() {
+        let ok = sized(0.0, 0.2, 800.0, 600.0);
+        for bad in [f64::NAN, f64::INFINITY, -1.0, 0.0] {
+            assert!(scale_bar(&ok, Units::Metric, bad).is_none());
+            assert!(scale_bar(&sized(0.0, bad, 800.0, 600.0), Units::Metric, 100.0).is_none());
+        }
+        let mut c = ok;
+        c.width = f64::NAN;
+        c.height = f64::NAN;
+        let _ = scale_bar(&c, Units::Imperial, 100.0); // must not panic
+    }
+
+    #[test]
+    fn units_toggle() {
+        assert_eq!(Units::Metric.toggled(), Units::Imperial);
+        assert_eq!(Units::Imperial.toggled().toggled(), Units::Imperial);
     }
 }

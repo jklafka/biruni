@@ -54,6 +54,22 @@
         min-width: 210px;
       }
       #hud div { display: flex; justify-content: space-between; gap: 16px; }
+      #hud #hud-scale {
+        justify-content: flex-start;
+        gap: 8px;
+        align-items: center;
+        margin-top: 6px;
+        cursor: pointer;
+        pointer-events: auto;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #hud-scale-bar {
+        height: 6px;
+        border: 2px solid var(--text);
+        border-top: none;
+        flex: none;
+      }
+      #hud #hud-scale-label { color: var(--text); }
       #hud span:first-child { color: var(--muted); }
       #controls {
         position: fixed;
@@ -95,6 +111,9 @@
       <div><span>Cursor</span><span id="hud-cursor">—</span></div>
       <div><span>Center</span><span id="hud-center">—</span></div>
       <div><span>Altitude</span><span id="hud-alt">—</span></div>
+      <div id="hud-scale" style="display: none" title="Click to switch km / mi (U)">
+        <span id="hud-scale-bar"></span><span id="hud-scale-label"></span>
+      </div>
     </div>
     <div id="controls">
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
