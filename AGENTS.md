@@ -18,6 +18,8 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin` |
 | `.github/workflows/ci.yml` | CI: format, clippy, tests, shader validation, release build |
+| `.github/workflows/deploy.yml` | Builds the release site and deploys it to Cloudflare Pages (production on `main`, previews on PRs) |
+| `assets/_headers` | Cloudflare Pages headers (wasm MIME type, caching), copied to `dist/` by Trunk |
 | `index.html` | Page shell, HUD and controls. Trunk reads it as the build entry. |
 
 ## Setup and commands

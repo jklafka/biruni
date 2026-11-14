@@ -1,0 +1,103 @@
+name: Deploy
+
+# Builds the release site and publishes it to Cloudflare Pages: production for
+# pushes to main, a preview deployment for each pull request. It needs the
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets (see
+# README.md). Without them, or on pull requests from forks, no deploy happens
+# and this workflow still passes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: v0.22.1
+  PAGES_PROJECT: maps
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" trunk
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Release build
+        run: trunk build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist/
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # Fork PRs never receive secrets, so only deploy from this repository.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check for Cloudflare credentials
+        id: creds
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets are not set; skipping deploy."
+          fi
+      - uses: actions/download-artifact@v5
+        if: steps.creds.outputs.present == 'true'
+        with:
+          name: site
+          path: dist
+      - name: Deploy
+        id: deploy
+        if: steps.creds.outputs.present == 'true'
+        uses: cloudflare/wrangler-action@v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=${{ env.PAGES_PROJECT }} --branch=${{ github.head_ref || github.ref_name }}
+      - name: Comment preview URL on the PR
+        if: steps.creds.outputs.present == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker='<!-- cloudflare-pages-preview -->'
+          body="$marker"$'\n'"Preview deployed: $URL"$'\n'"Commit: \`${SHA:0:7}\`"
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty")
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -f body="$body"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body"
+          fi
