@@ -76,6 +76,7 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
   - `geo::decode_shapes`: binary map layers → shapes (the test-only GeoJSON `parse_shapes` is the reference)
 - Every bug fix comes with a test that fails without the fix.
 - New math or parsing comes with tests, including edge cases: poles, the ±180° seam, NaN/∞, malformed input.
+- To test WebGL context recovery by hand, load the app with `?debug=ctxloss` and press the backquote key to lose the context, again to restore it (see `README.md`, "Debug aids"). The `ctxloss-restored` visual test does this; new GPU state that is rebuilt in `Renderer::context_restored` should show up correct in that view. Don't add user-visible controls for debug aids.
 - `render.rs` checks that every uniform Rust looks up is declared in `globe.frag`. When you add a uniform, add it to that list.
 - `geo.rs` checks that the bundled datasets decode, stay within lon/lat bounds and match the GeoJSON within the quantization tolerance.
 

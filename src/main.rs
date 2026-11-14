@@ -866,6 +866,12 @@ fn start() -> Result<(), JsValue> {
                     a.select(hit);
                     return;
                 }
+                // Debug aid, only with ?debug=ctxloss: lose / restore the
+                // WebGL context (see README).
+                "`" => {
+                    a.renderer.debug_toggle_context_loss();
+                    return;
+                }
                 "u" | "U" => {
                     // Only the HUD text changes; no need to redraw the globe.
                     a.units = a.units.toggled();
