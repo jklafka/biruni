@@ -10,7 +10,9 @@ coordinates are dropped, shapes with fewer than two points are discarded.
 (`MAPC`, see src/country.rs): polygons with a small attribute table.
 `ne_10m_populated_places_simple.geojson` is not a map layer; it and the
 countries file feed `places.tsv`, the search index read by src/search.rs
-(see `build_places` below for the format).
+(see `build_places` below for the format). The same two files plus
+`ne_50m_marine_label_points.geojson` (made by `marine_label_points.py`) feed
+`labels.tsv`, read by src/labels.rs (see `build_labels`).
 
 Output is deterministic, so rerunning it must not change the committed files.
 """
@@ -144,6 +146,9 @@ def encode_countries(geojson) -> bytes:
 PLACES_SRC = "ne_10m_populated_places_simple.geojson"
 COUNTRIES_SRC = "ne_50m_admin_0_countries.geojson"
 PLACES_MAGIC = "MAPSPLACES1"
+MARINE_SRC = "ne_50m_marine_label_points.geojson"
+LABELS_MAGIC = "MAPSLABELS1"
+LABEL_MIN_POP = 100_000  # smaller places are labeled only if they are a national capital
 
 
 def _clean(s) -> str:
@@ -208,12 +213,59 @@ def build_places(src: Path) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
+def _city_tier(pop: int, capital: bool) -> int:
+    """0 (largest) to 7. Capitals count at least as tier 4 so small states show."""
+    tier = 7
+    for t, floor in enumerate((10_000_000, 5_000_000, 2_000_000, 1_000_000, 500_000, 250_000, 100_000)):
+        if pop >= floor:
+            tier = t
+            break
+    return min(tier, 4) if capital else tier
+
+
+def build_labels(src: Path) -> bytes:
+    """Map labels: a header line, then one tab-separated line per label:
+
+        kind  name  lat  lon  tier  population  extent
+
+    kind is C (country), P (populated place) or O (ocean or sea); lat/lon are
+    degrees with two decimals; tier is 0 (most important) to 7 and sets how far
+    in a place label appears (oceans and seas use Natural Earth's scalerank);
+    extent is the angular size in degrees (0 for places). Countries are placed at
+    Natural Earth's label point. Populated places are the national capitals
+    and everything with at least LABEL_MIN_POP people. Sorted by kind then
+    population, descending, so output is deterministic.
+    """
+    rows = []
+    for f in json.loads((src / COUNTRIES_SRC).read_text(encoding="utf-8"))["features"]:
+        p, g = f["properties"], f.get("geometry")
+        if not g:
+            continue
+        lon0, lat0, lon1, lat1 = _largest_polygon_box(g)
+        extent = max(lat1 - lat0, (lon1 - lon0) * math.cos(math.radians((lat0 + lat1) / 2)))
+        rows.append(("C", _clean(p["NAME"]), p["LABEL_Y"], p["LABEL_X"], 0, max(0, int(p.get("POP_EST") or 0)), extent))
+    for f in json.loads((src / PLACES_SRC).read_text(encoding="utf-8"))["features"]:
+        p = f["properties"]
+        pop, capital = max(0, int(p.get("pop_max") or 0)), p.get("adm0cap") == 1
+        if pop < LABEL_MIN_POP and not capital:
+            continue
+        rows.append(("P", _clean(p["name"]), p["latitude"], p["longitude"], _city_tier(pop, capital), pop, 0.0))
+    for f in json.loads((src / MARINE_SRC).read_text(encoding="utf-8"))["features"]:
+        p, (lon, lat) = f["properties"], f["geometry"]["coordinates"]
+        rows.append(("O", _clean(p["name"]), lat, lon, int(p["scalerank"]), 0, p["extent"]))
+    rows.sort(key=lambda r: ("COP".index(r[0]), r[4], -r[5], r[1]))
+    lines = [LABELS_MAGIC]
+    for kind, name, lat, lon, tier, pop, extent in rows:
+        lines.append("\t".join([kind, name, f"{lat:.2f}", f"{lon:.2f}", str(tier), str(pop), f"{extent:.1f}"]))
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def main():
     src = Path(sys.argv[1] if len(sys.argv) > 1 else "data-src")
     dst = Path(sys.argv[2] if len(sys.argv) > 2 else "assets/data")
     dst.mkdir(parents=True, exist_ok=True)
     for f in sorted(src.glob("*.geojson")):
-        if f.name == PLACES_SRC:
+        if f.name in (PLACES_SRC, MARINE_SRC):
             continue
         gj = json.loads(f.read_text(encoding="utf-8"))
         data = encode_countries(gj) if "admin_0_countries" in f.stem else encode(gj)
@@ -223,6 +275,10 @@ def main():
         data = build_places(src)
         (dst / "places.tsv").write_bytes(data)
         print(f"places.tsv: {len(data)} bytes")
+        if (src / MARINE_SRC).exists():
+            data = build_labels(src)
+            (dst / "labels.tsv").write_bytes(data)
+            print(f"labels.tsv: {len(data)} bytes")
 
 
 if __name__ == "__main__":
