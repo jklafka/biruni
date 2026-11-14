@@ -34,7 +34,14 @@ npm test                                    # compare with baselines
 
 New screenshots go to `visual-tests/actual/` and diff images to `visual-tests/diff/` (both git-ignored). CI uploads them as the `visual-screenshots` artifact.
 
-**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch, download the `visual-screenshots` artifact from the CI run (`gh run download <run-id> -n visual-screenshots`), copy `actual/*.png` into `visual-tests/baselines/`, look at them, and commit. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
+**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch and open the PR. Wait for CI to finish (the Visual regression job fails, which is expected), then run this from a clean checkout of the PR branch:
+
+```sh
+scripts/update-baselines.sh <PR number>          # commit the CI screenshots locally
+scripts/update-baselines.sh <PR number> --push   # ... and push
+```
+
+It needs `gh`. It finds the latest completed CI run for the PR's head commit, downloads the `visual-screenshots` artifact, copies `actual/*.png` into `visual-tests/baselines/`, lists what changed and commits it as you (nothing if the baselines already match). It refuses to run if the current branch isn't the PR's branch or the tree is dirty, and it says so if CI has no artifact yet. Look at the new PNGs before you push, then wait for CI to pass on the new commit. The commit is made by you, not a bot, so it doesn't trip the repository's extra-approval rule for unattributed changes. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
 
 ## Deployment
 

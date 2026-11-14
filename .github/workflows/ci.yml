@@ -67,19 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/build-site
         with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Trunk
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C "$HOME/.local/bin" trunk
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/trunk" --version
-      - name: Release build
-        run: trunk build --release
+          trunk-version: ${{ env.TRUNK_VERSION }}
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -91,28 +81,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/build-site
         with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Trunk
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C "$HOME/.local/bin" trunk
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Release build
-        run: trunk build --release
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: visual-tests/package-lock.json
-      - name: Install test dependencies and Chromium
-        working-directory: visual-tests
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+          trunk-version: ${{ env.TRUNK_VERSION }}
+      - uses: ./.github/actions/visual-setup
       - name: Compare screenshots with baselines
         working-directory: visual-tests
         run: npm test
