@@ -478,6 +478,16 @@ impl App {
     }
 
     fn pointer_move(&mut self, e: &PointerEvent) {
+        if e.pointer_type() == "mouse"
+            && view::is_phantom_mouse_move(
+                self.cursor.is_some(),
+                e.buttons(),
+                e.movement_x() as f64,
+                e.movement_y() as f64,
+            )
+        {
+            return;
+        }
         let (x, y) = (e.client_x() as f64, e.client_y() as f64);
         self.cursor = Some((x, y));
         self.mouse_hover = e.pointer_type() == "mouse";

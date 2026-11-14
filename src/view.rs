@@ -290,6 +290,21 @@ impl RedrawFlags {
     }
 }
 
+/// True for a mouse `pointermove` that Chromium synthesizes without the
+/// mouse moving. After a layout change under a stationary pointer (or when a
+/// page opens), it dispatches a "fake" move at the last known position, which
+/// is (0, 0) if the mouse has never moved. Such an event arrives with no prior
+/// cursor, no buttons held and zero movement, and must not count as hover. A
+/// real first move only loses one event: the next one carries movement.
+pub fn is_phantom_mouse_move(
+    had_cursor: bool,
+    buttons: u16,
+    movement_x: f64,
+    movement_y: f64,
+) -> bool {
+    !had_cursor && buttons == 0 && movement_x == 0.0 && movement_y == 0.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -749,5 +764,18 @@ mod tests {
     fn units_toggle() {
         assert_eq!(Units::Metric.toggled(), Units::Imperial);
         assert_eq!(Units::Imperial.toggled().toggled(), Units::Imperial);
+    }
+
+    #[test]
+    fn phantom_mouse_move_is_detected() {
+        // Fake move at a stale position: no cursor yet, zero movement.
+        assert!(is_phantom_mouse_move(false, 0, 0.0, 0.0));
+        // A real move carries movement.
+        assert!(!is_phantom_mouse_move(false, 0, 3.0, 0.0));
+        assert!(!is_phantom_mouse_move(false, 0, 0.0, -1.0));
+        // Once the cursor is known, a still move is harmless and kept.
+        assert!(!is_phantom_mouse_move(true, 0, 0.0, 0.0));
+        // A drag in progress is never phantom.
+        assert!(!is_phantom_mouse_move(false, 1, 0.0, 0.0));
     }
 }
