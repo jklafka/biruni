@@ -88,6 +88,8 @@ struct App {
     hud_cursor: HtmlElement,
     hud_center: HtmlElement,
     hud_alt: HtmlElement,
+    compass: HtmlElement,
+    compass_needle: HtmlElement,
     hud_scale: HtmlElement,
     hud_scale_bar: HtmlElement,
     hud_scale_label: HtmlElement,
@@ -440,6 +442,28 @@ impl App {
             .set_text_content(Some(&format_lat_lon(self.camera.lat, self.camera.lon)));
         self.hud_alt
             .set_text_content(Some(&format_altitude(self.camera.alt)));
+        // The needle points at north: the globe turned by the bearing, so
+        // north sits that many degrees counterclockwise from screen up.
+        let bearing = self.camera.bearing_deg();
+        let _ = self
+            .compass_needle
+            .style()
+            .set_property("transform", &format!("rotate({:.1}deg)", -bearing));
+        let _ = self.compass.set_attribute(
+            "aria-pressed",
+            if self.camera.north_up {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        let _ = self.compass.set_attribute(
+            "title",
+            &format!(
+                "Bearing {:.0}°. Click to face north and lock north-up (F toggles the lock)",
+                bearing
+            ),
+        );
         let country = self
             .hover
             .and_then(|i| self.countries.as_ref()?.get(i))
@@ -500,6 +524,7 @@ impl App {
             x,
             y,
             t,
+            alt: e.alt_key(),
         });
     }
 
@@ -633,6 +658,8 @@ fn start() -> Result<(), JsValue> {
         hud_cursor: element(&doc, "hud-cursor")?,
         hud_center: element(&doc, "hud-center")?,
         hud_alt: element(&doc, "hud-alt")?,
+        compass: element(&doc, "compass")?,
+        compass_needle: element(&doc, "compass-needle")?,
         hud_scale: element(&doc, "hud-scale")?,
         hud_scale_bar: element(&doc, "hud-scale-bar")?,
         hud_scale_label: element(&doc, "hud-scale-label")?,
@@ -818,6 +845,15 @@ fn start() -> Result<(), JsValue> {
                 "r" | "R" => {
                     a.send(Event::Reset);
                 }
+                "f" | "F" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    a.send(Event::ToggleNorthUp);
+                }
+                "q" | "Q" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    a.send(Event::Rotate(-controls::ROTATE_STEP));
+                }
+                "e" | "E" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    a.send(Event::Rotate(controls::ROTATE_STEP));
+                }
                 "i" | "I" if a.info_click_enabled() => {
                     // Info for the country at the center of the view.
                     let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
@@ -897,6 +933,7 @@ fn start() -> Result<(), JsValue> {
                         lat: c.lat,
                         lon: c.lon,
                         alt: c.alt,
+                        bearing: Some(c.bearing),
                     });
                 }
             },
@@ -904,7 +941,10 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 7] = [
+    let buttons: [(&str, Action); 8] = [
+        ("compass", |a| {
+            a.send(Event::NorthUp);
+        }),
         ("measure-toggle", |a| a.toggle_measure()),
         ("measure-undo", |a| a.measure_undo()),
         ("measure-exit", |a| {
@@ -941,7 +981,12 @@ fn start() -> Result<(), JsValue> {
     {
         let app = app.clone();
         search_ui::init(&doc, move |lat, lon, alt| {
-            app.borrow_mut().send(Event::FlyTo { lat, lon, alt });
+            app.borrow_mut().send(Event::FlyTo {
+                lat,
+                lon,
+                alt,
+                bearing: None,
+            });
         })?;
     }
 

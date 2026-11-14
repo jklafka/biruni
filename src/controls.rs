@@ -3,7 +3,9 @@
 //! `main.rs` translates DOM events into [`Event`]s and feeds them to
 //! [`Controls::handle`], which mutates a [`Camera`]. Drag, pinch, fling
 //! inertia, wheel and button zoom, zoom anchoring, fly-to and reset all live
-//! here, so they can be unit tested natively.
+//! here, so they can be unit tested natively. So do the rotation inputs:
+//! two-finger twist, alt-drag and the keyboard step turn the view (and
+//! unlock north-up), and the compass restores north-up with a flight.
 //!
 //! Event times (`t`, milliseconds) come from the caller's clock. Events with
 //! a non-finite number in them are ignored, so garbage input can never poison
@@ -11,6 +13,7 @@
 
 use crate::camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use crate::view::HOME;
+use std::f64::consts::PI;
 
 /// A press that moves less than this many CSS pixels is a tap, not a drag.
 pub const TAP_SLOP_PX: f64 = 6.0;
@@ -20,6 +23,14 @@ pub const NUDGE_SPEED: f64 = 0.6;
 const FLING_PAUSE_MS: f64 = 80.0;
 /// Longest step a single tick may integrate, in milliseconds.
 const MAX_DT_MS: f64 = 100.0;
+/// A two-finger twist is ignored until it adds up to this many radians, so
+/// an ordinary pinch never unlocks north-up by accident (about 7 degrees).
+const TWIST_START: f64 = 0.12;
+/// Within this many pixels of the screen center, alt-drag turns less, since
+/// the angle swept around the center changes wildly there.
+const ROTATE_DEADZONE_PX: f64 = 40.0;
+/// Keyboard rotation step, radians (15 degrees).
+pub const ROTATE_STEP: f64 = PI / 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
@@ -37,11 +48,14 @@ pub enum Event {
         y: f64,
         t: f64,
     },
+    /// `alt` is the Alt/Option key: a single-pointer drag then rotates the
+    /// view about the screen center instead of panning.
     PointerMove {
         id: i32,
         x: f64,
         y: f64,
         t: f64,
+        alt: bool,
     },
     /// A release. `cancel` is a `pointercancel`, which never counts as a tap.
     PointerUp {
@@ -74,11 +88,21 @@ pub enum Event {
     },
     /// Arrow key: give the view an inertial push.
     Nudge(Direction),
+    /// `bearing`: `Some` sets the view bearing (and north-up lock when it is
+    /// 0); `None` keeps it, or restores north when the lock is on.
     FlyTo {
         lat: f64,
         lon: f64,
         alt: f64,
+        bearing: Option<f64>,
     },
+    /// The compass: animate back to north-up and lock it.
+    NorthUp,
+    /// Toggle the north-up lock; locking animates to north-up.
+    ToggleNorthUp,
+    /// Turn the view by this many radians (positive is clockwise) with a
+    /// short animation. Unlocks north-up.
+    Rotate(f64),
     Reset,
     /// Drop pan inertia only (e.g. on context loss).
     CancelInertia,
@@ -117,6 +141,7 @@ struct Anchor {
 struct Flight {
     lat: f64,
     lon: f64,
+    bearing: f64,
 }
 
 pub struct Controls {
@@ -130,6 +155,10 @@ pub struct Controls {
     velocity: (f64, f64),
     last_move_ms: f64,
     press: Option<Press>,
+    /// Twist accumulated by the current two-finger gesture, radians.
+    twist_acc: f64,
+    /// The twist has passed `TWIST_START`, so it now turns the view.
+    twisting: bool,
 }
 
 fn finite(vals: &[f64]) -> bool {
@@ -149,8 +178,18 @@ impl Event {
                 factor.is_finite() && factor > 0.0 && toward.is_none_or(|(x, y)| finite(&[x, y]))
             }
             Event::DoubleClick { x, y, .. } => finite(&[x, y]),
-            Event::FlyTo { lat, lon, alt } => finite(&[lat, lon, alt]),
-            Event::Nudge(_) | Event::Reset | Event::CancelInertia => true,
+            Event::FlyTo {
+                lat,
+                lon,
+                alt,
+                bearing,
+            } => finite(&[lat, lon, alt]) && bearing.is_none_or(f64::is_finite),
+            Event::Rotate(a) => finite(&[a]),
+            Event::Nudge(_)
+            | Event::NorthUp
+            | Event::ToggleNorthUp
+            | Event::Reset
+            | Event::CancelInertia => true,
         }
     }
 }
@@ -166,6 +205,8 @@ impl Controls {
             velocity: (0.0, 0.0),
             last_move_ms: 0.0,
             press: None,
+            twist_acc: 0.0,
+            twisting: false,
         }
     }
 
@@ -199,7 +240,9 @@ impl Controls {
         }
         match ev {
             Event::PointerDown { id, x, y, t } => self.pointer_down(cam, id, x, y, t),
-            Event::PointerMove { id, x, y, t } => out.render = self.pointer_move(cam, id, x, y, t),
+            Event::PointerMove { id, x, y, t, alt } => {
+                out.render = self.pointer_move(cam, id, (x, y), t, alt)
+            }
             Event::PointerUp { id, t, cancel } => {
                 out.tap = self.pointer_up(id, t, cancel);
                 out.render = true;
@@ -230,7 +273,7 @@ impl Controls {
             Event::DoubleClick { x, y, shift } => {
                 if let Some((lat, lon)) = cam.pick(x, y) {
                     let alt = cam.alt * if shift { 2.5 } else { 0.4 };
-                    self.fly_to(cam, lat, lon, alt);
+                    self.fly_to(cam, lat, lon, alt, None);
                     out.render = true;
                 }
             }
@@ -243,12 +286,54 @@ impl Controls {
                 }
                 out.render = true;
             }
-            Event::FlyTo { lat, lon, alt } => {
-                self.fly_to(cam, lat, lon, alt);
+            Event::FlyTo {
+                lat,
+                lon,
+                alt,
+                bearing,
+            } => {
+                if let Some(b) = bearing {
+                    cam.north_up = wrap_angle(b) == 0.0;
+                }
+                self.fly_to(cam, lat, lon, alt, bearing);
+                out.render = true;
+            }
+            Event::NorthUp => {
+                self.north_up(cam);
+                out.render = true;
+            }
+            Event::ToggleNorthUp => {
+                if cam.north_up {
+                    cam.north_up = false;
+                } else {
+                    self.north_up(cam);
+                }
+                out.render = true;
+            }
+            Event::Rotate(angle) => {
+                cam.north_up = false;
+                // Stack on a rotation already under way so repeated key
+                // presses add up instead of restarting.
+                let (lat, lon, bearing) = match &self.flight {
+                    Some(f) => (f.lat, f.lon, f.bearing),
+                    None => (cam.lat, cam.lon, cam.bearing),
+                };
+                self.flight = Some(Flight {
+                    lat,
+                    lon,
+                    bearing: wrap_angle(bearing - angle),
+                });
                 out.render = true;
             }
             Event::Reset => {
-                self.fly_to(cam, HOME.0.to_radians(), HOME.1.to_radians(), HOME.2);
+                cam.north_up = true;
+                self.fly_to(
+                    cam,
+                    HOME.0.to_radians(),
+                    HOME.1.to_radians(),
+                    HOME.2,
+                    Some(0.0),
+                );
                 out.render = true;
             }
             Event::CancelInertia => self.velocity = (0.0, 0.0),
@@ -272,10 +357,26 @@ impl Controls {
         });
     }
 
-    fn fly_to(&mut self, cam: &Camera, lat: f64, lon: f64, alt: f64) {
+    /// Fly the view center to (lat, lon) and the altitude to `alt`. The
+    /// bearing goes to `bearing`, or stays put in free mode and returns to
+    /// north in north-up mode.
+    fn fly_to(&mut self, cam: &Camera, lat: f64, lon: f64, alt: f64, bearing: Option<f64>) {
         self.stop_motion(cam);
-        self.flight = Some(Flight { lat, lon });
+        let bearing = match bearing {
+            Some(b) => wrap_angle(b),
+            None if cam.north_up => 0.0,
+            None => cam.bearing,
+        };
+        self.flight = Some(Flight { lat, lon, bearing });
         self.target_alt = alt.clamp(MIN_ALT, MAX_ALT);
+    }
+
+    /// Lock north-up and turn the view to face north, keeping the center.
+    fn north_up(&mut self, cam: &mut Camera) {
+        cam.north_up = true;
+        let target_alt = self.target_alt;
+        self.fly_to(cam, cam.lat, cam.lon, cam.alt, Some(0.0));
+        self.target_alt = target_alt;
     }
 
     fn pointer_down(&mut self, cam: &Camera, id: i32, x: f64, y: f64, t: f64) {
@@ -288,11 +389,20 @@ impl Controls {
         };
         self.pointers.push(Pointer { id, x, y });
         self.pinch = false;
+        self.twist_acc = 0.0;
+        self.twisting = false;
         self.last_move_ms = t;
     }
 
     /// Returns whether the camera may have changed.
-    fn pointer_move(&mut self, cam: &mut Camera, id: i32, x: f64, y: f64, t: f64) -> bool {
+    fn pointer_move(
+        &mut self,
+        cam: &mut Camera,
+        id: i32,
+        (x, y): (f64, f64),
+        t: f64,
+        alt: bool,
+    ) -> bool {
         if self
             .press
             .as_ref()
@@ -305,7 +415,20 @@ impl Controls {
         };
         let (px, py) = (self.pointers[idx].x, self.pointers[idx].y);
 
-        if self.pointers.len() == 1 {
+        if self.pointers.len() == 1 && alt {
+            // Alt-drag: turn the view by the angle the pointer sweeps around
+            // the screen center.
+            let (cx, cy) = (cam.width * 0.5, cam.height * 0.5);
+            let (ox, oy) = (px - cx, py - cy);
+            let (nx, ny) = (x - cx, y - cy);
+            let r = ox.hypot(oy).min(nx.hypot(ny));
+            if r > 1.0 {
+                let sweep = (ox * ny - oy * nx).atan2(ox * nx + oy * ny);
+                cam.north_up = false;
+                cam.twist(sweep * (r / ROTATE_DEADZONE_PX).min(1.0));
+            }
+            self.velocity = (0.0, 0.0);
+        } else if self.pointers.len() == 1 {
             let (dx, dy) = (x - px, y - py);
             cam.pan_pixels(dx, dy);
             let dt = (t - self.last_move_ms).max(1.0);
@@ -321,15 +444,29 @@ impl Controls {
             let (a, b) = (&self.pointers[0], &self.pointers[1]);
             let old_mid = ((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
             let old_dist = (a.x - b.x).hypot(a.y - b.y);
+            let old_angle = (b.y - a.y).atan2(b.x - a.x);
             self.pointers[idx].x = x;
             self.pointers[idx].y = y;
             let (a, b) = (&self.pointers[0], &self.pointers[1]);
             let new_mid = ((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
             let new_dist = (a.x - b.x).hypot(a.y - b.y);
+            let new_angle = (b.y - a.y).atan2(b.x - a.x);
             let target = cam.pick(old_mid.0, old_mid.1);
             if old_dist > 1.0 && new_dist > 1.0 {
                 cam.alt = (cam.alt * old_dist / new_dist).clamp(MIN_ALT, MAX_ALT);
                 self.target_alt = cam.alt;
+            }
+            if old_dist > 1.0 && new_dist > 1.0 {
+                // Fingers turning clockwise on screen turn the globe with them.
+                let twist = wrap_angle(new_angle - old_angle);
+                self.twist_acc += twist;
+                if !self.twisting && self.twist_acc.abs() > TWIST_START {
+                    self.twisting = true;
+                    cam.north_up = false;
+                    cam.twist(self.twist_acc);
+                } else if self.twisting {
+                    cam.twist(twist);
+                }
             }
             match target {
                 Some((lat, lon)) => cam.keep_point_at(lat, lon, new_mid.0, new_mid.1),
@@ -370,13 +507,19 @@ impl Controls {
         if let Some(f) = &self.flight {
             let dlat = f.lat - cam.lat;
             let dlon = wrap_angle(f.lon - cam.lon);
-            if dlat.abs() < 1e-5 && dlon.abs() < 1e-5 {
+            let dbearing = wrap_angle(f.bearing - cam.bearing);
+            if dlat.abs() < 1e-5 && dlon.abs() < 1e-5 && dbearing.abs() < 1e-5 {
+                cam.lat = f.lat;
+                cam.lon = wrap_angle(f.lon);
+                cam.bearing = f.bearing;
                 self.flight = None;
+                moved = true;
             } else {
                 // Slower than zoom so the flight reads as a single gesture.
                 let k = 1.0 - (-dt / 160.0).exp();
                 cam.lat += dlat * k;
                 cam.lon = wrap_angle(cam.lon + dlon * k);
+                cam.bearing = wrap_angle(cam.bearing + dbearing * k);
                 moved = true;
             }
         }
@@ -436,6 +579,7 @@ mod tests {
                 lat: 10.0,
                 lon: 50.0,
                 alt: 0.5,
+                bearing: None,
             },
         );
         assert!(k.in_motion(&c), "flight and zoom");
@@ -465,7 +609,16 @@ mod tests {
         k.handle(c, Event::PointerDown { id, x, y, t })
     }
     fn mv(k: &mut Controls, c: &mut Camera, id: i32, x: f64, y: f64, t: f64) -> Response {
-        k.handle(c, Event::PointerMove { id, x, y, t })
+        k.handle(
+            c,
+            Event::PointerMove {
+                id,
+                x,
+                y,
+                t,
+                alt: false,
+            },
+        )
     }
     fn up(k: &mut Controls, c: &mut Camera, id: i32, t: f64) -> Response {
         k.handle(
@@ -500,6 +653,8 @@ mod tests {
     fn sane(c: &Camera) -> bool {
         c.lat.is_finite()
             && c.lon.is_finite()
+            && c.bearing.is_finite()
+            && (-PI..=PI).contains(&c.bearing)
             && c.alt.is_finite()
             && c.alt >= MIN_ALT - 1e-9
             && c.alt <= MAX_ALT + 1e-9
@@ -828,6 +983,7 @@ mod tests {
                 lat: 0.5,
                 lon: -2.0,
                 alt: 0.3,
+                bearing: None,
             },
         );
         assert!(r.render);
@@ -850,6 +1006,7 @@ mod tests {
                 lat: lat0,
                 lon: (-179f64).to_radians(),
                 alt: 1.0,
+                bearing: None,
             },
         );
         tick(&mut k, &mut c, 16.0);
@@ -864,6 +1021,7 @@ mod tests {
             lat: 0.0,
             lon: 0.0,
             alt,
+            bearing: None,
         };
         k.handle(&mut c, fly(1e9));
         settle(&mut k, &mut c);
@@ -882,6 +1040,7 @@ mod tests {
                 lat: 1.0,
                 lon: 1.0,
                 alt: 0.5,
+                bearing: None,
             },
         );
         assert!(k.flight.is_some());
@@ -894,6 +1053,7 @@ mod tests {
                 lat: 0.0,
                 lon: 0.0,
                 alt: 1.0,
+                bearing: None,
             },
         );
         assert!(k.anchor.is_none());
@@ -929,6 +1089,7 @@ mod tests {
                 lat: -1.0,
                 lon: 2.0,
                 alt: 0.1,
+                bearing: None,
             },
         );
         settle(&mut k, &mut c);
@@ -985,6 +1146,7 @@ mod tests {
                 lat: f64::NAN,
                 lon: 0.0,
                 alt: 1.0,
+                bearing: None,
             },
         ];
         let before = c;
@@ -993,6 +1155,338 @@ mod tests {
         }
         assert!(!k.dragging() && !k.animating());
         assert_eq!((c.lat, c.lon, c.alt), (before.lat, before.lon, before.alt));
+    }
+
+    fn mv_alt(k: &mut Controls, c: &mut Camera, id: i32, x: f64, y: f64, t: f64) {
+        k.handle(
+            c,
+            Event::PointerMove {
+                id,
+                x,
+                y,
+                t,
+                alt: true,
+            },
+        );
+    }
+
+    #[test]
+    fn two_finger_twist_rotates_the_view_and_unlocks_north_up() {
+        let (mut c, mut k) = setup();
+        assert!(c.north_up);
+        let center = (c.lat, c.lon);
+        // Two fingers either side of the screen center, then turn clockwise.
+        down(&mut k, &mut c, 1, 400.0, 350.0, 0.0);
+        down(&mut k, &mut c, 2, 600.0, 350.0, 0.0);
+        let mut t = 0.0;
+        for i in 1..=20 {
+            t += 16.0;
+            let a = i as f64 * 0.02; // 0.4 rad in total
+            let (dx, dy) = (100.0 * a.cos(), 100.0 * a.sin());
+            mv(&mut k, &mut c, 1, 500.0 - dx, 350.0 - dy, t);
+            mv(&mut k, &mut c, 2, 500.0 + dx, 350.0 + dy, t);
+        }
+        assert!(!c.north_up, "twisting unlocks north-up");
+        assert!(
+            (c.bearing + 0.4).abs() < 0.03,
+            "clockwise twist lowers the bearing: {}",
+            c.bearing
+        );
+        // The pinch midpoint stayed put, so the center barely moved.
+        assert!((c.lat - center.0).abs() < 0.01 && (c.lon - center.1).abs() < 0.01);
+        assert!(sane(&c));
+    }
+
+    #[test]
+    fn a_plain_pinch_does_not_unlock_north_up() {
+        let (mut c, mut k) = setup();
+        down(&mut k, &mut c, 1, 450.0, 350.0, 0.0);
+        down(&mut k, &mut c, 2, 550.0, 350.0, 0.0);
+        // Spread apart with a sloppy few degrees of twist.
+        mv(&mut k, &mut c, 2, 600.0, 358.0, 16.0);
+        mv(&mut k, &mut c, 1, 400.0, 346.0, 32.0);
+        assert!(c.north_up);
+        assert_eq!(c.bearing, 0.0);
+    }
+
+    #[test]
+    fn twist_keeps_the_pinch_midpoint_under_the_fingers() {
+        let (mut c, mut k) = setup();
+        let mid = (420.0, 300.0);
+        let grabbed = c.pick(mid.0, mid.1).unwrap();
+        down(&mut k, &mut c, 1, mid.0 - 60.0, mid.1, 0.0);
+        down(&mut k, &mut c, 2, mid.0 + 60.0, mid.1, 0.0);
+        for i in 1..=15 {
+            let a = i as f64 * 0.03;
+            let (dx, dy) = (60.0 * a.cos(), 60.0 * a.sin());
+            mv(&mut k, &mut c, 1, mid.0 - dx, mid.1 - dy, i as f64 * 16.0);
+            mv(&mut k, &mut c, 2, mid.0 + dx, mid.1 + dy, i as f64 * 16.0);
+        }
+        assert!(!c.north_up);
+        let (px, py) = c.project(grabbed.0, grabbed.1).unwrap();
+        assert!(
+            (px - mid.0).abs() < 3.0 && (py - mid.1).abs() < 3.0,
+            "({px},{py})"
+        );
+    }
+
+    #[test]
+    fn alt_drag_turns_the_view_about_the_center() {
+        let (mut c, mut k) = setup();
+        let center = (c.lat, c.lon);
+        // Press right of the center and sweep downward: clockwise on screen.
+        down(&mut k, &mut c, 1, 800.0, 350.0, 0.0);
+        let mut t = 0.0;
+        for i in 1..=10 {
+            t += 16.0;
+            let a = i as f64 * 0.05;
+            mv_alt(
+                &mut k,
+                &mut c,
+                1,
+                500.0 + 300.0 * a.cos(),
+                350.0 + 300.0 * a.sin(),
+                t,
+            );
+        }
+        assert!(!c.north_up);
+        assert!((c.bearing + 0.5).abs() < 0.02, "{}", c.bearing);
+        assert_eq!((c.lat, c.lon), center, "alt-drag never pans");
+        up(&mut k, &mut c, 1, t + 1.0);
+        assert_eq!(k.velocity, (0.0, 0.0), "no fling from a rotation");
+    }
+
+    #[test]
+    fn rotation_inputs_count_as_motion() {
+        let (mut c, mut k) = setup();
+        down(&mut k, &mut c, 1, 800.0, 350.0, 0.0);
+        mv_alt(&mut k, &mut c, 1, 790.0, 400.0, 16.0);
+        mv_alt(&mut k, &mut c, 1, 770.0, 450.0, 32.0);
+        assert!(k.in_motion(&c), "alt-drag");
+        up(&mut k, &mut c, 1, 33.0);
+        settle(&mut k, &mut c);
+        assert!(!k.in_motion(&c));
+        down(&mut k, &mut c, 1, 400.0, 350.0, 0.0);
+        down(&mut k, &mut c, 2, 600.0, 350.0, 0.0);
+        mv(&mut k, &mut c, 2, 590.0, 420.0, 16.0);
+        assert!(k.in_motion(&c), "twist");
+        up(&mut k, &mut c, 2, 20.0);
+        up(&mut k, &mut c, 1, 21.0);
+        settle(&mut k, &mut c);
+        k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+        assert!(k.in_motion(&c), "keyboard rotation");
+        settle(&mut k, &mut c);
+        k.handle(&mut c, Event::NorthUp);
+        assert!(k.in_motion(&c), "compass");
+    }
+
+    #[test]
+    fn alt_drag_near_the_center_is_damped_and_finite() {
+        let (mut c, mut k) = setup();
+        down(&mut k, &mut c, 1, 502.0, 350.0, 0.0);
+        mv_alt(&mut k, &mut c, 1, 498.0, 351.0, 16.0);
+        mv_alt(&mut k, &mut c, 1, 500.0, 350.0, 32.0); // exactly the center
+        assert!(sane(&c));
+        assert!(c.bearing.abs() < 1.0);
+    }
+
+    #[test]
+    fn compass_animates_back_to_north_up_and_locks() {
+        let (mut c, mut k) = setup();
+        c.north_up = false;
+        c.bearing = 2.0;
+        let (lat, lon, alt) = (c.lat, c.lon, c.alt);
+        let r = k.handle(&mut c, Event::NorthUp);
+        assert!(r.render && c.north_up);
+        assert_eq!(c.bearing, 2.0, "animates, does not jump");
+        tick(&mut k, &mut c, 16.0);
+        assert!(c.bearing.abs() < 2.0 && c.bearing > 0.0, "{}", c.bearing);
+        settle(&mut k, &mut c);
+        assert_eq!(c.bearing, 0.0);
+        assert!((c.lat - lat).abs() < 1e-9 && (c.lon - lon).abs() < 1e-9);
+        assert!((c.alt - alt).abs() < 1e-9, "the compass never zooms");
+        assert!(!k.animating());
+    }
+
+    #[test]
+    fn compass_takes_the_short_way_round() {
+        let (mut c, mut k) = setup();
+        c.north_up = false;
+        c.bearing = -3.0; // just short of the seam at 180 degrees
+        k.handle(&mut c, Event::NorthUp);
+        tick(&mut k, &mut c, 16.0);
+        assert!(c.bearing > -3.0 && c.bearing < 0.0, "{}", c.bearing);
+        let (mut c, mut k) = setup();
+        c.north_up = false;
+        c.bearing = 3.0;
+        k.handle(&mut c, Event::NorthUp);
+        tick(&mut k, &mut c, 16.0);
+        assert!(c.bearing < 3.0 && c.bearing > 0.0);
+    }
+
+    #[test]
+    fn compass_restores_north_up_after_tilting_over_a_pole() {
+        let (mut c, mut k) = setup();
+        c.lat = 89.0f64.to_radians();
+        down(&mut k, &mut c, 1, 500.0, 100.0, 0.0);
+        let mut y = 100.0;
+        while c.bearing.abs() < 3.0 && y < 600.0 {
+            y += 1.0;
+            mv(&mut k, &mut c, 1, 500.0, y, y);
+        }
+        assert!(c.bearing.abs() > 3.0, "tilted over the pole");
+        up(&mut k, &mut c, 1, 1e4);
+        k.handle(&mut c, Event::CancelInertia);
+        k.handle(&mut c, Event::NorthUp);
+        settle(&mut k, &mut c);
+        assert_eq!(c.bearing, 0.0);
+        assert!(c.north_up && sane(&c));
+    }
+
+    #[test]
+    fn toggle_north_up_lock() {
+        let (mut c, mut k) = setup();
+        k.handle(&mut c, Event::ToggleNorthUp);
+        assert!(!c.north_up, "first press unlocks");
+        // Free mode: a drag does not snap the roll.
+        c.bearing = 0.7;
+        down(&mut k, &mut c, 1, 500.0, 350.0, 0.0);
+        mv(&mut k, &mut c, 1, 540.0, 380.0, 16.0);
+        up(&mut k, &mut c, 1, 17.0);
+        k.handle(&mut c, Event::CancelInertia);
+        assert!((c.bearing - 0.7).abs() < 0.05, "{}", c.bearing);
+        k.handle(&mut c, Event::ToggleNorthUp);
+        assert!(c.north_up, "second press locks and turns to north");
+        settle(&mut k, &mut c);
+        assert_eq!(c.bearing, 0.0);
+    }
+
+    #[test]
+    fn rotate_steps_stack_and_unlock() {
+        let (mut c, mut k) = setup();
+        k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+        k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+        assert!(!c.north_up);
+        settle(&mut k, &mut c);
+        assert!(
+            (c.bearing + 2.0 * ROTATE_STEP).abs() < 1e-4,
+            "{}",
+            c.bearing
+        );
+        k.handle(&mut c, Event::Rotate(-4.0 * ROTATE_STEP));
+        settle(&mut k, &mut c);
+        assert!((c.bearing - 2.0 * ROTATE_STEP).abs() < 1e-4);
+    }
+
+    #[test]
+    fn fly_to_keeps_or_sets_the_bearing() {
+        let (mut c, mut k) = setup();
+        c.north_up = false;
+        c.bearing = 1.0;
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 0.2,
+                lon: 0.3,
+                alt: 1.0,
+                bearing: None,
+            },
+        );
+        settle(&mut k, &mut c);
+        assert!(
+            (c.bearing - 1.0).abs() < 1e-9,
+            "free mode keeps the bearing"
+        );
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 0.2,
+                lon: 0.3,
+                alt: 1.0,
+                bearing: Some(-0.5),
+            },
+        );
+        settle(&mut k, &mut c);
+        assert!((c.bearing + 0.5).abs() < 1e-9 && !c.north_up);
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 0.2,
+                lon: 0.3,
+                alt: 1.0,
+                bearing: Some(0.0),
+            },
+        );
+        assert!(c.north_up, "bearing 0 means north-up");
+        settle(&mut k, &mut c);
+        // A north-up view flying somewhere returns to north.
+        c.north_up = true;
+        c.bearing = PI;
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 0.1,
+                lon: 0.1,
+                alt: 1.0,
+                bearing: None,
+            },
+        );
+        settle(&mut k, &mut c);
+        assert_eq!(c.bearing, 0.0);
+    }
+
+    #[test]
+    fn reset_restores_north_up() {
+        let (mut c, mut k) = setup();
+        c.north_up = false;
+        c.bearing = 1.3;
+        k.handle(&mut c, Event::Reset);
+        assert!(c.north_up);
+        settle(&mut k, &mut c);
+        assert_eq!(c.bearing, 0.0);
+    }
+
+    #[test]
+    fn fly_to_a_pole_lands_exactly_on_it() {
+        for (lat, sign) in [(90.0, 1.0), (-90.0, -1.0)] {
+            let (mut c, mut k) = setup();
+            k.handle(
+                &mut c,
+                Event::FlyTo {
+                    lat: f64::to_radians(lat),
+                    lon: 0.4,
+                    alt: 0.5,
+                    bearing: None,
+                },
+            );
+            settle(&mut k, &mut c);
+            assert!((c.lat - sign * PI / 2.0).abs() < 1e-12);
+            let (plat, _) = c.pick(c.width * 0.5, c.height * 0.5).unwrap();
+            assert!((plat - sign * PI / 2.0).abs() < 1e-9, "centered exactly");
+        }
+    }
+
+    #[test]
+    fn dragging_through_the_pole_with_inertia_stays_sane() {
+        let (mut c, mut k) = setup();
+        c.lat = 88.0f64.to_radians();
+        down(&mut k, &mut c, 1, 500.0, 100.0, 0.0);
+        for i in 1..=30 {
+            mv(
+                &mut k,
+                &mut c,
+                1,
+                500.0,
+                100.0 + i as f64 * 12.0,
+                i as f64 * 8.0,
+            );
+            assert!(sane(&c));
+        }
+        up(&mut k, &mut c, 1, 241.0);
+        for _ in 0..200 {
+            tick(&mut k, &mut c, 16.0);
+            assert!(sane(&c));
+        }
     }
 
     /// Small deterministic xorshift generator; no dependency needed.
@@ -1017,15 +1511,26 @@ mod tests {
         for seed in 1..=200u64 {
             let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
             let (mut c, mut k) = setup();
+            if seed % 3 == 0 {
+                // Start on a pole, in either mode.
+                c.lat = if seed % 2 == 0 { PI / 2.0 } else { -PI / 2.0 };
+                c.north_up = seed % 4 != 0;
+            }
             let mut t = 0.0;
             for _ in 0..400 {
                 t += rng.range(0.0, 40.0);
                 // Coordinates may be far outside the viewport.
                 let (x, y) = (rng.range(-500.0, 1500.0), rng.range(-500.0, 1200.0));
                 let id = (rng.next() % 4) as i32;
-                let ev = match rng.next() % 14 {
+                let ev = match rng.next() % 19 {
                     0 => Event::PointerDown { id, x, y, t },
-                    1..=3 => Event::PointerMove { id, x, y, t },
+                    1..=3 => Event::PointerMove {
+                        id,
+                        x,
+                        y,
+                        t,
+                        alt: rng.unit() < 0.3,
+                    },
                     4 => Event::PointerUp {
                         id,
                         t,
@@ -1060,6 +1565,20 @@ mod tests {
                         lat: rng.range(-1.5, 1.5),
                         lon: rng.range(-7.0, 7.0),
                         alt: rng.range(-1.0, 10.0),
+                        bearing: None,
+                    },
+                    14 => Event::Rotate(rng.range(-7.0, 7.0)),
+                    15 => Event::NorthUp,
+                    16 => Event::ToggleNorthUp,
+                    17 => Event::FlyTo {
+                        lat: if rng.unit() < 0.5 {
+                            PI / 2.0
+                        } else {
+                            -PI / 2.0
+                        },
+                        lon: rng.range(-7.0, 7.0),
+                        alt: rng.range(0.0, 3.0),
+                        bearing: (rng.unit() < 0.5).then(|| rng.range(-9.0, 9.0)),
                     },
                     _ => {
                         if rng.unit() < 0.33 {

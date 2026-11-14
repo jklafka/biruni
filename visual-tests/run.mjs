@@ -32,6 +32,12 @@ const VIEWS = [
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
   { name: "phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 } },
+  // Free rotation: both poles centered exactly, and arbitrary bearings
+  // (the 4th hash field), at globe, mid and closest zoom.
+  { name: "north-pole", hash: "#90,0,6000" },
+  { name: "south-pole", hash: "#-90,0,6000" },
+  { name: "rotated", hash: "#47,8.5,1500,135" },
+  { name: "rotated-close", hash: "#47,8.5,400,250" },
   { name: "mono-mid-zoom", hash: "#38.5,22.5,1500&layer=mono" },
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.

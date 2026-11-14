@@ -10,7 +10,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | --- | --- |
 | `src/main.rs` | Entry point: DOM wiring, translating DOM input into `controls::Event`s, the animation loop, URL-hash view state |
 | `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
-| `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
+| `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
@@ -93,7 +93,7 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 `src/camera.rs` and `src/shaders/globe.frag` implement the same math and must agree exactly:
 
 - World space: +Y is the north pole, longitude 0° lies on +Z, and 90°E lies on +X. The globe has radius 1.
-- Camera space: the camera sits at `(0, 0, 1 + alt)` looking down −Z, with north up on screen.
+- Camera space: the camera sits at `(0, 0, 1 + alt)` looking down −Z. The orientation is the view center (`lat`, `lon`) plus a `bearing`: the compass direction at the top of the screen, clockwise from north. Bearing 0 is north up; screen-up is `cos b · north + sin b · east`. The shaders get only the camera-to-world matrix `rotation()` (`u_rot`), so they work at any orientation, poles included; don't add lat/lon-based camera math to them.
 - The field of view (40°) spans the **shorter** viewport axis.
 - The texture is equirectangular: `u = lon/360 + 0.5`, `v = 0.5 − lat/180`, with row 0 at the north.
 
