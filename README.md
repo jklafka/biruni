@@ -14,10 +14,12 @@ Prerequisites:
 ```sh
 trunk serve --open      # dev server with live reload at http://127.0.0.1:8080
 trunk build --release   # optimized static site in dist/
-cargo test              # camera math unit tests (runs natively)
+cargo test              # unit tests (run natively)
 ```
 
 > If `rustup` and Homebrew's `rust` are both installed, make sure rustup's toolchain comes first on your `PATH`. Homebrew's `rust` has no `wasm32` target.
+
+Every pull request runs CI (format, clippy, tests, shader validation and a release build). `main` only accepts pull requests that pass all of it. See [AGENTS.md](AGENTS.md) for contribution guidelines.
 
 ## Controls
 
@@ -35,6 +37,7 @@ The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can 
 - **`src/camera.rs`**: an orbit camera that keeps north up. It handles picking (screen point → lat/lon), projection (lat/lon → screen point), and panning that makes the surface follow your cursor. When you zoom, the point under the cursor stays where it is.
 - **`src/geo.rs`**: fetches the [Natural Earth](https://www.naturalearthdata.com/) GeoJSON layers and rasterizes them with Canvas 2D into an 8192×4096 equirectangular texture. The red channel holds land with lakes cut out; the green channel holds country borders.
 - **`src/render.rs`** and **`src/shaders/`**: WebGL2 draws one full-screen triangle. The fragment shader ray-traces the sphere for each pixel, converts the hit point to lat/lon, and samples the texture. Close up, it thresholds the mask so coastlines stay crisp. It also adds the graticule, lighting and atmosphere.
+- **`src/view.rs`**: formats the HUD text and parses the URL hash.
 - **`src/main.rs`**: wires up the DOM, input events (pointer, wheel, keyboard) and the animation loop. The loop gives zoom easing, fly-to and pan inertia, and only redraws when something changes.
 
 ## Data

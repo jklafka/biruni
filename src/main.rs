@@ -3,10 +3,12 @@
 mod camera;
 mod geo;
 mod render;
+mod view;
 
-use camera::{wrap_angle, Camera, EARTH_RADIUS_KM, MAX_ALT, MIN_ALT};
+use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use std::cell::RefCell;
 use std::rc::Rc;
+use view::{format_altitude, format_lat_lon, format_view_hash, parse_view_hash, HOME};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -16,8 +18,6 @@ use web_sys::{
 
 type Action = fn(&mut App);
 type FrameLoop = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;
-
-const HOME: (f64, f64, f64) = (25.0, 0.0, 2.4); // lat°, lon°, altitude (radii)
 
 struct Pointer {
     id: i32,
@@ -198,13 +198,8 @@ impl App {
         self.hud_cursor.set_text_content(Some(&cursor));
         self.hud_center
             .set_text_content(Some(&format_lat_lon(self.camera.lat, self.camera.lon)));
-        let km = self.camera.alt * EARTH_RADIUS_KM;
-        let alt = if km >= 10_000.0 {
-            format!("{:.0},{:03.0} km", (km / 1000.0).floor(), km % 1000.0)
-        } else {
-            format!("{km:.0} km")
-        };
-        self.hud_alt.set_text_content(Some(&alt));
+        self.hud_alt
+            .set_text_content(Some(&format_altitude(self.camera.alt)));
     }
 
     // ---- pointer input -------------------------------------------------
@@ -285,48 +280,6 @@ impl App {
         }
         self.dirty = true;
     }
-}
-
-fn format_lat_lon(lat: f64, lon: f64) -> String {
-    let (lat, lon) = (lat.to_degrees(), wrap_angle(lon).to_degrees());
-    format!(
-        "{:.2}° {}  {:.2}° {}",
-        lat.abs(),
-        if lat >= 0.0 { 'N' } else { 'S' },
-        lon.abs(),
-        if lon >= 0.0 { 'E' } else { 'W' }
-    )
-}
-
-/// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`.
-fn format_view_hash(c: &Camera) -> String {
-    format!(
-        "#{:.4},{:.4},{:.0}",
-        c.lat.to_degrees(),
-        wrap_angle(c.lon).to_degrees(),
-        c.alt * EARTH_RADIUS_KM
-    )
-}
-
-fn parse_view_hash(hash: &str) -> Option<Camera> {
-    let mut parts = hash
-        .trim_start_matches('#')
-        .split(',')
-        .map(|p| p.trim().parse::<f64>());
-    let lat = parts.next()?.ok()?;
-    let lon = parts.next()?.ok()?;
-    let alt_km = match parts.next() {
-        Some(v) => v.ok()?,
-        None => HOME.2 * EARTH_RADIUS_KM,
-    };
-    if !(lat.is_finite() && lon.is_finite() && alt_km.is_finite()) {
-        return None;
-    }
-    Some(Camera::new(
-        lat.clamp(-85.0, 85.0),
-        lon,
-        (alt_km / EARTH_RADIUS_KM).clamp(MIN_ALT, MAX_ALT),
-    ))
 }
 
 fn element<T: JsCast>(doc: &Document, id: &str) -> Result<T, JsValue> {

@@ -225,4 +225,118 @@ mod tests {
         let c = cam();
         assert!(c.project(-c.lat, c.lon + PI).is_none());
     }
+
+    #[test]
+    fn wrap_angle_stays_in_range() {
+        for a in [-10.0, -PI, -1.0, 0.0, 1.0, PI, 3.5, 10.0, 100.0] {
+            let w = wrap_angle(a);
+            assert!((-PI..PI).contains(&w), "{a} -> {w}");
+            // Same direction on the circle.
+            assert!((w.sin() - a.sin()).abs() < 1e-9 && (w.cos() - a.cos()).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn spherical_is_unit_length_with_documented_axes() {
+        let n = spherical(PI / 2.0, 0.0);
+        assert!((n[1] - 1.0).abs() < 1e-12, "north pole is +Y");
+        let z = spherical(0.0, 0.0);
+        assert!((z[2] - 1.0).abs() < 1e-12, "lon 0 is +Z");
+        let x = spherical(0.0, PI / 2.0);
+        assert!((x[0] - 1.0).abs() < 1e-12, "90°E is +X");
+        for &(lat, lon) in &[(0.3, -2.0), (-1.2, 0.7), (1.5, 3.0)] {
+            assert!((dot(spherical(lat, lon), spherical(lat, lon)) - 1.0).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn rotation_is_orthonormal() {
+        for &(lat, lon) in &[(0.0, 0.0), (60.0, -120.0), (-85.0, 179.0)] {
+            let r = Camera::new(lat, lon, 1.0).rotation();
+            let col = |i: usize| [r[3 * i] as f64, r[3 * i + 1] as f64, r[3 * i + 2] as f64];
+            for i in 0..3 {
+                for j in 0..3 {
+                    let expected = if i == j { 1.0 } else { 0.0 };
+                    assert!((dot(col(i), col(j)) - expected).abs() < 1e-6);
+                }
+            }
+            // Right-handed: x × y = z.
+            let (x, y, z) = (col(0), col(1), col(2));
+            let cross = [
+                x[1] * y[2] - x[2] * y[1],
+                x[2] * y[0] - x[0] * y[2],
+                x[0] * y[1] - x[1] * y[0],
+            ];
+            assert!((dot(cross, z) - 1.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn north_is_up_on_screen() {
+        let c = cam();
+        let (_, center_y) = c.project(c.lat, c.lon).unwrap();
+        let (_, north_y) = c.project(c.lat + 0.05, c.lon).unwrap();
+        assert!(north_y < center_y);
+        let (center_x, _) = c.project(c.lat, c.lon).unwrap();
+        let (east_x, _) = c.project(c.lat, c.lon + 0.05).unwrap();
+        assert!(east_x > center_x);
+    }
+
+    #[test]
+    fn pick_outside_globe_is_none() {
+        let c = cam();
+        assert!(c.pick(0.0, 0.0).is_none());
+        assert!(c.pick(1199.0, 799.0).is_none());
+    }
+
+    #[test]
+    fn drag_moves_surface_with_pointer() {
+        // Dragging right/down by a few pixels should carry the point under the
+        // cursor along with it.
+        let mut c = cam();
+        let (sx, sy) = (600.0, 400.0);
+        let (lat, lon) = c.pick(sx, sy).unwrap();
+        c.pan_pixels(5.0, 3.0);
+        let (px, py) = c.project(lat, lon).unwrap();
+        assert!((px - (sx + 5.0)).abs() < 0.05, "x: {px}");
+        assert!((py - (sy + 3.0)).abs() < 0.05, "y: {py}");
+    }
+
+    #[test]
+    fn pan_clamps_latitude_and_stays_finite() {
+        let mut c = cam();
+        for _ in 0..1000 {
+            c.pan_pixels(37.0, 500.0);
+        }
+        assert!(c.lat <= MAX_LAT + 1e-12);
+        assert!(c.lat.is_finite() && c.lon.is_finite());
+        assert!((-PI..PI).contains(&c.lon));
+    }
+
+    #[test]
+    fn grid_step_gets_finer_as_you_zoom_in() {
+        let mut prev = f64::INFINITY;
+        let mut c = cam();
+        for alt in [MAX_ALT, 2.0, 1.0, 0.4, 0.2, MIN_ALT] {
+            c.alt = alt;
+            let step = c.grid_step_deg();
+            assert!(step <= prev);
+            assert!(180.0 % step == 0.0, "grid step must divide 180°");
+            prev = step;
+        }
+    }
+
+    #[test]
+    fn portrait_viewport_uses_shorter_axis() {
+        // The fov spans the shorter axis, so a globe that fits a landscape
+        // screen's height also fits a portrait screen's width.
+        let mut c = Camera::new(0.0, 0.0, 2.4);
+        c.width = 400.0;
+        c.height = 900.0;
+        assert!(c.pick(200.0, 450.0).is_some());
+        assert!(
+            c.pick(2.0, 450.0).is_none(),
+            "globe should not touch the sides"
+        );
+    }
 }

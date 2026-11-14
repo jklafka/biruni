@@ -9,11 +9,13 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | Path | Purpose |
 | --- | --- |
 | `src/main.rs` | Entry point: DOM wiring, input events, the animation loop, URL-hash view state |
-| `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring. Has unit tests. |
-| `src/geo.rs` | Fetches GeoJSON and rasterizes it into the map texture with Canvas 2D |
+| `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
+| `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
+| `src/geo.rs` | Parses GeoJSON (`parse_shapes`) and rasterizes it into the map texture with Canvas 2D |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, draw call |
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. |
 | `assets/data/` | Natural Earth GeoJSON (public domain), copied to `dist/data/` by Trunk |
+| `.github/workflows/ci.yml` | CI: format, clippy, tests, shader validation, release build |
 | `index.html` | Page shell, HUD and controls. Trunk reads it as the build entry. |
 
 ## Setup and commands
@@ -24,7 +26,7 @@ You need rustup with the `wasm32-unknown-unknown` target, plus [Trunk](https://t
 trunk serve                 # dev server with live reload at http://127.0.0.1:8080
 trunk build --release       # production build in dist/
 cargo test                  # unit tests (run natively, not in wasm)
-cargo clippy --target wasm32-unknown-unknown
+cargo clippy --target wasm32-unknown-unknown -- -D warnings
 cargo fmt
 ```
 
@@ -43,11 +45,27 @@ If Homebrew's `rust` and `rustup` are both installed, Homebrew's `cargo` may com
 
 ## Before you open a PR
 
-1. `cargo fmt` leaves no changes.
-2. `cargo clippy --target wasm32-unknown-unknown` reports no warnings.
-3. `cargo test` passes.
-4. `trunk build --release` succeeds.
-5. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
+CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Branch protection on `main` requires all of them to pass, plus a PR, before merging. Run them locally first:
+
+1. **Format:** `cargo fmt --all --check`
+2. **Clippy:** `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo clippy --all-targets -- -D warnings`
+3. **Test:** `cargo test --all-targets`
+4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
+5. **Build:** `trunk build --release`
+6. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
+
+Don't weaken or skip a check to get a PR through. Fix the cause. If a check really is wrong, change it in its own PR and explain why.
+
+## Testing
+
+- Tests run natively (`cargo test`), not in wasm, so tested code must not call browser APIs. Put pure logic in browser-free functions:
+  - `camera.rs`: projection, picking and panning math
+  - `view.rs`: HUD text and URL-hash parsing
+  - `geo::parse_shapes`: GeoJSON → shapes
+- Every bug fix comes with a test that fails without the fix.
+- New math or parsing comes with tests, including edge cases: poles, the ±180° seam, NaN/∞, malformed input.
+- `render.rs` checks that every uniform Rust looks up is declared in `globe.frag`. When you add a uniform, add it to that list.
+- `geo.rs` checks that the bundled datasets parse and stay within lon/lat bounds.
 
 ## Code guidelines
 
