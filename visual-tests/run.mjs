@@ -31,6 +31,7 @@ const VIEWS = [
   { name: "mid-zoom", hash: "#38.5,22.5,1500" },
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
+  { name: "phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 } },
   { name: "mono-mid-zoom", hash: "#38.5,22.5,1500&layer=mono" },
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.
@@ -101,7 +102,12 @@ const browser = await chromium.launch({
 let failed = false;
 try {
   for (const view of VIEWS) {
-    const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+    // Reduced motion makes label fades instant, so the screenshot is stable.
+    const page = await browser.newPage({
+      viewport: view.viewport ?? VIEWPORT,
+      deviceScaleFactor: 1,
+      reducedMotion: "reduce",
+    });
     const problems = [];
     page.on("pageerror", (e) => problems.push(String(e)));
     page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
@@ -117,6 +123,8 @@ try {
     if (await page.locator("#loading.error").count()) {
       throw new Error(`${view.name}: map failed to load: ${await page.locator("#loading").innerText()}`);
     }
+    // Labels load after the map; the app flags the canvas once they are drawn.
+    await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
     await page.evaluate(
       () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
     );

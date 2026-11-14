@@ -5,6 +5,8 @@ mod controls;
 mod country;
 mod geo;
 mod info_panel;
+mod label_layer;
+mod labels;
 mod lines;
 mod measure;
 mod overlay;
@@ -82,6 +84,7 @@ struct App {
     status: HtmlElement,
     share_ui: Rc<share::ShareUi>,
     measure: Measure,
+    labels: label_layer::LabelLayer,
     overlay: overlay::Overlay,
     measure_panel: overlay::Panel,
 }
@@ -307,6 +310,9 @@ impl App {
             self.update_hover(); // the globe moved under a still cursor
         }
         let (draw, hud) = self.redraw.take();
+        if draw || self.labels.animating() {
+            self.labels.update(&self.camera, dt, pw, ph, dpr);
+        }
         if draw {
             self.renderer.draw(&self.camera, pw, ph, dpr);
             self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
@@ -485,6 +491,7 @@ fn start() -> Result<(), JsValue> {
 
     let overlay_canvas: HtmlCanvasElement = element(&doc, "overlay")?;
     let overlay = overlay::Overlay::new(overlay_canvas)?;
+    let labels = label_layer::LabelLayer::new(element(&doc, "labels")?)?;
     let measure_panel = overlay::Panel::new(&doc)?;
 
     let app = Rc::new(RefCell::new(App {
@@ -521,6 +528,7 @@ fn start() -> Result<(), JsValue> {
         status: loading.clone(),
         share_ui: share::ShareUi::new(&window, &doc, canvas.clone().into())?,
         measure: Measure::default(),
+        labels,
         overlay,
         measure_panel,
     }));
@@ -860,6 +868,18 @@ fn start() -> Result<(), JsValue> {
                 web_sys::console::error_1(&e);
                 loading.set_text_content(Some(&format!("Failed to load map data: {msg}")));
                 let _ = loading.class_list().add_1("error");
+            }
+        }
+        // Place labels are small (about 125 KB) and drawn on every view, so
+        // they come right after the first frame. A failure just means no labels.
+        if ok {
+            match label_layer::load().await {
+                Ok(list) => {
+                    let mut a = app.borrow_mut();
+                    a.labels.set_labels(list);
+                    a.redraw.mark_render();
+                }
+                Err(e) => web_sys::console::error_1(&e),
             }
         }
         // Country polygons are only needed for hover and click, so they load
