@@ -45,6 +45,9 @@ features = [
   "Location",
   "Navigator",
   "HtmlInputElement",
+  "HtmlTextAreaElement",
+  "Node",
+  "HtmlCollection",
 ]
 
 [dev-dependencies]

@@ -7,6 +7,8 @@ mod info_panel;
 mod measure;
 mod overlay;
 mod render;
+mod search;
+mod search_ui;
 mod share;
 mod sun;
 mod view;
@@ -812,6 +814,13 @@ fn start() -> Result<(), JsValue> {
     {
         let app = app.clone();
         listen(window.as_ref(), "keydown", true, move |e: KeyboardEvent| {
+            // Typing in a text field (the search box) is not a map shortcut.
+            if e.target().is_some_and(|t| {
+                t.is_instance_of::<web_sys::HtmlInputElement>()
+                    || t.is_instance_of::<web_sys::HtmlTextAreaElement>()
+            }) {
+                return;
+            }
             let mut a = app.borrow_mut();
             let step = 0.6; // px/ms impulse, decays via inertia
             match e.key().as_str() {
@@ -918,6 +927,14 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(button.as_ref(), "click", true, move |_: MouseEvent| {
             action(&mut app.borrow_mut())
+        })?;
+    }
+
+    // Place search: fly to the chosen place.
+    {
+        let app = app.clone();
+        search_ui::init(&doc, move |lat, lon, alt| {
+            app.borrow_mut().fly_to(lat, lon, alt)
         })?;
     }
 
