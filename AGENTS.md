@@ -133,7 +133,7 @@ GitHub issues are the public backlog: the issues that people read and comment on
 # Start of a session: bring new and updated GitHub issues into beads (local only)
 GITHUB_TOKEN=$(gh auth token) bd github sync --pull-only
 
-# Re-pull specific issues, e.g. after a label rename, which the incremental pull misses
+# Re-pull specific issues. The incremental pull misses label-only changes and issues closed on GitHub
 GITHUB_TOKEN=$(gh auth token) bd github pull <bead-id>...
 
 # Turn a specific bead into a GitHub issue, or push its changes to the linked issue
@@ -144,7 +144,7 @@ GITHUB_TOKEN=$(gh auth token) bd github push <bead-id>...
 - Pull freely. Pulling changes only the local beads database.
 - Pushing writes to GitHub. Push only named beads, and only when asked or when a bead should become a public issue. Agent subtasks stay local. Don't run `bd github sync` without `--pull-only`: it pushes every bead and rewrites every linked issue.
 - Priority comes from GitHub labels of the form `priority::<value>` (double colon): `critical` → P0, `high` → P1, `medium` → P2, `low` → P3, `none` → P4. Issues without one are P2. A pull overwrites the local priority, so change priority by editing the label on GitHub, then pull that issue again.
-- To finish work on a mirrored issue, write `Fixes #N` in the PR description. Merging closes the GitHub issue, and the next pull closes the bead. If you `bd close` the bead first, that doesn't close the GitHub issue.
+- To finish work on a mirrored issue, write `Fixes #N` in the PR description. Merging closes the GitHub issue. `bd github sync --pull-only` does not notice issues closed on GitHub, so close the bead with a targeted `GITHUB_TOKEN=$(gh auth token) bd github pull <bead-id>`. Pull one bead per call: passing several IDs has silently done nothing. If you `bd close` the bead first, that doesn't close the GitHub issue.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
