@@ -11,10 +11,12 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/main.rs` | Entry point: DOM wiring, input events, the animation loop, URL-hash view state |
 | `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
-| `src/geo.rs` | Parses GeoJSON (`parse_shapes`) and rasterizes it into the map texture with Canvas 2D |
+| `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, draw call |
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. |
-| `assets/data/` | Natural Earth GeoJSON (public domain), copied to `dist/data/` by Trunk |
+| `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
+| `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
+| `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin` |
 | `.github/workflows/ci.yml` | CI: format, clippy, tests, shader validation, release build |
 | `index.html` | Page shell, HUD and controls. Trunk reads it as the build entry. |
 
@@ -61,17 +63,17 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 - Tests run natively (`cargo test`), not in wasm, so tested code must not call browser APIs. Put pure logic in browser-free functions:
   - `camera.rs`: projection, picking and panning math
   - `view.rs`: HUD text and URL-hash parsing
-  - `geo::parse_shapes`: GeoJSON → shapes
+  - `geo::decode_shapes`: binary map layers → shapes (the test-only GeoJSON `parse_shapes` is the reference)
 - Every bug fix comes with a test that fails without the fix.
 - New math or parsing comes with tests, including edge cases: poles, the ±180° seam, NaN/∞, malformed input.
 - `render.rs` checks that every uniform Rust looks up is declared in `globe.frag`. When you add a uniform, add it to that list.
-- `geo.rs` checks that the bundled datasets parse and stay within lon/lat bounds.
+- `geo.rs` checks that the bundled datasets decode, stay within lon/lat bounds and match the GeoJSON within the quantization tolerance.
 
 ## Code guidelines
 
 ### Rust
 
-- Target stable Rust, edition 2021. Keep the dependency list small. Before adding a crate, make sure it compiles to `wasm32-unknown-unknown` and is worth the added wasm size. The release wasm is currently about 140 KB.
+- Target stable Rust, edition 2021. Keep the dependency list small. Before adding a crate, make sure it compiles to `wasm32-unknown-unknown` and is worth the added wasm size. The release wasm is currently about 116 KB.
 - Add new `web-sys` APIs by enabling the matching feature in `Cargo.toml`.
 - Don't use `unwrap()` on anything that can fail at runtime in the browser (DOM lookups, fetches, WebGL calls). Return `Result<_, JsValue>` and surface errors to the user, as `start()` does with the `#loading` panel.
 - Keep pure math, such as camera and projection code, free of `web-sys`, so it can be unit tested natively. New math gets tests.
@@ -110,6 +112,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 ## Data
 
 - Map data comes from [Natural Earth](https://www.naturalearthdata.com/) (1:50m), which is public domain. If you add another dataset, check that its license allows redistribution, and credit it in `README.md`.
+- Edit the GeoJSON in `data-src/`, never the `.bin` files. After changing it, or the format, run `python3 scripts/convert_geojson.py` and commit the regenerated `assets/data/*.bin`. If you change the format, update `decode_shapes`, the script and the format doc in `geo.rs` together and bump the version byte.
 - Keep large data out of the wasm binary. Fetch it at runtime from `assets/` instead of using `include_str!`/`include_bytes!`.
 - If you change data files or how they are loaded, note the download size in the PR.
 
