@@ -8,7 +8,10 @@ mod view;
 use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use std::cell::RefCell;
 use std::rc::Rc;
-use view::{format_altitude, format_lat_lon, format_view_hash, parse_view_hash, RedrawFlags, HOME};
+use view::{
+    format_altitude, format_lat_lon, format_view_hash, parse_view_hash, scale_bar, RedrawFlags,
+    Units, HOME,
+};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -39,6 +42,9 @@ struct Flight {
     lon: f64,
 }
 
+/// Longest the scale bar may be, in CSS pixels.
+const SCALE_MAX_PX: f64 = 100.0;
+
 struct App {
     window: Window,
     canvas: HtmlCanvasElement,
@@ -61,6 +67,10 @@ struct App {
     hud_cursor: HtmlElement,
     hud_center: HtmlElement,
     hud_alt: HtmlElement,
+    hud_scale: HtmlElement,
+    hud_scale_bar: HtmlElement,
+    hud_scale_label: HtmlElement,
+    units: Units,
 }
 
 impl App {
@@ -202,6 +212,19 @@ impl App {
             .set_text_content(Some(&format_lat_lon(self.camera.lat, self.camera.lon)));
         self.hud_alt
             .set_text_content(Some(&format_altitude(self.camera.alt)));
+        match scale_bar(&self.camera, self.units, SCALE_MAX_PX) {
+            Some(bar) => {
+                let _ = self.hud_scale.style().set_property("display", "");
+                let _ = self
+                    .hud_scale_bar
+                    .style()
+                    .set_property("width", &format!("{:.0}px", bar.px));
+                self.hud_scale_label.set_text_content(Some(&bar.label));
+            }
+            None => {
+                let _ = self.hud_scale.style().set_property("display", "none");
+            }
+        }
     }
 
     // ---- pointer input -------------------------------------------------
@@ -358,6 +381,10 @@ fn start() -> Result<(), JsValue> {
         hud_cursor: element(&doc, "hud-cursor")?,
         hud_center: element(&doc, "hud-center")?,
         hud_alt: element(&doc, "hud-alt")?,
+        hud_scale: element(&doc, "hud-scale")?,
+        hud_scale_bar: element(&doc, "hud-scale-bar")?,
+        hud_scale_label: element(&doc, "hud-scale-label")?,
+        units: Units::Metric,
     }));
 
     // Pointer input (mouse, touch, pen).
@@ -417,6 +444,17 @@ fn start() -> Result<(), JsValue> {
         })?;
     }
 
+    // Clicking or tapping the scale bar toggles metric/imperial.
+    {
+        let app = app.clone();
+        let scale: EventTarget = app.borrow().hud_scale.clone().into();
+        listen(&scale, "click", true, move |_: MouseEvent| {
+            let mut a = app.borrow_mut();
+            a.units = a.units.toggled();
+            a.redraw.mark_hud();
+        })?;
+    }
+
     // Keyboard.
     {
         let app = app.clone();
@@ -431,6 +469,12 @@ fn start() -> Result<(), JsValue> {
                 "+" | "=" => a.zoom(0.6, None),
                 "-" | "_" => a.zoom(1.0 / 0.6, None),
                 "r" | "R" => a.reset(),
+                "u" | "U" => {
+                    // Only the HUD text changes; no need to redraw the globe.
+                    a.units = a.units.toggled();
+                    a.redraw.mark_hud();
+                    return;
+                }
                 _ => return,
             }
             a.redraw.mark_render();

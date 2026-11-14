@@ -75,6 +75,12 @@ impl Camera {
         0.5 * self.width.min(self.height).max(1.0)
     }
 
+    /// Ground distance in km covered by one CSS pixel at the view center.
+    /// Not finite for a degenerate camera (NaN/∞ altitude).
+    pub fn km_per_pixel(&self) -> f64 {
+        self.alt * TAN_HALF_FOV / self.half_min() * EARTH_RADIUS_KM
+    }
+
     /// Camera axes expressed in world space: east, north, and out of the screen.
     fn basis(&self) -> [V3; 3] {
         let (sl, cl) = self.lat.sin_cos();
