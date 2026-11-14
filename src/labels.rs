@@ -30,6 +30,8 @@ pub const MAGIC: &str = "MAPSLABELS1";
 pub const MAX_LABELS: usize = 90;
 /// Empty space kept between two labels, in CSS pixels.
 const PAD: f64 = 4.0;
+/// Empty space kept between a label and a UI panel.
+const KEEP_OUT_PAD: f64 = 4.0;
 /// Radius of a city's dot and the gap between dot and text.
 pub const DOT_R: f64 = 2.5;
 pub const DOT_GAP: f64 = 4.0;
@@ -177,6 +179,22 @@ pub struct Rect {
 }
 
 impl Rect {
+    /// A rectangle from a DOM bounding box, or `None` if it is empty, not
+    /// finite, or entirely outside the `width` x `height` viewport. Hidden
+    /// elements report a zero-size box, so they drop out here.
+    pub fn from_dom(x: f64, y: f64, w: f64, h: f64, width: f64, height: f64) -> Option<Rect> {
+        if ![x, y, w, h].iter().all(|v| v.is_finite()) || w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        let r = Rect {
+            x0: x,
+            y0: y,
+            x1: x + w,
+            y1: y + h,
+        };
+        (r.x1 > 0.0 && r.y1 > 0.0 && r.x0 < width && r.y0 < height).then_some(r)
+    }
+
     fn overlaps(&self, o: &Rect, pad: f64) -> bool {
         self.x0 < o.x1 + pad && o.x0 < self.x1 + pad && self.y0 < o.y1 + pad && o.y0 < self.y1 + pad
     }
@@ -233,7 +251,16 @@ type SortKey = (u8, bool, std::cmp::Reverse<u64>, usize);
 /// Choose and place labels for this camera. `was_shown` says whether a label
 /// was visible last time, so labels that already show keep their spot against
 /// equals as the view moves, which stops them flickering.
-pub fn select(cam: &Camera, labels: &[Label], was_shown: impl Fn(usize) -> bool) -> Vec<Placed> {
+///
+/// `blocked` lists screen rectangles (CSS pixels) that are covered by UI
+/// panels. A label whose box would touch one is not a candidate, so a free
+/// label can take its place.
+pub fn select(
+    cam: &Camera,
+    labels: &[Label],
+    blocked: &[Rect],
+    was_shown: impl Fn(usize) -> bool,
+) -> Vec<Placed> {
     if !(cam.alt.is_finite() && cam.alt > 0.0 && cam.width > 0.0 && cam.height > 0.0) {
         return Vec::new();
     }
@@ -258,6 +285,9 @@ pub fn select(cam: &Camera, labels: &[Label], was_shown: impl Fn(usize) -> bool)
         };
         let r = label_rect(l, x, y);
         if r.x0 < 0.0 || r.y0 < 0.0 || r.x1 > cam.width || r.y1 > cam.height {
+            continue;
+        }
+        if blocked.iter().any(|b| r.overlaps(b, KEEP_OUT_PAD)) {
             continue;
         }
         let key = (
@@ -398,7 +428,7 @@ mod tests {
             (60.0, -100.0, 1.0),
         ] {
             let c = cam(lat, lon, alt);
-            let picked = select(&c, &labels, none);
+            let picked = select(&c, &labels, &[], none);
             let horizon = (1.0 / c.dist()).acos();
             for p in picked {
                 let l = &labels[p.index];
@@ -427,7 +457,7 @@ mod tests {
             (-5.0, 175.0, 1.5),
         ] {
             let c = cam(lat, lon, alt);
-            let picked = select(&c, &labels, none);
+            let picked = select(&c, &labels, &[], none);
             let rects: Vec<Rect> = picked
                 .iter()
                 .map(|p| label_rect(&labels[p.index], p.x, p.y))
@@ -445,14 +475,14 @@ mod tests {
     #[test]
     fn density_grows_with_zoom() {
         let labels = real_labels();
-        let count = |alt: f64| select(&cam(47.0, 8.0, alt), &labels, none).len();
+        let count = |alt: f64| select(&cam(47.0, 8.0, alt), &labels, &[], none).len();
         let (far, mid) = (count(4.0), count(0.6));
         assert!(far > 0);
         assert!(mid > far, "{far} {mid}");
         // City labels appear only once zoomed in far enough, and more of
         // them as it gets closer, until the view gets too small to hold many.
         let cities = |alt: f64| {
-            select(&cam(47.0, 8.0, alt), &labels, none)
+            select(&cam(47.0, 8.0, alt), &labels, &[], none)
                 .iter()
                 .filter(|p| labels[p.index].kind == Kind::City)
                 .count()
@@ -465,7 +495,7 @@ mod tests {
     #[test]
     fn the_whole_globe_shows_oceans_and_countries() {
         let labels = real_labels();
-        let picked = select(&cam(20.0, 20.0, 3.0), &labels, none);
+        let picked = select(&cam(20.0, 20.0, 3.0), &labels, &[], none);
         let has = |k: Kind| picked.iter().any(|p| labels[p.index].kind == k);
         assert!(has(Kind::Ocean) && has(Kind::Country));
     }
@@ -477,7 +507,7 @@ mod tests {
         for order in [[0, 1], [1, 0]] {
             let pair = [big.clone(), small.clone()];
             let labels = [pair[order[0]].clone(), pair[order[1]].clone()];
-            let picked = select(&cam(10.0, 10.0, 0.1), &labels, none);
+            let picked = select(&cam(10.0, 10.0, 0.1), &labels, &[], none);
             assert_eq!(picked.len(), 1);
             assert_eq!(labels[picked[0].index].text, "Big");
         }
@@ -487,7 +517,7 @@ mod tests {
     fn lower_tier_wins_over_population() {
         let a = city("Capital", 10.0, 10.0, 1, 1_000_000);
         let b = city("Bigger", 10.0, 10.0, 3, 9_000_000);
-        let picked = select(&cam(10.0, 10.0, 0.1), &[b, a], none);
+        let picked = select(&cam(10.0, 10.0, 0.1), &[b, a], &[], none);
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].index, 1);
     }
@@ -497,9 +527,9 @@ mod tests {
         let a = city("A", 10.0, 10.0, 3, 900_000);
         let b = city("B", 10.0, 10.0, 3, 1_000_000);
         let labels = [a, b];
-        let fresh = select(&cam(10.0, 10.0, 0.1), &labels, none);
+        let fresh = select(&cam(10.0, 10.0, 0.1), &labels, &[], none);
         assert_eq!(fresh[0].index, 1);
-        let sticky = select(&cam(10.0, 10.0, 0.1), &labels, |i| i == 0);
+        let sticky = select(&cam(10.0, 10.0, 0.1), &labels, &[], |i| i == 0);
         assert_eq!(sticky.len(), 1);
         assert_eq!(sticky[0].index, 0);
     }
@@ -507,8 +537,8 @@ mod tests {
     #[test]
     fn altitude_gate_hides_small_cities_when_far() {
         let c = city("Town", 0.0, 0.0, 6, 120_000);
-        assert!(select(&cam(0.0, 0.0, 1.0), std::slice::from_ref(&c), none).is_empty());
-        assert_eq!(select(&cam(0.0, 0.0, 0.1), &[c], none).len(), 1);
+        assert!(select(&cam(0.0, 0.0, 1.0), std::slice::from_ref(&c), &[], none).is_empty());
+        assert_eq!(select(&cam(0.0, 0.0, 0.1), &[c], &[], none).len(), 1);
     }
 
     #[test]
@@ -517,7 +547,7 @@ mod tests {
         let east = city("East", 0.0, -179.9, 0, 9_000_000);
         for cam_lon in [179.95, -179.95, 180.0, -180.0] {
             let c = cam(0.0, cam_lon, 0.1);
-            let picked = select(&c, &[west.clone(), east.clone()], none);
+            let picked = select(&c, &[west.clone(), east.clone()], &[], none);
             assert!(!picked.is_empty(), "camera lon {cam_lon}");
             for p in picked {
                 // Both anchors are within about 0.1 degrees of the center.
@@ -529,7 +559,7 @@ mod tests {
         }
         // Seen from the east side both labels still collide into one.
         let c = cam(0.0, -179.95, 0.06);
-        assert_eq!(select(&c, &[west, east], none).len(), 1);
+        assert_eq!(select(&c, &[west, east], &[], none).len(), 1);
     }
 
     #[test]
@@ -537,11 +567,11 @@ mod tests {
         let pole = city("Pole", 90.0, 0.0, 0, 1_000_000);
         let south = city("South", -90.0, 123.0, 0, 1_000_000);
         let looking_down = cam(85.0, 40.0, 0.5);
-        let picked = select(&looking_down, &[pole.clone(), south.clone()], none);
+        let picked = select(&looking_down, &[pole.clone(), south.clone()], &[], none);
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].index, 0);
         let c = cam(-85.0, -170.0, 1.0);
-        let picked = select(&c, &[pole, south], none);
+        let picked = select(&c, &[pole, south], &[], none);
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].index, 1);
     }
@@ -549,12 +579,12 @@ mod tests {
     #[test]
     fn degenerate_cameras_select_nothing() {
         let labels = real_labels();
-        assert!(select(&cam(0.0, 0.0, f64::NAN), &labels, none).is_empty());
-        assert!(select(&cam(0.0, 0.0, f64::INFINITY), &labels, none).is_empty());
-        assert!(select(&cam(f64::NAN, 0.0, 1.0), &labels, none).is_empty());
+        assert!(select(&cam(0.0, 0.0, f64::NAN), &labels, &[], none).is_empty());
+        assert!(select(&cam(0.0, 0.0, f64::INFINITY), &labels, &[], none).is_empty());
+        assert!(select(&cam(f64::NAN, 0.0, 1.0), &labels, &[], none).is_empty());
         let mut c = cam(0.0, 0.0, 1.0);
         c.width = 0.0;
-        assert!(select(&c, &labels, none).is_empty());
+        assert!(select(&c, &labels, &[], none).is_empty());
     }
 
     #[test]
@@ -569,8 +599,14 @@ mod tests {
             extent: 3.5f64.to_radians(),
             width: 90.0,
         };
-        assert!(select(&cam(46.8, 8.2, 3.0), std::slice::from_ref(&swiss), none).is_empty());
-        assert_eq!(select(&cam(46.8, 8.2, 0.3), &[swiss], none).len(), 1);
+        assert!(select(
+            &cam(46.8, 8.2, 3.0),
+            std::slice::from_ref(&swiss),
+            &[],
+            none
+        )
+        .is_empty());
+        assert_eq!(select(&cam(46.8, 8.2, 0.3), &[swiss], &[], none).len(), 1);
     }
 
     #[test]
@@ -595,8 +631,89 @@ mod tests {
     #[test]
     fn no_duplicate_anchors_in_a_selection() {
         let labels = real_labels();
-        let picked = select(&cam(47.0, 8.0, 0.2), &labels, none);
+        let picked = select(&cam(47.0, 8.0, 0.2), &labels, &[], none);
         let set: HashSet<usize> = picked.iter().map(|p| p.index).collect();
         assert_eq!(set.len(), picked.len());
+    }
+
+    #[test]
+    fn blocked_rect_hides_label_under_it() {
+        let c = cam(10.0, 10.0, 0.1);
+        let a = city("A", 10.0, 10.0, 0, 10);
+        let (x, y) = c.project(a.lat, a.lon).unwrap();
+        assert_eq!(select(&c, std::slice::from_ref(&a), &[], none).len(), 1);
+        let under = Rect {
+            x0: x - 5.0,
+            y0: y - 5.0,
+            x1: x + 5.0,
+            y1: y + 5.0,
+        };
+        assert!(select(&c, std::slice::from_ref(&a), &[under], none).is_empty());
+    }
+
+    #[test]
+    fn blocked_rect_lets_another_label_through() {
+        // The big city loses its spot under a panel; a lower-ranked one that
+        // would otherwise collide with it shows instead.
+        let c = cam(10.0, 10.0, 0.1);
+        let big = city("Big", 10.0, 10.0, 0, 1_000_000);
+        let mut small = city("Small", 10.0, 10.0, 0, 10);
+        small.lon += 0.0042; // about 40 px east, inside Big's box
+        let both = [big.clone(), small];
+        assert_eq!(select(&c, &both, &[], none).len(), 1);
+        assert_eq!(select(&c, &both, &[], none)[0].index, 0);
+        let (x, y) = c.project(big.lat, big.lon).unwrap();
+        let panel = Rect {
+            x0: x - 3.0,
+            y0: y - 3.0,
+            x1: x + 3.0,
+            y1: y + 3.0,
+        };
+        let picked = select(&c, &both, &[panel], none);
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].index, 1);
+    }
+
+    #[test]
+    fn blocked_rect_keeps_a_margin() {
+        let c = cam(10.0, 10.0, 0.1);
+        let a = city("A", 10.0, 10.0, 0, 10);
+        let (x, y) = c.project(a.lat, a.lon).unwrap();
+        let r = label_rect(&a, x, y);
+        // Touching the label's right edge, or within the margin: blocked.
+        let near = Rect {
+            x0: r.x1 + KEEP_OUT_PAD - 1.0,
+            y0: r.y0,
+            x1: r.x1 + 50.0,
+            y1: r.y1,
+        };
+        assert!(select(&c, std::slice::from_ref(&a), &[near], none).is_empty());
+        let far = Rect {
+            x0: r.x1 + KEEP_OUT_PAD + 1.0,
+            ..near
+        };
+        assert_eq!(select(&c, std::slice::from_ref(&a), &[far], none).len(), 1);
+    }
+
+    #[test]
+    fn dom_rect_conversion_drops_hidden_and_bad_boxes() {
+        let ok = Rect::from_dom(10.0, 20.0, 100.0, 50.0, 800.0, 600.0).unwrap();
+        assert_eq!(
+            ok,
+            Rect {
+                x0: 10.0,
+                y0: 20.0,
+                x1: 110.0,
+                y1: 70.0
+            }
+        );
+        // A hidden element reports a zero-size box.
+        assert!(Rect::from_dom(0.0, 0.0, 0.0, 0.0, 800.0, 600.0).is_none());
+        assert!(Rect::from_dom(0.0, 0.0, 10.0, 0.0, 800.0, 600.0).is_none());
+        assert!(Rect::from_dom(f64::NAN, 0.0, 10.0, 10.0, 800.0, 600.0).is_none());
+        assert!(Rect::from_dom(0.0, 0.0, f64::INFINITY, 10.0, 800.0, 600.0).is_none());
+        // Fully off screen.
+        assert!(Rect::from_dom(900.0, 0.0, 10.0, 10.0, 800.0, 600.0).is_none());
+        assert!(Rect::from_dom(-50.0, 0.0, 10.0, 10.0, 800.0, 600.0).is_none());
     }
 }

@@ -100,6 +100,7 @@ struct App {
     share_ui: Rc<share::ShareUi>,
     measure: Measure,
     labels: label_layer::LabelLayer,
+    keepout: label_layer::KeepOut,
     overlay: overlay::Overlay,
     measure_panel: overlay::Panel,
 }
@@ -380,6 +381,7 @@ impl App {
             self.canvas.set_width(pw);
             self.canvas.set_height(ph);
             self.redraw.mark_render();
+            self.keepout.invalidate(); // panels may have moved with the window
         }
         self.camera.width = cw;
         self.camera.height = ch;
@@ -398,7 +400,11 @@ impl App {
             self.redraw.mark_render();
         }
         let (draw, hud) = self.redraw.take();
-        if draw || self.labels.animating() {
+        let relayout = self
+            .keepout
+            .take(cw, ch)
+            .is_some_and(|r| self.labels.set_blocked(r));
+        if draw || relayout || self.labels.animating() {
             self.labels.update(&self.camera, dt, pw, ph, dpr);
         }
         if draw {
@@ -626,6 +632,7 @@ fn start() -> Result<(), JsValue> {
         share_ui: share::ShareUi::new(&window, &doc, canvas.clone().into())?,
         measure: Measure::default(),
         labels,
+        keepout: label_layer::KeepOut::new(&doc)?,
         overlay,
         measure_panel,
     }));

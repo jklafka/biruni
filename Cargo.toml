@@ -52,6 +52,7 @@ features = [
   "HtmlTextAreaElement",
   "Node",
   "HtmlCollection",
+  "ResizeObserver",
 ]
 
 [dev-dependencies]
