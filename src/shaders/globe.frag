@@ -160,7 +160,7 @@ void main() {
     // (about +2 to -10 degrees of sun elevation).
     float sunElev = dot(w, u_sun);
     float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn;
-    vec3 nightTint = u_layer == 1 ? vec3(0.50, 0.53, 0.62) : vec3(0.22, 0.26, 0.42);
+    vec3 nightTint = u_layer == 1 ? vec3(0.24, 0.28, 0.42) : vec3(0.22, 0.26, 0.42);
     col *= mix(vec3(1.0), nightTint, night);
 
     // Atmospheric scattering toward the limb.
