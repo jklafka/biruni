@@ -223,3 +223,42 @@ fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsV
         Err(gl.get_program_info_log(&program).unwrap_or_default().into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every uniform the renderer looks up must be declared in the shader,
+    /// or WebGL silently returns no location and the value is dropped.
+    #[test]
+    fn uniforms_are_declared_in_shader() {
+        let declared: Vec<&str> = FRAG_SRC
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("uniform "))
+            .filter_map(|l| l.split(';').next()?.split_whitespace().last())
+            .collect();
+        for name in [
+            "u_res",
+            "u_dist",
+            "u_tanHalfFov",
+            "u_rot",
+            "u_map",
+            "u_hasMap",
+            "u_gridStep",
+            "u_dpr",
+        ] {
+            assert!(declared.contains(&name), "{name} missing from globe.frag");
+            let lookup = format!("u(\"{name}\")");
+            assert!(
+                include_str!("render.rs").contains(&lookup),
+                "{name} not looked up"
+            );
+        }
+    }
+
+    #[test]
+    fn shaders_target_glsl_es_300() {
+        assert!(VERT_SRC.starts_with("#version 300 es"));
+        assert!(FRAG_SRC.starts_with("#version 300 es"));
+    }
+}
