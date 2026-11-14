@@ -16,6 +16,95 @@ const FRAG_SRC: &str = include_str!("shaders/globe.frag");
 const TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
 const MAX_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FF;
 
+/// What the texture-size choice depends on. Gathered from the browser by
+/// [`Renderer::detect_device`]; kept plain so the policy is unit testable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeviceInfo {
+    /// `gl.MAX_TEXTURE_SIZE`.
+    pub max_texture_size: u32,
+    /// `navigator.deviceMemory` in GB (Chrome only, capped at 8).
+    pub device_memory_gb: Option<f64>,
+    /// Primary pointer is coarse (a touch screen: phones and tablets).
+    pub coarse_pointer: bool,
+}
+
+/// Forces a tier regardless of the device (`?tex=low` / `?tex=high`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TierOverride {
+    Low,
+    High,
+}
+
+/// Sizes of the two GL textures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextureBudget {
+    /// Map texture width (height is half). RG8 with a full mip chain.
+    pub map_width: u32,
+    /// Country-ID raster width (height is half). R8, no mipmaps.
+    pub ids_width: usize,
+}
+
+/// Devices with at most this much RAM take the small tier.
+const LOW_MEMORY_GB: f64 = 4.0;
+
+/// Pick texture sizes. Capable desktops keep 8192 (crisp coastlines at the
+/// closest zoom). Touch devices, low-memory devices and GPUs limited to 4096
+/// get a 4096 map (about 21 MB with mips) and a 2048 ID raster (2 MB): at
+/// phone resolutions a 4096-wide map still has more texels than the globe
+/// has screen pixels at the default zoom. Both are clamped to the GPU limit.
+pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBudget {
+    let low = match forced {
+        Some(TierOverride::Low) => true,
+        Some(TierOverride::High) => false,
+        None => {
+            d.coarse_pointer
+                || d.max_texture_size < 8192
+                || d.device_memory_gb.is_some_and(|m| m <= LOW_MEMORY_GB)
+        }
+    };
+    let (map, ids) = if low { (4096, 2048) } else { (8192, 4096) };
+    // Largest power of two the GPU supports (at least 1024).
+    let cap = if d.max_texture_size >= 1024 {
+        1 << (31 - d.max_texture_size.leading_zeros())
+    } else {
+        1024
+    };
+    TextureBudget {
+        map_width: map.min(cap),
+        ids_width: (ids as u32).min(cap) as usize,
+    }
+}
+
+/// GPU bytes for the map texture (RG8, full mip chain) and the ID raster
+/// (R8). The mip chain adds a third of the base level.
+pub fn budget_bytes(b: &TextureBudget) -> (u64, u64) {
+    let (w, h) = (b.map_width as u64, b.map_width as u64 / 2);
+    let mut map = 0;
+    let (mut lw, mut lh) = (w, h);
+    loop {
+        map += lw * lh * 2;
+        if lw == 1 && lh == 1 {
+            break;
+        }
+        lw = (lw / 2).max(1);
+        lh = (lh / 2).max(1);
+    }
+    let ids = (b.ids_width as u64) * (b.ids_width as u64 / 2);
+    (map, ids)
+}
+
+/// Parse the value of the `tex` query parameter.
+pub fn parse_tier(search: &str) -> Option<TierOverride> {
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|kv| match kv {
+            "tex=low" => Some(TierOverride::Low),
+            "tex=high" => Some(TierOverride::High),
+            _ => None,
+        })
+}
+
 struct Uniforms {
     res: Option<WebGlUniformLocation>,
     dist: Option<WebGlUniformLocation>,
@@ -173,6 +262,8 @@ pub struct Renderer {
     ids: WebGlTexture,
     /// ID of the highlighted country, 0 for none.
     highlight: u8,
+    /// Texture sizes, chosen once from the device and kept across context loss.
+    budget: TextureBudget,
 }
 
 impl Renderer {
@@ -186,6 +277,10 @@ impl Renderer {
             .ok_or("WebGL2 is not supported by this browser")?
             .dyn_into()?;
         let r = Resources::create(&gl)?;
+        let forced = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .and_then(|q| parse_tier(&q));
+        let budget = choose_budget(&Self::detect_device(&gl), forced);
         Ok(Self {
             gl,
             program: r.program,
@@ -198,7 +293,14 @@ impl Renderer {
             ctx: ContextState::default(),
             ids: r.ids,
             highlight: 0,
+            budget,
         })
+    }
+
+    /// Width of the country-ID raster this device uses. Rasterize the IDs at
+    /// this width before calling [`Self::upload_country_ids`].
+    pub fn ids_width(&self) -> usize {
+        self.budget.ids_width
     }
 
     pub fn is_lost(&self) -> bool {
@@ -227,7 +329,7 @@ impl Renderer {
         self.ids = r.ids;
         self.has_map = false;
         if let (Some(ids), true) = (ids, self.ctx.ids_need_upload()) {
-            self.upload_country_ids(ids, crate::country::ID_RASTER_WIDTH)?;
+            self.upload_country_ids(ids, self.budget.ids_width)?;
         }
         match layers {
             Some(l) if upload => self.upload_map(l),
@@ -235,22 +337,30 @@ impl Renderer {
         }
     }
 
-    /// Width of the map texture to build: 8192×4096 where the GPU allows it.
-    fn map_width(&self) -> u32 {
-        let max = self
-            .gl
+    fn detect_device(gl: &GL) -> DeviceInfo {
+        let max_texture_size = gl
             .get_parameter(GL::MAX_TEXTURE_SIZE)
             .ok()
             .and_then(|v| v.as_f64())
             .unwrap_or(4096.0) as u32;
-        if max >= 8192 {
-            8192
-        } else {
-            4096
+        let window = web_sys::window();
+        let device_memory_gb = window.as_ref().and_then(|w| {
+            js_sys::Reflect::get(&w.navigator(), &"deviceMemory".into())
+                .ok()?
+                .as_f64()
+        });
+        let coarse_pointer = window
+            .and_then(|w| w.match_media("(pointer: coarse)").ok().flatten())
+            .is_some_and(|m| m.matches());
+        DeviceInfo {
+            max_texture_size,
+            device_memory_gb,
+            coarse_pointer,
         }
     }
 
-    /// Rasterize the vector layers into a mipmapped equirectangular texture.
+    /// Rasterize the vector layers into a mipmapped equirectangular texture
+    /// whose width comes from [`choose_budget`].
     ///
     /// The map is drawn as two square halves so no single canvas exceeds the
     /// 16.7 MP limit some mobile browsers enforce.
@@ -262,8 +372,18 @@ impl Renderer {
             return Ok(());
         }
         let gl = &self.gl;
-        let width = self.map_width();
+        let width = self.budget.map_width;
         let height = width / 2;
+        let (map_bytes, ids_bytes) = budget_bytes(&self.budget);
+        web_sys::console::log_1(
+            &format!(
+                "map texture {width}x{height}, ids {w}x{}: {:.1} MB",
+                self.budget.ids_width / 2,
+                (map_bytes + ids_bytes) as f64 / 1048576.0,
+                w = self.budget.ids_width,
+            )
+            .into(),
+        );
         let levels = 32 - width.leading_zeros() as i32; // log2(width) + 1
 
         let doc = web_sys::window()
@@ -326,7 +446,7 @@ impl Renderer {
 
     /// Upload the country-ID raster (`width × width/2`, row 0 at the north).
     /// It is fetched with `texelFetch`, so it has no mipmaps or filtering
-    /// (8 MB at 4096 wide). While the context is lost the upload is deferred
+    /// (2 MB at 2048 wide, 8 MB at 4096). While the context is lost the upload is deferred
     /// until `context_restored`, which is given the raster again.
     pub fn upload_country_ids(&mut self, ids: &[u8], width: usize) -> Result<(), JsValue> {
         if !self.ctx.on_ids_loaded() || self.gl.is_context_lost() {
@@ -442,6 +562,91 @@ fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dev(max: u32, mem: Option<f64>, coarse: bool) -> DeviceInfo {
+        DeviceInfo {
+            max_texture_size: max,
+            device_memory_gb: mem,
+            coarse_pointer: coarse,
+        }
+    }
+
+    const MB: f64 = 1024.0 * 1024.0;
+
+    #[test]
+    fn desktop_keeps_full_resolution() {
+        let b = choose_budget(&dev(16384, Some(8.0), false), None);
+        assert_eq!((b.map_width, b.ids_width), (8192, 4096));
+        // No deviceMemory (Safari, Firefox) on a fine pointer is a desktop.
+        let b = choose_budget(&dev(8192, None, false), None);
+        assert_eq!(b.map_width, 8192);
+    }
+
+    #[test]
+    fn mobile_and_low_memory_get_the_small_tier() {
+        for d in [
+            dev(16384, None, true),
+            dev(16384, Some(8.0), true),
+            dev(16384, Some(4.0), false),
+            dev(16384, Some(0.5), false),
+            dev(4096, None, false),
+            dev(4096, Some(8.0), false),
+        ] {
+            let b = choose_budget(&d, None);
+            assert_eq!((b.map_width, b.ids_width), (4096, 2048), "{d:?}");
+            let (map, ids) = budget_bytes(&b);
+            assert!((map + ids) as f64 / MB < 25.0, "{d:?}");
+        }
+    }
+
+    #[test]
+    fn budget_bytes_matches_the_documented_figures() {
+        let (map, ids) = budget_bytes(&TextureBudget {
+            map_width: 8192,
+            ids_width: 4096,
+        });
+        assert!((map as f64 / MB - 85.3).abs() < 0.1);
+        assert_eq!(ids as f64 / MB, 8.0);
+        let (map, ids) = budget_bytes(&TextureBudget {
+            map_width: 4096,
+            ids_width: 2048,
+        });
+        assert!((map as f64 / MB - 21.3).abs() < 0.1);
+        assert_eq!(ids as f64 / MB, 2.0);
+    }
+
+    #[test]
+    fn sizes_never_exceed_the_gpu_limit() {
+        let b = choose_budget(&dev(2048, None, false), None);
+        assert_eq!((b.map_width, b.ids_width), (2048, 2048));
+        let b = choose_budget(&dev(3000, None, false), Some(TierOverride::High));
+        assert_eq!((b.map_width, b.ids_width), (2048, 2048));
+        // Nonsense limits still give a usable size.
+        let b = choose_budget(&dev(0, None, false), None);
+        assert_eq!(b.map_width, 1024);
+    }
+
+    #[test]
+    fn override_wins() {
+        let phone = dev(16384, Some(2.0), true);
+        assert_eq!(
+            choose_budget(&phone, Some(TierOverride::High)).map_width,
+            8192
+        );
+        let desktop = dev(16384, Some(8.0), false);
+        assert_eq!(
+            choose_budget(&desktop, Some(TierOverride::Low)).map_width,
+            4096
+        );
+    }
+
+    #[test]
+    fn tier_query_parsing() {
+        assert_eq!(parse_tier(""), None);
+        assert_eq!(parse_tier("?tex=low"), Some(TierOverride::Low));
+        assert_eq!(parse_tier("?a=1&tex=high"), Some(TierOverride::High));
+        assert_eq!(parse_tier("?tex=huge"), None);
+    }
 
     /// Every uniform the renderer looks up must be declared in the shader,
     /// or WebGL silently returns no location and the value is dropped.

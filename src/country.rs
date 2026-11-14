@@ -34,8 +34,6 @@ const MAGIC: &[u8; 4] = b"MAPC";
 const VERSION: u8 = 1;
 /// IDs in the raster are `index + 1` in a byte, with 0 meaning no country.
 pub const MAX_COUNTRIES: usize = 255;
-/// Width of the ID raster. The height is half of it.
-pub const ID_RASTER_WIDTH: usize = 4096;
 
 /// Bounding box as `[min_lon, min_lat, max_lon, max_lat]`.
 type BBox = [f64; 4];
