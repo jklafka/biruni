@@ -388,7 +388,13 @@ impl App {
         self.camera.width = cw;
         self.camera.height = ch;
 
-        let animating = self.send(Event::Tick { dt }).render;
+        let tick = self.send(Event::Tick { dt });
+        let animating = tick.render;
+        if let Some((x, y)) = tick.single_tap {
+            if !self.measure.active {
+                self.click(x, y);
+            }
+        }
         if animating {
             self.update_hover(); // the globe moved under a still cursor
         }
@@ -536,12 +542,11 @@ impl App {
             cancel: e.type_() != "pointerup",
         });
         // The single tap detector: a lone press released near where it went
-        // down. Measure mode places a point; otherwise it selects a country.
+        // down. Measure mode places a point at once. Country info waits for
+        // `single_tap` so a double-click (fly-in) does not open the panel.
         if let Some((x, y)) = r.tap {
             if self.measure.active {
                 self.measure_add_at(x, y);
-            } else {
-                self.click(x, y);
             }
         }
         if !self.controls.dragging() {
