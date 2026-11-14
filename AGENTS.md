@@ -17,9 +17,10 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin` |
-| `.github/workflows/ci.yml` | CI: format, clippy, tests, shader validation, release build |
 | `.github/workflows/deploy.yml` | Builds the release site and deploys it to Cloudflare Pages (production on `main`, previews on PRs) |
 | `assets/_headers` | Cloudflare Pages headers (wasm MIME type, caching), copied to `dist/` by Trunk |
+| `visual-tests/` | Playwright + pixelmatch screenshot tests; `baselines/` holds the committed reference PNGs |
+| `.github/workflows/ci.yml` | CI: format, clippy, tests, shader validation, release build, visual regression |
 | `index.html` | Page shell, HUD and controls. Trunk reads it as the build entry. |
 
 ## Setup and commands
@@ -57,6 +58,7 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
 5. **Build:** `trunk build --release`
 6. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
+   `cd visual-tests && npm test` (after `trunk build --release`) renders four fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, copy `actual/*.png` from the `visual-screenshots` CI artifact into `visual-tests/baselines/` (see README).
 
 Don't weaken or skip a check to get a PR through. Fix the cause. If a check really is wrong, change it in its own PR and explain why.
 

@@ -85,3 +85,44 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+  visual:
+    name: Visual regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" trunk
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Release build
+        run: trunk build --release
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: visual-tests/package-lock.json
+      - name: Install test dependencies and Chromium
+        working-directory: visual-tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Compare screenshots with baselines
+        working-directory: visual-tests
+        run: npm test
+      # Always upload the new screenshots, so intentional changes can be
+      # promoted to baselines (see README). Diffs exist only on failure.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-screenshots
+          path: |
+            visual-tests/actual/
+            visual-tests/diff/
+          retention-days: 14

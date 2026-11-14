@@ -19,7 +19,22 @@ cargo test              # unit tests (run natively)
 
 > If `rustup` and Homebrew's `rust` are both installed, make sure rustup's toolchain comes first on your `PATH`. Homebrew's `rust` has no `wasm32` target.
 
-Every pull request runs CI (format, clippy, tests, shader validation and a release build). `main` only accepts pull requests that pass all of it. See [AGENTS.md](AGENTS.md) for contribution guidelines.
+Every pull request runs CI (format, clippy, tests, shader validation, a release build and visual regression tests). `main` only accepts pull requests that pass all of it. See [AGENTS.md](AGENTS.md) for contribution guidelines.
+
+## Visual regression tests
+
+`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at four fixed views set by the URL hash: the whole globe, mid zoom, closest zoom and the antimeridian. It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
+
+```sh
+trunk build --release
+cd visual-tests
+npm ci && npx playwright install chromium   # first time only
+npm test                                    # compare with baselines
+```
+
+New screenshots go to `visual-tests/actual/` and diff images to `visual-tests/diff/` (both git-ignored). CI uploads them as the `visual-screenshots` artifact.
+
+**Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch, download the `visual-screenshots` artifact from the CI run (`gh run download <run-id> -n visual-screenshots`), copy `actual/*.png` into `visual-tests/baselines/`, look at them, and commit. `npm run update` rewrites the baselines locally, which is fine for experiments, but don't commit macOS-generated baselines.
 
 ## Deployment
 
