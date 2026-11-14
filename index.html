@@ -171,6 +171,40 @@
         #title p { display: none; }
         #layers { top: 64px; left: 16px; right: auto; }
       }
+      #country-info {
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        width: 300px;
+        max-width: calc(100vw - 32px);
+        pointer-events: auto;
+        user-select: text;
+      }
+      #country-info[hidden] { display: none; }
+      #country-info h2 { margin: 0 32px 6px 0; font-size: 16px; font-weight: 600; }
+      #country-info div { display: flex; justify-content: space-between; gap: 16px; }
+      #country-info div[hidden] { display: none; }
+      #country-info div > span:first-child { color: var(--muted); }
+      #country-info div > span:last-child { text-align: right; }
+      #ci-close {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 20px;
+        cursor: pointer;
+      }
+      #ci-close:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+      #ci-close:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      @media (max-width: 520px) {
+        /* Sit above the HUD, left of the control buttons, above the toast and share box (bottom: 150px); measure mode closes this panel. */
+        #country-info { left: 16px; right: 70px; bottom: 216px; transform: none; width: auto; max-width: none; }
+      }
       #loading {
         top: 50%;
         left: 50%;
@@ -191,6 +225,7 @@
       <div><span>Cursor</span><span id="hud-cursor">—</span></div>
       <div><span>Center</span><span id="hud-center">—</span></div>
       <div><span>Altitude</span><span id="hud-alt">—</span></div>
+      <div><span>Country</span><span id="hud-country">—</span></div>
       <div id="hud-scale" style="display: none" title="Click to switch km / mi (U)">
         <span id="hud-scale-bar"></span><span id="hud-scale-label"></span>
       </div>
@@ -220,6 +255,14 @@
     <div id="toast" class="panel" role="status" aria-live="polite" hidden></div>
     <div id="share-fallback" class="panel" hidden>
       <input id="share-url" type="text" readonly aria-label="Link to this view. Press Ctrl+C or Cmd+C to copy." />
+    </div>
+    <div id="country-info" class="panel" role="region" aria-label="Country information" aria-live="polite" hidden>
+      <h2 id="ci-title"></h2>
+      <button id="ci-close" title="Close (Esc)" aria-label="Close country information">×</button>
+      <div id="ci-r0"><span id="ci-l0"></span><span id="ci-v0"></span></div>
+      <div id="ci-r1"><span id="ci-l1"></span><span id="ci-v1"></span></div>
+      <div id="ci-r2"><span id="ci-l2"></span><span id="ci-v2"></span></div>
+      <div id="ci-r3"><span id="ci-l3"></span><span id="ci-v3"></span></div>
     </div>
     <div id="loading" class="panel">Loading map data…</div>
   </body>

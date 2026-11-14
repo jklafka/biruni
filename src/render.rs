@@ -26,6 +26,8 @@ struct Uniforms {
     grid_step: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
     layer: Option<WebGlUniformLocation>,
+    ids: Option<WebGlUniformLocation>,
+    highlight: Option<WebGlUniformLocation>,
 }
 
 /// GL objects that die with the context and must be rebuilt after a restore.
@@ -34,6 +36,8 @@ struct Resources {
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
     map: WebGlTexture,
+    /// Country-ID raster (R8, one byte per texel, 0 = no country).
+    ids: WebGlTexture,
 }
 
 impl Resources {
@@ -52,6 +56,8 @@ impl Resources {
             grid_step: u("u_gridStep"),
             dpr: u("u_dpr"),
             layer: u("u_layer"),
+            ids: u("u_ids"),
+            highlight: u("u_highlight"),
         };
         let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
 
@@ -72,11 +78,29 @@ impl Resources {
         )?;
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+
+        let ids = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&ids));
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::R8 as i32,
+            1,
+            1,
+            0,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(&[0]),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+
         Ok(Self {
             program,
             vao,
             uniforms,
             map,
+            ids,
         })
     }
 }
@@ -92,6 +116,8 @@ pub struct ContextState {
     lost: bool,
     /// The decoded map is held in memory and ready to be rasterized.
     map_loaded: bool,
+    /// The country-ID raster is held in memory and ready to be uploaded.
+    ids_loaded: bool,
 }
 
 impl ContextState {
@@ -115,6 +141,17 @@ impl ContextState {
         self.map_loaded = true;
         !self.lost
     }
+
+    /// Like [`Self::on_map_loaded`], for the country-ID raster.
+    pub fn on_ids_loaded(&mut self) -> bool {
+        self.ids_loaded = true;
+        !self.lost
+    }
+
+    /// True if the ID raster must be uploaded again after a restore.
+    pub fn ids_need_upload(&self) -> bool {
+        self.ids_loaded
+    }
 }
 
 pub struct Renderer {
@@ -126,6 +163,10 @@ pub struct Renderer {
     has_map: bool,
     layer: Layer,
     ctx: ContextState,
+    /// Country-ID raster texture (placeholder until uploaded).
+    ids: WebGlTexture,
+    /// ID of the highlighted country, 0 for none.
+    highlight: u8,
 }
 
 impl Renderer {
@@ -148,6 +189,8 @@ impl Renderer {
             has_map: false,
             layer: Layer::default(),
             ctx: ContextState::default(),
+            ids: r.ids,
+            highlight: 0,
         })
     }
 
@@ -163,14 +206,22 @@ impl Renderer {
     /// The context came back: rebuild every GL object and, if the map data
     /// is already in memory, upload it again without refetching. The layer
     /// and camera live outside GL, so the view is unchanged.
-    pub fn context_restored(&mut self, layers: Option<&Layers>) -> Result<(), JsValue> {
+    pub fn context_restored(
+        &mut self,
+        layers: Option<&Layers>,
+        ids: Option<&[u8]>,
+    ) -> Result<(), JsValue> {
         let upload = self.ctx.on_restored();
         let r = Resources::create(&self.gl)?;
         self.program = r.program;
         self.vao = r.vao;
         self.uniforms = r.uniforms;
         self.map = r.map;
+        self.ids = r.ids;
         self.has_map = false;
+        if let (Some(ids), true) = (ids, self.ctx.ids_need_upload()) {
+            self.upload_country_ids(ids, crate::country::ID_RASTER_WIDTH)?;
+        }
         match layers {
             Some(l) if upload => self.upload_map(l),
             _ => Ok(()),
@@ -266,6 +317,47 @@ impl Renderer {
         Ok(())
     }
 
+    /// Upload the country-ID raster (`width × width/2`, row 0 at the north).
+    /// It is fetched with `texelFetch`, so it has no mipmaps or filtering
+    /// (8 MB at 4096 wide). While the context is lost the upload is deferred
+    /// until `context_restored`, which is given the raster again.
+    pub fn upload_country_ids(&mut self, ids: &[u8], width: usize) -> Result<(), JsValue> {
+        if !self.ctx.on_ids_loaded() || self.gl.is_context_lost() {
+            return Ok(());
+        }
+        let gl = &self.gl;
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::R8 as i32,
+            width as i32,
+            (width / 2) as i32,
+            0,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(ids),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+        gl.delete_texture(Some(&self.ids));
+        self.ids = tex;
+        Ok(())
+    }
+
+    /// Highlight the country with this ID (0 for none). Returns true if the
+    /// highlight changed, so the caller knows a redraw is needed.
+    pub fn set_highlight(&mut self, id: u8) -> bool {
+        if self.ctx.is_lost() {
+            return false;
+        }
+        let changed = self.highlight != id;
+        self.highlight = id;
+        changed
+    }
+
     pub fn set_layer(&mut self, layer: Layer) {
         self.layer = layer;
     }
@@ -289,6 +381,11 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE0);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.map));
         gl.uniform1i(u.map.as_ref(), 0);
+        gl.active_texture(GL::TEXTURE1);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&self.ids));
+        gl.uniform1i(u.ids.as_ref(), 1);
+        gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
+        gl.active_texture(GL::TEXTURE0);
         gl.bind_vertex_array(Some(&self.vao));
         gl.draw_arrays(GL::TRIANGLES, 0, 3);
     }
@@ -348,6 +445,8 @@ mod tests {
             "u_gridStep",
             "u_dpr",
             "u_layer",
+            "u_ids",
+            "u_highlight",
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");
@@ -402,6 +501,27 @@ mod tests {
             c.on_lost(); // duplicate events are harmless
             assert!(c.on_restored());
             assert!(!c.is_lost());
+        }
+    }
+
+    #[test]
+    fn ids_loaded_while_lost_are_deferred_until_restore() {
+        let mut c = ContextState::default();
+        c.on_lost();
+        assert!(!c.on_ids_loaded(), "no GL calls while lost");
+        c.on_restored();
+        assert!(c.ids_need_upload(), "deferred raster uploads on restore");
+    }
+
+    #[test]
+    fn loaded_ids_are_reuploaded_on_each_restore() {
+        let mut c = ContextState::default();
+        assert!(!c.ids_need_upload());
+        assert!(c.on_ids_loaded());
+        for _ in 0..2 {
+            c.on_lost();
+            c.on_restored();
+            assert!(c.ids_need_upload());
         }
     }
 

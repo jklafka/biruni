@@ -103,7 +103,7 @@ pub const COORD_TOLERANCE: f64 = 0.5 / COORD_SCALE;
 const MAGIC: &[u8; 4] = b"MAPD";
 const VERSION: u8 = 1;
 
-fn read_varint(data: &[u8], pos: &mut usize) -> Result<u64, String> {
+pub(crate) fn read_varint(data: &[u8], pos: &mut usize) -> Result<u64, String> {
     let mut value = 0u64;
     for shift in (0..64).step_by(7) {
         let byte = *data.get(*pos).ok_or("unexpected end of data")?;
@@ -120,7 +120,7 @@ fn read_varint(data: &[u8], pos: &mut usize) -> Result<u64, String> {
     Err("varint too long".into())
 }
 
-fn read_delta(data: &[u8], pos: &mut usize) -> Result<i64, String> {
+pub(crate) fn read_delta(data: &[u8], pos: &mut usize) -> Result<i64, String> {
     let z = read_varint(data, pos)?;
     Ok((z >> 1) as i64 ^ -((z & 1) as i64))
 }
@@ -181,7 +181,7 @@ pub struct Layers {
     borders: Path2d,
 }
 
-async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
+pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     let window = web_sys::window().ok_or("no window")?;
     let resp: Response = JsFuture::from(window.fetch_with_str(url))
         .await?
