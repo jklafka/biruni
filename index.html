@@ -167,9 +167,50 @@
       #layers button:hover { color: var(--text); }
       #layers button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
       #layers button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #search {
+        top: 88px;
+        left: 16px;
+        width: 260px;
+        max-width: calc(100vw - 32px);
+        padding: 6px;
+        pointer-events: auto;
+        user-select: auto;
+      }
+      #search-input {
+        width: 100%;
+        min-height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.35);
+        color: var(--text);
+        font: inherit;
+        font-size: 16px; /* 16px stops iOS zooming the page on focus */
+      }
+      #search-input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #search-results {
+        margin: 6px 0 0;
+        padding: 0;
+        list-style: none;
+        max-height: max(120px, calc(100vh - 260px));
+        overflow-y: auto;
+      }
+      #search-results li {
+        display: flex;
+        flex-direction: column;
+        min-height: 44px;
+        justify-content: center;
+        padding: 4px 10px;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      #search-results li[aria-selected="true"], #search-results li:hover { background: rgba(90, 130, 210, 0.45); }
+      .search-sub { color: var(--muted); font-size: 12px; }
+      #search-status { margin: 6px 4px 0; color: var(--muted); }
       @media (max-width: 520px) {
         #title p { display: none; }
         #layers { top: 64px; left: 16px; right: auto; }
+        #search { top: 116px; }
       }
       #country-info {
         left: 50%;
@@ -242,6 +283,11 @@
     <div id="layers" class="panel" role="group" aria-label="Map layer">
       <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
       <button id="layer-mono" aria-pressed="false" title="Monochrome (2)">Monochrome</button>
+    </div>
+    <div id="search" class="panel" role="search">
+      <input id="search-input" type="search" role="combobox" aria-label="Search places" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" placeholder="Search places  ( / )" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <ul id="search-results" role="listbox" aria-label="Matching places" hidden></ul>
+      <div id="search-status" role="status" hidden></div>
     </div>
     <div id="controls">
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
