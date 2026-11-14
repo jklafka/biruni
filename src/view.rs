@@ -7,7 +7,7 @@ use crate::camera::{wrap_angle, Camera, EARTH_RADIUS_KM, MAX_ALT, MIN_ALT};
 pub const HOME: (f64, f64, f64) = (25.0, 0.0, 2.4);
 
 /// A selectable map style. Add new layers here, to `ALL`, and to the shader.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Layer {
     /// Land, lakes and country borders in natural colors.
     #[default]
@@ -31,6 +31,15 @@ impl Layer {
         Layer::ALL.into_iter().find(|l| l.id() == id.trim())
     }
 
+    /// Data file (relative to the page) this layer needs before it can be
+    /// shown, fetched the first time it is selected. Today's layers are
+    /// palettes over the base map and need none.
+    pub fn data_url(self) -> Option<&'static str> {
+        match self {
+            Layer::Political | Layer::Monochrome => None,
+        }
+    }
+
     /// Value of the `u_layer` uniform in `globe.frag`.
     pub fn shader_index(self) -> i32 {
         match self {
@@ -43,6 +52,12 @@ impl Layer {
     pub fn next(self) -> Layer {
         let i = Layer::ALL.iter().position(|l| *l == self).unwrap_or(0);
         Layer::ALL[(i + 1) % Layer::ALL.len()]
+    }
+}
+
+impl crate::layer_loader::Loadable for Layer {
+    fn needs_data(self) -> bool {
+        self.data_url().is_some()
     }
 }
 

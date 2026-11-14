@@ -7,6 +7,7 @@ mod geo;
 mod info_panel;
 mod label_layer;
 mod labels;
+mod layer_loader;
 mod lines;
 mod measure;
 mod overlay;
@@ -19,9 +20,11 @@ mod view;
 
 use camera::Camera;
 use controls::{Controls, Direction, Event, Response};
+use layer_loader::{Effect, LayerLoader};
 use measure::Measure;
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 use view::{
     format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_view_hash,
     scale_bar, share_url, Layer, RedrawFlags, SunView, Units, HOME,
@@ -45,7 +48,15 @@ struct App {
     window: Window,
     canvas: HtmlCanvasElement,
     renderer: render::Renderer,
-    layer: Layer,
+    /// Which layer is shown, wanted and loading. See `layer_loader`.
+    layers_state: LayerLoader<Layer>,
+    /// Fetched data of layers that need it (none do yet).
+    layer_data: HashMap<Layer, Rc<Vec<u8>>>,
+    /// Handle to this app, for spawning layer fetches.
+    me: Weak<RefCell<App>>,
+    layer_status: HtmlElement,
+    /// Set when the last load failed; cleared by the next selection.
+    layer_error: Option<String>,
     layer_buttons: Vec<(Layer, HtmlElement)>,
     sun_on: bool,
     /// Fixed time from `&t=`; `None` follows the clock.
@@ -148,15 +159,74 @@ impl App {
         r
     }
 
-    /// Switch the map style. The camera is untouched.
-    fn set_layer(&mut self, layer: Layer) {
-        self.layer = layer;
-        self.renderer.set_layer(layer);
-        for (l, b) in &self.layer_buttons {
-            let _ = b.set_attribute("aria-pressed", if *l == layer { "true" } else { "false" });
+    /// The user picked a layer (button, key, URL). Layers with data fetch it
+    /// first and the globe keeps the previous layer until it is ready.
+    fn select_layer(&mut self, layer: Layer) {
+        let effects = self.layers_state.select(layer);
+        self.apply_layer_effects(effects);
+    }
+
+    fn apply_layer_effects(&mut self, effects: Vec<Effect<Layer>>) {
+        for effect in effects {
+            match effect {
+                Effect::Show(l) => {
+                    // The camera is untouched.
+                    debug_assert!(self.layers_state.shown() == l);
+                    self.renderer.set_layer(l);
+                    self.redraw.mark_render();
+                }
+                Effect::Fetch(l) => self.fetch_layer(l),
+                Effect::Failed(l, msg) => {
+                    web_sys::console::error_1(&JsValue::from_str(&msg));
+                    self.layer_error =
+                        Some(format!("Could not load {}. Select it to retry.", l.id()));
+                }
+            }
         }
-        self.redraw.mark_render();
+        if self.layers_state.pending().is_some() {
+            self.layer_error = None;
+        }
+        self.refresh_layer_ui();
         self.hash_stale = true;
+    }
+
+    fn fetch_layer(&mut self, layer: Layer) {
+        let Some(app) = self.me.upgrade() else { return };
+        let Some(url) = layer.data_url() else {
+            // Cannot happen: only layers with data are fetched.
+            return;
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = geo::fetch_bytes(url)
+                .await
+                .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")));
+            let mut a = app.borrow_mut();
+            let result = result.map(|bytes| {
+                a.layer_data.insert(layer, Rc::new(bytes));
+            });
+            let effects = a.layers_state.finished(layer, result);
+            a.apply_layer_effects(effects);
+        });
+    }
+
+    /// Picker buttons show the wanted layer as pressed and the one being
+    /// fetched as busy; the status line carries load errors.
+    fn refresh_layer_ui(&self) {
+        let (wanted, pending) = (self.layers_state.wanted(), self.layers_state.pending());
+        for (l, b) in &self.layer_buttons {
+            let _ = b.set_attribute("aria-pressed", if *l == wanted { "true" } else { "false" });
+            let _ = b.set_attribute(
+                "aria-busy",
+                if Some(*l) == pending { "true" } else { "false" },
+            );
+        }
+        let text = match (pending, &self.layer_error) {
+            (Some(l), _) => format!("Loading {}…", l.id()),
+            (None, Some(e)) => e.clone(),
+            _ => String::new(),
+        };
+        self.layer_status.set_text_content(Some(&text));
+        self.layer_status.set_hidden(text.is_empty());
     }
 
     /// Push the current sun direction (or none when off) to the renderer
@@ -191,7 +261,12 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        share_url(&page, &self.camera, self.layer, self.sun_view())
+        share_url(
+            &page,
+            &self.camera,
+            self.layers_state.wanted(),
+            self.sun_view(),
+        )
     }
 
     /// Enter or leave measure mode. Leaving clears the path.
@@ -323,7 +398,7 @@ impl App {
         }
         if self.hash_stale && !animating && !self.controls.dragging() {
             self.hash_stale = false;
-            let hash = format_view_hash(&self.camera, self.layer, self.sun_view());
+            let hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
             if hash != self.last_hash {
                 if let Ok(history) = self.window.history() {
                     let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&hash));
@@ -498,7 +573,11 @@ fn start() -> Result<(), JsValue> {
         window: window.clone(),
         canvas: canvas.clone(),
         renderer,
-        layer: initial_layer,
+        layers_state: LayerLoader::new(Layer::default()),
+        layer_data: HashMap::new(),
+        me: Weak::new(),
+        layer_status: element(&doc, "layer-status")?,
+        layer_error: None,
         layer_buttons: layer_buttons.clone(),
         sun_on: sun_hash.on,
         sun_pin: sun_hash.pin,
@@ -533,7 +612,12 @@ fn start() -> Result<(), JsValue> {
         measure_panel,
     }));
 
-    app.borrow_mut().set_layer(initial_layer);
+    {
+        let mut a = app.borrow_mut();
+        a.me = Rc::downgrade(&app);
+        // The URL layer takes the same path as a click.
+        a.select_layer(initial_layer);
+    }
     app.borrow_mut().refresh_sun();
 
     // The one piece of idle work: once a minute, move the terminator. It
@@ -562,7 +646,7 @@ fn start() -> Result<(), JsValue> {
     for (layer, button) in layer_buttons {
         let app = app.clone();
         listen(button.as_ref(), "click", true, move |_: MouseEvent| {
-            app.borrow_mut().set_layer(layer);
+            app.borrow_mut().select_layer(layer);
         })?;
     }
 
@@ -742,13 +826,13 @@ fn start() -> Result<(), JsValue> {
                     a.measure_add_at(cx, cy);
                 }
                 "l" | "L" => {
-                    let next = a.layer.next();
-                    a.set_layer(next);
+                    let next = a.layers_state.wanted().next();
+                    a.select_layer(next);
                 }
                 k @ ("1" | "2") => {
                     let i = k.parse::<usize>().unwrap_or(1) - 1;
                     if let Some(l) = Layer::ALL.get(i) {
-                        a.set_layer(*l);
+                        a.select_layer(*l);
                     }
                 }
                 _ => return,
@@ -768,7 +852,7 @@ fn start() -> Result<(), JsValue> {
             move |_: web_sys::Event| {
                 let hash = window2.location().hash().unwrap_or_default();
                 let mut a = app.borrow_mut();
-                a.set_layer(parse_hash_layer(&hash).unwrap_or_default());
+                a.select_layer(parse_hash_layer(&hash).unwrap_or_default());
                 let sun = SunView::from_hash(&hash);
                 a.sun_on = sun.on;
                 a.sun_pin = sun.pin;
