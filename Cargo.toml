@@ -53,6 +53,8 @@ features = [
   "Node",
   "HtmlCollection",
   "ResizeObserver",
+  "Worker",
+  "MessageEvent",
 ]
 
 [dev-dependencies]

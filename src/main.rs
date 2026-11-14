@@ -1019,8 +1019,9 @@ fn start() -> Result<(), JsValue> {
     window.request_animation_frame(raf.borrow().as_ref().unwrap().as_ref().unchecked_ref())?;
 
     // Load and rasterize the map data in the background.
+    let map_width = app.borrow().renderer.map_width();
     wasm_bindgen_futures::spawn_local(async move {
-        let result = match geo::Layers::load().await {
+        let result = match geo::Layers::load(map_width).await {
             Ok(layers) => app.borrow_mut().map_loaded(layers),
             Err(e) => Err(e),
         };
@@ -1051,9 +1052,16 @@ fn start() -> Result<(), JsValue> {
         if ok {
             match country::load().await {
                 Ok(countries) => {
+                    let ids_width = app.borrow().renderer.ids_width();
+                    // Yields between slices, so no borrow is held across it.
+                    let ids = match countries.rasterize_ids_yielding(ids_width).await {
+                        Ok(ids) => ids,
+                        Err(e) => {
+                            web_sys::console::error_1(&e);
+                            return;
+                        }
+                    };
                     let mut a = app.borrow_mut();
-                    let ids_width = a.renderer.ids_width();
-                    let ids = countries.rasterize_ids(ids_width);
                     // No-op while the context is lost; context_restored uploads it.
                     if let Err(e) = a.renderer.upload_country_ids(&ids, ids_width) {
                         web_sys::console::error_1(&e);

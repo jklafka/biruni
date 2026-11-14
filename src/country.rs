@@ -29,6 +29,7 @@
 
 use crate::geo::{read_delta, read_varint};
 use wasm_bindgen::JsValue;
+use wasm_bindgen_futures::JsFuture;
 
 const MAGIC: &[u8; 4] = b"MAPC";
 const VERSION: u8 = 1;
@@ -278,56 +279,93 @@ impl Countries {
     /// equirectangular grid, row 0 at the north. Each texel takes the country
     /// that contains its center. Uses an even-odd scanline fill per polygon, so
     /// the cost follows the covered area, not the full grid.
+    #[cfg(test)]
     pub fn rasterize_ids(&self, width: usize) -> Vec<u8> {
+        let mut out = vec![0u8; width * (width / 2)];
+        for ci in 0..self.list.len() {
+            self.fill_country(&mut out, width, ci);
+        }
+        out
+    }
+
+    /// Same raster as the synchronous version, but yields to the event loop
+    /// whenever about 8 ms have passed so the page stays responsive (the full
+    /// raster takes 40 to 50 ms). Countries are filled in the same order, so
+    /// the result is identical.
+    pub async fn rasterize_ids_yielding(&self, width: usize) -> Result<Vec<u8>, JsValue> {
+        const SLICE_MS: f64 = 8.0;
+        let perf = web_sys::window()
+            .and_then(|w| w.performance())
+            .ok_or("no performance timer")?;
+        let mut out = vec![0u8; width * (width / 2)];
+        let mut slice_start = perf.now();
+        for ci in 0..self.list.len() {
+            self.fill_country(&mut out, width, ci);
+            if perf.now() - slice_start >= SLICE_MS {
+                yield_to_event_loop().await?;
+                slice_start = perf.now();
+            }
+        }
+        Ok(out)
+    }
+
+    /// Scanline-fill one country (`list[ci]`) into `out`.
+    fn fill_country(&self, out: &mut [u8], width: usize, ci: usize) {
         let height = width / 2;
-        let mut out = vec![0u8; width * height];
         if height == 0 {
-            return out;
+            return;
         }
         let (dx, dy) = (360.0 / width as f64, 180.0 / height as f64);
         let mut xs: Vec<f64> = Vec::new();
-        for (ci, country) in self.list.iter().enumerate() {
-            let id = (ci + 1) as u8;
-            for poly in &country.polygons {
-                // Rows whose center latitude, 90 - (r + 0.5) dy, is in the box.
-                let r0 = ((90.0 - poly.bbox[3]) / dy - 0.5).ceil().max(0.0) as usize;
-                let r1 = ((90.0 - poly.bbox[1]) / dy - 0.5).floor();
-                if r1 < 0.0 {
-                    continue;
-                }
-                let r1 = (r1 as usize).min(height - 1);
-                for row in r0..=r1 {
-                    let lat = 90.0 - (row as f64 + 0.5) * dy;
-                    xs.clear();
-                    for ring in &poly.rings {
-                        if lat < ring.bbox[1] || lat > ring.bbox[3] {
-                            continue;
-                        }
-                        let p = &ring.points;
-                        let mut j = p.len() - 1;
-                        for i in 0..p.len() {
-                            let (a, b) = (p[i], p[j]);
-                            if (a[1] > lat) != (b[1] > lat) {
-                                xs.push(a[0] + (lat - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
-                            }
-                            j = i;
-                        }
+        let country = &self.list[ci];
+        let id = (ci + 1) as u8;
+        for poly in &country.polygons {
+            // Rows whose center latitude, 90 - (r + 0.5) dy, is in the box.
+            let r0 = ((90.0 - poly.bbox[3]) / dy - 0.5).ceil().max(0.0) as usize;
+            let r1 = ((90.0 - poly.bbox[1]) / dy - 0.5).floor();
+            if r1 < 0.0 {
+                continue;
+            }
+            let r1 = (r1 as usize).min(height - 1);
+            for row in r0..=r1 {
+                let lat = 90.0 - (row as f64 + 0.5) * dy;
+                xs.clear();
+                for ring in &poly.rings {
+                    if lat < ring.bbox[1] || lat > ring.bbox[3] {
+                        continue;
                     }
-                    xs.sort_by(|a, b| a.total_cmp(b));
-                    for pair in xs.windows(2).step_by(2) {
-                        // Texel c has its center at lon = -180 + (c + 0.5) dx.
-                        let c0 = ((pair[0] + 180.0) / dx - 0.5).ceil().max(0.0) as usize;
-                        let c1 = ((pair[1] + 180.0) / dx - 0.5).ceil().max(0.0) as usize;
-                        let c1 = c1.min(width);
-                        if c0 < c1 {
-                            out[row * width + c0..row * width + c1].fill(id);
+                    let p = &ring.points;
+                    let mut j = p.len() - 1;
+                    for i in 0..p.len() {
+                        let (a, b) = (p[i], p[j]);
+                        if (a[1] > lat) != (b[1] > lat) {
+                            xs.push(a[0] + (lat - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
                         }
+                        j = i;
+                    }
+                }
+                xs.sort_by(|a, b| a.total_cmp(b));
+                for pair in xs.windows(2).step_by(2) {
+                    // Texel c has its center at lon = -180 + (c + 0.5) dx.
+                    let c0 = ((pair[0] + 180.0) / dx - 0.5).ceil().max(0.0) as usize;
+                    let c1 = ((pair[1] + 180.0) / dx - 0.5).ceil().max(0.0) as usize;
+                    let c1 = c1.min(width);
+                    if c0 < c1 {
+                        out[row * width + c0..row * width + c1].fill(id);
                     }
                 }
             }
         }
-        out
     }
+}
+
+/// Resolve on a later event-loop turn, letting input and rendering run first.
+async fn yield_to_event_loop() -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or("no window")?;
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+    });
+    JsFuture::from(promise).await.map(|_| ())
 }
 
 impl Country {

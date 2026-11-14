@@ -11,9 +11,13 @@
 //! tests compare the binary files against.
 
 use crate::lines::{build_levels, LineSet};
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement, Path2d, Response};
+use web_sys::{
+    CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement, MessageEvent, Path2d, Response,
+    WebGl2RenderingContext as GL, Worker,
+};
 
 /// A polyline or polygon ring in lon/lat degrees.
 #[derive(Debug, Clone, PartialEq)]
@@ -175,10 +179,20 @@ pub fn decode_shapes(data: &[u8]) -> Result<Vec<Shape>, String> {
     Ok(shapes)
 }
 
-/// Vector layers as canvas paths in lon/lat degree coordinates.
+/// The land mask for one map width, rasterized by the worker: two square
+/// halves of `width/2 × width/2` bytes (the red channel), left half first.
+struct Tiles {
+    width: u32,
+    halves: Vec<js_sys::Uint8Array>,
+}
+
+/// Vector layers plus the rasterized land mask.
 pub struct Layers {
-    land: Path2d,
-    lakes: Path2d,
+    land: Vec<Shape>,
+    lakes: Vec<Shape>,
+    /// Set when the worker rasterized the mask. Kept so a context restore can
+    /// re-upload without rasterizing again.
+    tiles: Option<Tiles>,
     lines: LineSet,
 }
 
@@ -194,9 +208,8 @@ pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     Ok(js_sys::Uint8Array::new(&buf).to_vec())
 }
 
-async fn fetch_shapes(url: &str) -> Result<Vec<Shape>, JsValue> {
-    let bytes = fetch_bytes(url).await?;
-    decode_shapes(&bytes).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))
+fn decode_layer(url: &str, bytes: &[u8]) -> Result<Vec<Shape>, JsValue> {
+    decode_shapes(bytes).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))
 }
 
 fn to_path(shapes: &[Shape]) -> Result<Path2d, JsValue> {
@@ -214,21 +227,112 @@ fn to_path(shapes: &[Shape]) -> Result<Path2d, JsValue> {
     Ok(path)
 }
 
+/// Whether the browser can rasterize in a worker. Without `OffscreenCanvas`
+/// (older Safari) the mask is drawn on the main thread instead.
+fn worker_supported() -> bool {
+    let global = js_sys::global();
+    ["OffscreenCanvas", "Worker", "Path2D"]
+        .iter()
+        .all(|name| js_sys::Reflect::has(&global, &JsValue::from_str(name)).unwrap_or(false))
+}
+
+/// Start `raster-worker.js` on the land and lake layers. The promise resolves
+/// to the worker's reply, `{ tiles }` or `{ error }`.
+fn start_worker(
+    land: &[u8],
+    lakes: &[u8],
+    width: u32,
+) -> Result<(Worker, js_sys::Promise), JsValue> {
+    let worker = Worker::new("raster-worker.js")?;
+    let promise = js_sys::Promise::new(&mut |resolve, reject| {
+        let on_message = Closure::once_into_js(move |e: MessageEvent| {
+            let _ = resolve.call1(&JsValue::NULL, &e.data());
+        });
+        let on_error = Closure::once_into_js(move |e: web_sys::Event| {
+            let _ = reject.call1(&JsValue::NULL, &e);
+        });
+        worker.set_onmessage(Some(on_message.unchecked_ref()));
+        worker.set_onerror(Some(on_error.unchecked_ref()));
+    });
+    // The worker gets its own copies, transferred so they are not cloned again.
+    let land = js_sys::Uint8Array::from(land);
+    let lakes = js_sys::Uint8Array::from(lakes);
+    let msg = js_sys::Object::new();
+    js_sys::Reflect::set(&msg, &"land".into(), &land)?;
+    js_sys::Reflect::set(&msg, &"lakes".into(), &lakes)?;
+    js_sys::Reflect::set(&msg, &"width".into(), &JsValue::from(width))?;
+    let transfer = js_sys::Array::of2(&land.buffer(), &lakes.buffer());
+    worker.post_message_with_transfer(&msg, &transfer)?;
+    Ok((worker, promise))
+}
+
+async fn finish_worker(
+    worker: Worker,
+    promise: js_sys::Promise,
+    width: u32,
+) -> Result<Tiles, JsValue> {
+    let reply = JsFuture::from(promise).await;
+    worker.terminate();
+    let reply = reply.map_err(|_| JsValue::from_str("the worker script failed to load or run"))?;
+    if let Some(err) = js_sys::Reflect::get(&reply, &"error".into())?.as_string() {
+        return Err(JsValue::from_str(&err));
+    }
+    let list: js_sys::Array = js_sys::Reflect::get(&reply, &"tiles".into())?.dyn_into()?;
+    let halves: Vec<js_sys::Uint8Array> =
+        list.iter().map(|b| js_sys::Uint8Array::new(&b)).collect();
+    let h = (width / 2) as usize;
+    if halves.len() != 2 || halves.iter().any(|t| t.length() as usize != h * h) {
+        return Err("worker returned unexpected tiles".into());
+    }
+    Ok(Tiles { width, halves })
+}
+
 impl Layers {
-    pub async fn load() -> Result<Layers, JsValue> {
-        let land = fetch_shapes("data/ne_50m_land.bin");
-        let lakes = fetch_shapes("data/ne_50m_lakes.bin");
-        let borders = fetch_shapes("data/ne_50m_admin_0_boundary_lines_land.bin");
-        let (land, lakes, borders) = (land.await?, lakes.await?, borders.await?);
+    /// Fetch the layers. With worker support, the land mask for a map
+    /// `map_width` pixels wide is rasterized off the main thread while this
+    /// thread decodes the shapes and builds the line levels.
+    pub async fn load(map_width: u32) -> Result<Layers, JsValue> {
+        const LAND: &str = "data/ne_50m_land.bin";
+        const LAKES: &str = "data/ne_50m_lakes.bin";
+        const BORDERS: &str = "data/ne_50m_admin_0_boundary_lines_land.bin";
+        let land = fetch_bytes(LAND);
+        let lakes = fetch_bytes(LAKES);
+        let borders = fetch_bytes(BORDERS);
+        let (land_bytes, lakes_bytes, borders_bytes) = (land.await?, lakes.await?, borders.await?);
+        let job = if worker_supported() {
+            start_worker(&land_bytes, &lakes_bytes, map_width)
+                .map_err(|e| web_sys::console::warn_1(&e))
+                .ok()
+        } else {
+            None
+        };
+        let land = decode_layer(LAND, &land_bytes)?;
+        let lakes = decode_layer(LAKES, &lakes_bytes)?;
+        let borders = decode_layer(BORDERS, &borders_bytes)?;
         // Coastlines are the outlines of land and of lakes.
         let coast: Vec<Shape> = land.iter().chain(&lakes).map(Shape::clone).collect();
-        Ok(Layers {
-            land: to_path(&land)?,
-            lakes: to_path(&lakes)?,
-            lines: LineSet {
-                coast: build_levels(&coast),
-                borders: build_levels(&borders),
+        let lines = LineSet {
+            coast: build_levels(&coast),
+            borders: build_levels(&borders),
+        };
+        let tiles = match job {
+            Some((worker, promise)) => match finish_worker(worker, promise, map_width).await {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    web_sys::console::warn_2(
+                        &"map worker failed, drawing on the main thread:".into(),
+                        &e,
+                    );
+                    None
+                }
             },
+            None => None,
+        };
+        Ok(Layers {
+            land,
+            lakes,
+            tiles,
+            lines,
         })
     }
 
@@ -237,38 +341,91 @@ impl Layers {
         &self.lines
     }
 
-    /// Draw one tile of a `map_w × map_h` equirectangular map whose left edge
-    /// sits `x_offset` pixels from the antimeridian, into `canvas`.
-    pub fn draw_tile(
-        &self,
-        canvas: &HtmlCanvasElement,
-        map_w: f64,
-        map_h: f64,
-        x_offset: f64,
-    ) -> Result<(), JsValue> {
-        let ctx: CanvasRenderingContext2d = canvas
-            .get_context("2d")?
-            .ok_or("2d canvas unavailable")?
-            .dyn_into()?;
-        let (w, h) = (canvas.width() as f64, canvas.height() as f64);
+    /// Fill the bound `R8` texture (`map_w × map_h`, row 0 at the north) with
+    /// the land mask: from the worker's pixels when they match this size,
+    /// otherwise by drawing on the main thread, in two square halves so no
+    /// canvas exceeds the 16.7 MP limit some mobile browsers enforce.
+    pub fn fill_texture(&self, gl: &GL, map_w: u32, map_h: u32) -> Result<(), JsValue> {
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        match &self.tiles {
+            Some(t) if t.width == map_w => {
+                for (half, x) in t.halves.iter().zip([0, map_h]) {
+                    gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
+                        GL::TEXTURE_2D,
+                        0,
+                        x as i32,
+                        0,
+                        map_h as i32,
+                        map_h as i32,
+                        GL::RED,
+                        GL::UNSIGNED_BYTE,
+                        Some(half),
+                    )?;
+                }
+                Ok(())
+            }
+            _ => self.fill_texture_on_main_thread(gl, map_w, map_h),
+        }
+    }
 
-        ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
-        ctx.set_global_composite_operation("source-over")?;
-        ctx.set_fill_style_str("#000");
-        ctx.fill_rect(0.0, 0.0, w, h);
-
-        // lon/lat degrees → pixels: x = (lon + 180) · sx − offset, y = (90 − lat) · sy
-        let sx = map_w / 360.0;
-        let sy = map_h / 180.0;
-        ctx.set_transform(sx, 0.0, 0.0, -sy, 180.0 * sx - x_offset, 90.0 * sy)?;
-
-        ctx.set_fill_style_str("#f00");
-        ctx.fill_with_path_2d_and_winding(&self.land, CanvasWindingRule::Evenodd);
-        ctx.set_fill_style_str("#000");
-        ctx.fill_with_path_2d_and_winding(&self.lakes, CanvasWindingRule::Nonzero);
-
+    fn fill_texture_on_main_thread(&self, gl: &GL, map_w: u32, map_h: u32) -> Result<(), JsValue> {
+        let doc = web_sys::window()
+            .ok_or("no window")?
+            .document()
+            .ok_or("no document")?;
+        let tile: HtmlCanvasElement = doc.create_element("canvas")?.dyn_into()?;
+        tile.set_width(map_h);
+        tile.set_height(map_h);
+        let (land, lakes) = (to_path(&self.land)?, to_path(&self.lakes)?);
+        for x in [0, map_h] {
+            draw_tile(&tile, &land, &lakes, map_w as f64, map_h as f64, x as f64)?;
+            gl.tex_sub_image_2d_with_u32_and_u32_and_html_canvas_element(
+                GL::TEXTURE_2D,
+                0,
+                x as i32,
+                0,
+                GL::RED,
+                GL::UNSIGNED_BYTE,
+                &tile,
+            )?;
+        }
         Ok(())
     }
+}
+
+/// Draw one tile of a `map_w × map_h` equirectangular map whose left edge
+/// sits `x_offset` pixels from the antimeridian, into `canvas`. The worker
+/// (`assets/raster-worker.js`) makes the same calls; keep them in sync.
+fn draw_tile(
+    canvas: &HtmlCanvasElement,
+    land: &Path2d,
+    lakes: &Path2d,
+    map_w: f64,
+    map_h: f64,
+    x_offset: f64,
+) -> Result<(), JsValue> {
+    let ctx: CanvasRenderingContext2d = canvas
+        .get_context("2d")?
+        .ok_or("2d canvas unavailable")?
+        .dyn_into()?;
+    let (w, h) = (canvas.width() as f64, canvas.height() as f64);
+
+    ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
+    ctx.set_global_composite_operation("source-over")?;
+    ctx.set_fill_style_str("#000");
+    ctx.fill_rect(0.0, 0.0, w, h);
+
+    // lon/lat degrees → pixels: x = (lon + 180) · sx − offset, y = (90 − lat) · sy
+    let sx = map_w / 360.0;
+    let sy = map_h / 180.0;
+    ctx.set_transform(sx, 0.0, 0.0, -sy, 180.0 * sx - x_offset, 90.0 * sy)?;
+
+    ctx.set_fill_style_str("#f00");
+    ctx.fill_with_path_2d_and_winding(land, CanvasWindingRule::Evenodd);
+    ctx.set_fill_style_str("#000");
+    ctx.fill_with_path_2d_and_winding(lakes, CanvasWindingRule::Nonzero);
+
+    Ok(())
 }
 
 #[cfg(test)]
