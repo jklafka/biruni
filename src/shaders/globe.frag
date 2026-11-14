@@ -8,7 +8,8 @@ uniform vec2 u_res;           // framebuffer size, device pixels
 uniform float u_dist;         // camera distance from globe center, radii
 uniform float u_tanHalfFov;   // across the shorter screen axis
 uniform mat3 u_rot;           // camera space -> world space
-uniform sampler2D u_map;      // R = land mask, G = borders
+uniform sampler2D u_map;      // R = land mask (lakes cut out)
+uniform sampler2D u_lines;    // RG8, screen-sized: R = coastlines, G = borders (line pass)
 uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
@@ -81,7 +82,9 @@ void main() {
     float u = fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2;
     vec2 uv = vec2(u, 0.5 - lat / PI);
 
-    vec2 m = texture(u_map, uv).rg * u_hasMap;
+    float m = texture(u_map, uv).r * u_hasMap;
+    // Vector coastlines (R) and borders (G), drawn at constant pixel width.
+    vec2 ln = texelFetch(u_lines, ivec2(gl_FragCoord.xy), 0).rg;
 
     // When the map is magnified, threshold the bilinear mask at 0.5 for crisp
     // vector-like edges. When minified, the mipmapped value already is an
@@ -89,9 +92,8 @@ void main() {
     vec2 texSize = vec2(textureSize(u_map, 0));
     float texelsPerPx = max(fwidth(uv.x) * texSize.x, fwidth(uv.y) * texSize.y);
     float sharpen = (1.0 - smoothstep(0.6, 1.6, texelsPerPx)) * u_hasMap;
-    float fw = max(fwidth(m.r), 1e-4);
-    float land = mix(m.r, smoothstep(0.5 - fw, 0.5 + fw, m.r), sharpen);
-    float coast = (1.0 - smoothstep(0.5 * fw, 1.6 * fw, abs(m.r - 0.5))) * sharpen;
+    float fw = max(fwidth(m), 1e-4);
+    float land = mix(m, smoothstep(0.5 - fw, 0.5 + fw, m), sharpen);
 
     float latDeg = lat * 180.0 / PI;
     float alat = abs(latDeg);
@@ -110,9 +112,7 @@ void main() {
         borderMix = 0.8;
     }
 
-    float fwg = max(fwidth(m.g), 1e-4);
-    float borderLine = smoothstep(0.5 - fwg, 0.5 + fwg, m.g);
-    float border = mix(m.g, borderLine, sharpen) * land;
+    float border = ln.g * land;
     ground = mix(ground, borderCol, border * borderMix);
 
     // Highlighted country: bilinear blend of "texel is this country" so the
@@ -137,7 +137,7 @@ void main() {
     }
 
     vec3 col = mix(ocean, ground, land);
-    col = mix(col, COAST, coast * 0.35);
+    col = mix(col, COAST, ln.r * 0.35);
 
     // Graticule with constant on-screen width; meridians fade near the poles
     // where they converge.

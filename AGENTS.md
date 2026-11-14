@@ -13,8 +13,9 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/camera.rs` | Orbit camera math: picking, projection, panning, zoom anchoring |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`) and rasterizes them into the map texture with Canvas 2D |
-| `src/render.rs` | WebGL2 setup, shader compilation, texture upload, draw call |
-| `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. |
+| `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
+| `src/render.rs` | WebGL2 setup, shader compilation, texture upload, line pass and globe draw call |
+| `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. `line.vert`/`line.frag` draw coastlines and borders as screen-space-width lines into an offscreen target that `globe.frag` reads. |
 | `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin` |
@@ -100,13 +101,13 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 - Write GLSL ES 3.00 for WebGL2. Don't rely on extensions without a fallback.
 - Don't return early in the fragment shader before `fwidth`, `dFdx` or `dFdy`, or before implicit-LOD `texture()` calls. Derivatives need every pixel in the 2×2 quad to follow the same path.
-- Keep line widths, such as the graticule, coast and borders, constant on screen by scaling with `fwidth`, not by world units.
+- Keep line widths, such as the graticule, coast and borders, constant on screen. The graticule scales with `fwidth`. Coast and borders are vector segments whose width is set in pixels in `line.vert`; their camera math must match `globe.frag`.
 - Watch the longitude seam at ±180°. Mipmapped lookups use the two-parameterization trick (`u1`/`u2`) to avoid a visible seam.
 
 ### Rendering and performance
 
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
-- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 RG8 with mipmaps (about 85 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 21 MB) plus a 2048-wide ID raster (2 MB), 23 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
+- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB), 13 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
 - Rasterize on canvases of 4096×4096 or smaller, because some mobile browsers cap a canvas at 16.7 MP. That's why the map is drawn in two halves.
 - Debounce `history.replaceState` (see `hash_stale` and `last_hash`), because Safari throttles it.
 

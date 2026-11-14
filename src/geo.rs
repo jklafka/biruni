@@ -1,21 +1,22 @@
 //! Loading GeoJSON and rasterizing it into an equirectangular map texture.
 //!
-//! The texture packs two layers into the red and green channels:
-//! * R — land mask (lakes cut out), sampled with a 0.5 threshold for crisp
-//!   coastlines at any zoom.
-//! * G — country borders.
+//! The map texture is a single `R8` channel: the land mask with lakes cut
+//! out, sampled with a 0.5 threshold for crisp fills at any zoom. Coastlines
+//! and country borders are not baked in; they are kept as vector geometry
+//! (see [`crate::lines`]) and drawn as constant-width lines.
 //!
 //! Layers are fetched in a compact binary format (see [`decode_shapes`]),
 //! produced from the Natural Earth GeoJSON in `data-src/` by
 //! `scripts/convert_geojson.py`. The GeoJSON parser stays as the reference the
 //! tests compare the binary files against.
 
+use crate::lines::{build_levels, LineSet};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement, Path2d, Response};
 
 /// A polyline or polygon ring in lon/lat degrees.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
     pub points: Vec<[f64; 2]>,
     /// Polygon rings are closed; line strings are not.
@@ -178,7 +179,7 @@ pub fn decode_shapes(data: &[u8]) -> Result<Vec<Shape>, String> {
 pub struct Layers {
     land: Path2d,
     lakes: Path2d,
-    borders: Path2d,
+    lines: LineSet,
 }
 
 pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
@@ -193,11 +194,14 @@ pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     Ok(js_sys::Uint8Array::new(&buf).to_vec())
 }
 
-async fn fetch_path(url: &str) -> Result<Path2d, JsValue> {
+async fn fetch_shapes(url: &str) -> Result<Vec<Shape>, JsValue> {
     let bytes = fetch_bytes(url).await?;
-    let shapes = decode_shapes(&bytes).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))?;
+    decode_shapes(&bytes).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))
+}
+
+fn to_path(shapes: &[Shape]) -> Result<Path2d, JsValue> {
     let path = Path2d::new()?;
-    for shape in &shapes {
+    for shape in shapes {
         let [x0, y0] = shape.points[0];
         path.move_to(x0, y0);
         for &[x, y] in &shape.points[1..] {
@@ -212,14 +216,25 @@ async fn fetch_path(url: &str) -> Result<Path2d, JsValue> {
 
 impl Layers {
     pub async fn load() -> Result<Layers, JsValue> {
-        let land = fetch_path("data/ne_50m_land.bin");
-        let lakes = fetch_path("data/ne_50m_lakes.bin");
-        let borders = fetch_path("data/ne_50m_admin_0_boundary_lines_land.bin");
+        let land = fetch_shapes("data/ne_50m_land.bin");
+        let lakes = fetch_shapes("data/ne_50m_lakes.bin");
+        let borders = fetch_shapes("data/ne_50m_admin_0_boundary_lines_land.bin");
+        let (land, lakes, borders) = (land.await?, lakes.await?, borders.await?);
+        // Coastlines are the outlines of land and of lakes.
+        let coast: Vec<Shape> = land.iter().chain(&lakes).map(Shape::clone).collect();
         Ok(Layers {
-            land: land.await?,
-            lakes: lakes.await?,
-            borders: borders.await?,
+            land: to_path(&land)?,
+            lakes: to_path(&lakes)?,
+            lines: LineSet {
+                coast: build_levels(&coast),
+                borders: build_levels(&borders),
+            },
         })
+    }
+
+    /// Vector coastlines and borders for the line pass.
+    pub fn lines(&self) -> &LineSet {
+        &self.lines
     }
 
     /// Draw one tile of a `map_w × map_h` equirectangular map whose left edge
@@ -252,12 +267,6 @@ impl Layers {
         ctx.set_fill_style_str("#000");
         ctx.fill_with_path_2d_and_winding(&self.lakes, CanvasWindingRule::Nonzero);
 
-        ctx.set_global_composite_operation("lighter")?;
-        ctx.set_stroke_style_str("#0f0");
-        ctx.set_line_width(1.25 / sx);
-        ctx.set_line_join("round");
-        ctx.set_line_cap("round");
-        ctx.stroke_with_path(&self.borders);
         Ok(())
     }
 }
