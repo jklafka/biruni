@@ -2,6 +2,7 @@
 
 use crate::camera::{Camera, TAN_HALF_FOV};
 use crate::geo::Layers;
+use crate::view::Layer;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlTexture,
@@ -24,6 +25,7 @@ struct Uniforms {
     has_map: Option<WebGlUniformLocation>,
     grid_step: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
+    layer: Option<WebGlUniformLocation>,
 }
 
 pub struct Renderer {
@@ -33,6 +35,7 @@ pub struct Renderer {
     uniforms: Uniforms,
     map: WebGlTexture,
     has_map: bool,
+    layer: Layer,
 }
 
 impl Renderer {
@@ -59,6 +62,7 @@ impl Renderer {
             has_map: u("u_hasMap"),
             grid_step: u("u_gridStep"),
             dpr: u("u_dpr"),
+            layer: u("u_layer"),
         };
         let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
 
@@ -87,6 +91,7 @@ impl Renderer {
             uniforms,
             map,
             has_map: false,
+            layer: Layer::default(),
         })
     }
 
@@ -173,6 +178,10 @@ impl Renderer {
         Ok(())
     }
 
+    pub fn set_layer(&mut self, layer: Layer) {
+        self.layer = layer;
+    }
+
     pub fn draw(&self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
         let gl = &self.gl;
         let u = &self.uniforms;
@@ -185,6 +194,7 @@ impl Renderer {
         gl.uniform1f(u.has_map.as_ref(), if self.has_map { 1.0 } else { 0.0 });
         gl.uniform1f(u.grid_step.as_ref(), camera.grid_step_deg() as f32);
         gl.uniform1f(u.dpr.as_ref(), dpr as f32);
+        gl.uniform1i(u.layer.as_ref(), self.layer.shader_index());
         gl.active_texture(GL::TEXTURE0);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.map));
         gl.uniform1i(u.map.as_ref(), 0);
@@ -246,6 +256,7 @@ mod tests {
             "u_hasMap",
             "u_gridStep",
             "u_dpr",
+            "u_layer",
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");

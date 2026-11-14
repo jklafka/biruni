@@ -92,6 +92,31 @@
         -webkit-backdrop-filter: blur(8px);
       }
       #controls button:hover { background: rgba(40, 56, 88, 0.85); }
+      #layers {
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        pointer-events: auto;
+      }
+      #layers button {
+        min-height: 36px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        cursor: pointer;
+      }
+      #layers button:hover { color: var(--text); }
+      #layers button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
+      #layers button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      @media (max-width: 520px) {
+        #title p { display: none; }
+        #layers { top: 64px; left: 16px; right: auto; }
+      }
       #loading {
         top: 50%;
         left: 50%;
@@ -114,6 +139,10 @@
       <div id="hud-scale" style="display: none" title="Click to switch km / mi (U)">
         <span id="hud-scale-bar"></span><span id="hud-scale-label"></span>
       </div>
+    </div>
+    <div id="layers" class="panel" role="group" aria-label="Map layer">
+      <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
+      <button id="layer-mono" aria-pressed="false" title="Monochrome (2)">Monochrome</button>
     </div>
     <div id="controls">
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>

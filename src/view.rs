@@ -6,6 +6,55 @@ use crate::camera::{wrap_angle, Camera, EARTH_RADIUS_KM, MAX_ALT, MIN_ALT};
 /// Default view: latitude°, longitude°, altitude in globe radii.
 pub const HOME: (f64, f64, f64) = (25.0, 0.0, 2.4);
 
+/// A selectable map style. Add new layers here, to `ALL`, and to the shader.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Layer {
+    /// Land, lakes and country borders in natural colors.
+    #[default]
+    Political,
+    /// Dark, low-color style that makes borders stand out.
+    Monochrome,
+}
+
+impl Layer {
+    pub const ALL: [Layer; 2] = [Layer::Political, Layer::Monochrome];
+
+    /// Short identifier used in the URL hash and in element ids.
+    pub fn id(self) -> &'static str {
+        match self {
+            Layer::Political => "political",
+            Layer::Monochrome => "mono",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Layer> {
+        Layer::ALL.into_iter().find(|l| l.id() == id.trim())
+    }
+
+    /// Value of the `u_layer` uniform in `globe.frag`.
+    pub fn shader_index(self) -> i32 {
+        match self {
+            Layer::Political => 0,
+            Layer::Monochrome => 1,
+        }
+    }
+
+    /// The layer after this one, wrapping around.
+    pub fn next(self) -> Layer {
+        let i = Layer::ALL.iter().position(|l| *l == self).unwrap_or(0);
+        Layer::ALL[(i + 1) % Layer::ALL.len()]
+    }
+}
+
+/// Layer named by `&layer=<id>` in a hash. Unknown or missing means `None`.
+pub fn parse_hash_layer(hash: &str) -> Option<Layer> {
+    hash.trim_start_matches('#')
+        .split('&')
+        .skip(1)
+        .find_map(|kv| kv.strip_prefix("layer="))
+        .and_then(Layer::from_id)
+}
+
 /// Latitude/longitude (radians) as e.g. `48.86° N  2.35° E`.
 pub fn format_lat_lon(lat: f64, lon: f64) -> String {
     let (lat, lon) = (lat.to_degrees(), wrap_angle(lon).to_degrees());
@@ -115,23 +164,27 @@ pub fn scale_bar(cam: &Camera, units: Units, max_px: f64) -> Option<ScaleBar> {
     })
 }
 
-/// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`.
-pub fn format_view_hash(c: &Camera) -> String {
-    format!(
+/// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`. A non-default layer
+/// is appended as `&layer=<id>`.
+pub fn format_view_hash(c: &Camera, layer: Layer) -> String {
+    let mut hash = format!(
         "#{:.4},{:.4},{:.0}",
         c.lat.to_degrees(),
         wrap_angle(c.lon).to_degrees(),
         c.alt * EARTH_RADIUS_KM
-    )
+    );
+    if layer != Layer::default() {
+        hash.push_str("&layer=");
+        hash.push_str(layer.id());
+    }
+    hash
 }
 
 /// Parse a view hash. Altitude is optional; out-of-range values are clamped
 /// and anything malformed yields `None`.
 pub fn parse_view_hash(hash: &str) -> Option<Camera> {
-    let mut parts = hash
-        .trim_start_matches('#')
-        .split(',')
-        .map(|p| p.trim().parse::<f64>());
+    let view = hash.trim_start_matches('#').split('&').next().unwrap_or("");
+    let mut parts = view.split(',').map(|p| p.trim().parse::<f64>());
     let lat = parts.next()?.ok()?;
     let lon = parts.next()?.ok()?;
     let alt_km = match parts.next() {
@@ -234,12 +287,67 @@ mod tests {
     #[test]
     fn hash_round_trip() {
         let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
-        let hash = format_view_hash(&c);
+        let hash = format_view_hash(&c, Layer::Political);
         assert_eq!(hash, "#46.8000,8.2000,600");
         let back = parse_view_hash(&hash).unwrap();
         assert!(close(back.lat, c.lat, 1e-6));
         assert!(close(back.lon, c.lon, 1e-6));
         assert!(close(back.alt, c.alt, 1e-6));
+    }
+
+    #[test]
+    fn layer_ids_round_trip() {
+        for l in Layer::ALL {
+            assert_eq!(Layer::from_id(l.id()), Some(l));
+        }
+        assert_eq!(Layer::from_id("nope"), None);
+        assert_eq!(Layer::from_id(""), None);
+    }
+
+    #[test]
+    fn layer_next_cycles_through_all() {
+        let mut l = Layer::default();
+        for _ in 0..Layer::ALL.len() {
+            l = l.next();
+        }
+        assert_eq!(l, Layer::default());
+        assert_ne!(Layer::Political.next(), Layer::Political);
+    }
+
+    #[test]
+    fn shader_indices_are_unique() {
+        let mut seen: Vec<i32> = Layer::ALL.iter().map(|l| l.shader_index()).collect();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), Layer::ALL.len());
+    }
+
+    #[test]
+    fn hash_carries_layer() {
+        let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
+        // Default layer keeps the old, shorter URL form.
+        assert_eq!(
+            format_view_hash(&c, Layer::Political),
+            "#46.8000,8.2000,600"
+        );
+        let hash = format_view_hash(&c, Layer::Monochrome);
+        assert_eq!(hash, "#46.8000,8.2000,600&layer=mono");
+        assert_eq!(parse_hash_layer(&hash), Some(Layer::Monochrome));
+        let back = parse_view_hash(&hash).unwrap();
+        assert!(close(back.alt, c.alt, 1e-6));
+    }
+
+    #[test]
+    fn hash_layer_edge_cases() {
+        assert_eq!(parse_hash_layer("#1,2,3"), None);
+        assert_eq!(parse_hash_layer("#1,2,3&layer=bogus"), None);
+        assert_eq!(
+            parse_hash_layer("#1,2&foo=1&layer=mono"),
+            Some(Layer::Monochrome)
+        );
+        assert_eq!(parse_hash_layer(""), None);
+        assert!(parse_view_hash("#1,2&layer=mono").is_some());
+        assert!(parse_view_hash("#&layer=mono").is_none());
     }
 
     #[test]
