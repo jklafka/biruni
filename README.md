@@ -23,7 +23,7 @@ Every pull request runs CI (format, clippy, tests, shader validation, a release 
 
 ## Visual regression tests
 
-`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at four fixed views set by the URL hash: the whole globe, mid zoom, closest zoom and the antimeridian. It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
+`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at five fixed views set by the URL hash: the whole globe, mid zoom, closest zoom, the antimeridian and the monochrome layer. It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
 
 ```sh
 trunk build --release

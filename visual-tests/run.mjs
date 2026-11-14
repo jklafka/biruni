@@ -31,6 +31,7 @@ const VIEWS = [
   { name: "mid-zoom", hash: "#38.5,22.5,1500" },
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
+  { name: "mono-mid-zoom", hash: "#38.5,22.5,1500&layer=mono" },
 ];
 
 const MIME = {
