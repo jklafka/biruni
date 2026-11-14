@@ -61,8 +61,9 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 2. **Clippy:** `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo clippy --all-targets -- -D warnings`
 3. **Test:** `cargo test --all-targets`
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
-5. **Build:** `trunk build --release`
-6. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
+5. **Data:** `scripts/check-data.sh` (generated files in `assets/data/` match `data-src/`)
+6. **Build:** `trunk build --release`
+7. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
    `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, push your branch, wait for CI, then run `scripts/update-baselines.sh <PR number>` (add `--push` to push). It copies `actual/*.png` from the PR's `visual-screenshots` CI artifact into `visual-tests/baselines/` and commits them as you. Review the new PNGs before pushing (see README). Shared build steps live in `.github/actions/`, so `ci.yml` stays consistent.
 
 Don't weaken or skip a check to get a PR through. Fix the cause. If a check really is wrong, change it in its own PR and explain why.
@@ -124,6 +125,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 - Map data comes from [Natural Earth](https://www.naturalearthdata.com/) (1:50m), which is public domain. If you add another dataset, check that its license allows redistribution, and credit it in `README.md`.
 - Edit the GeoJSON in `data-src/`, never the `.bin` files. After changing it, or the format, run `python3 scripts/convert_geojson.py` and commit the regenerated `assets/data/*.bin`. If you change the format, update `decode_shapes`, the script, the format doc in `geo.rs` and the decoder in `assets/raster-worker.js` together and bump the version byte.
+- CI (job "Data") runs `scripts/check-data.sh`, which regenerates everything into a temp dir and compares it byte-for-byte with `assets/data/` (`*.bin`, `places.tsv`, `labels.tsv`). Run it locally before opening a PR that touches `data-src/` or `scripts/`. The converter is stdlib-only Python 3 and must stay deterministic across platforms (no reliance on dict/set order, locale or newline translation; write bytes). `data-src/ne_50m_marine_label_points.geojson` is a committed source: `scripts/marine_label_points.py` needs a separate Natural Earth download, so it is not part of the check.
 - Keep large data out of the wasm binary. Fetch it at runtime from `assets/` instead of using `include_str!`/`include_bytes!`.
 - If you change data files or how they are loaded, note the download size in the PR.
 
