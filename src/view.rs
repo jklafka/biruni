@@ -73,6 +73,9 @@ pub fn parse_hash_layer(hash: &str) -> Option<Layer> {
 /// Latitude/longitude (radians) as e.g. `48.86° N  2.35° E`.
 pub fn format_lat_lon(lat: f64, lon: f64) -> String {
     let (lat, lon) = (lat.to_degrees(), wrap_angle(lon).to_degrees());
+    // Round first so a value that prints as 0.00 never gets an S or W.
+    let round = |v: f64| (v * 100.0).round() / 100.0;
+    let (lat, lon) = (round(lat), round(lon));
     format!(
         "{:.2}° {}  {:.2}° {}",
         lat.abs(),
@@ -340,6 +343,18 @@ mod tests {
         assert_eq!(
             format_lat_lon((-33.8688f64).to_radians(), (-70.6693f64).to_radians()),
             "33.87° S  70.67° W"
+        );
+    }
+
+    #[test]
+    fn lat_lon_zero_has_no_sign() {
+        assert_eq!(format_lat_lon(0.0, 0.0), "0.00° N  0.00° E");
+        assert_eq!(format_lat_lon(-0.0, -0.0), "0.00° N  0.00° E");
+        let tiny = (-0.001f64).to_radians();
+        assert_eq!(format_lat_lon(tiny, tiny), "0.00° N  0.00° E");
+        assert_eq!(
+            format_lat_lon((-0.01f64).to_radians(), (-0.01f64).to_radians()),
+            "0.01° S  0.01° W"
         );
     }
 

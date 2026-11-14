@@ -147,12 +147,14 @@ impl Measure {
     }
 
     pub fn total_km(&self) -> f64 {
-        self.legs_km().iter().sum()
+        // `Iterator::sum` of no floats is -0.0, which printed as "-0.0 km".
+        self.legs_km().iter().fold(0.0, |a, b| a + b)
     }
 }
 
 /// Distance as text with thousands separators, e.g. `5,570 km` or
-/// `3,461 mi`. Below 10 shows one decimal; non-finite shows an em dash.
+/// `3,461 mi`. Below 10 shows one decimal, and zero shows
+/// `0 km`; non-finite shows an em dash.
 pub fn format_distance(km: f64, units: Units) -> String {
     if !km.is_finite() || km < 0.0 {
         return "—".into();
@@ -162,6 +164,11 @@ pub fn format_distance(km: f64, units: Units) -> String {
         Units::Imperial => (km / KM_PER_MILE, "mi"),
     };
     if v < 10.0 {
+        // Zero (including -0.0 from `0.0 * -1.0` style arithmetic) and
+        // values that round to 0.0 print as a plain "0".
+        if (v * 10.0).round() == 0.0 {
+            return format!("0 {unit}");
+        }
         return format!("{v:.1} {unit}");
     }
     let digits = (v.round() as u64).to_string();
@@ -370,11 +377,30 @@ mod tests {
     fn distance_text() {
         assert_eq!(format_distance(5570.4, Units::Metric), "5,570 km");
         assert_eq!(format_distance(1_234_567.0, Units::Metric), "1,234,567 km");
-        assert_eq!(format_distance(0.0, Units::Metric), "0.0 km");
+        assert_eq!(format_distance(0.0, Units::Metric), "0 km");
+        assert_eq!(format_distance(0.0, Units::Imperial), "0 mi");
+        assert_eq!(format_distance(-0.0, Units::Metric), "0 km");
+        assert_eq!(format_distance(-0.0, Units::Imperial), "0 mi");
+        assert_eq!(format_distance(0.04, Units::Metric), "0 km");
+        assert_eq!(format_distance(0.05, Units::Metric), "0.1 km");
+        assert_eq!(format_distance(2.5, Units::Metric), "2.5 km");
         assert_eq!(format_distance(5570.0, Units::Imperial), "3,461 mi");
         assert_eq!(format_distance(f64::NAN, Units::Metric), "—");
         assert_eq!(format_distance(f64::INFINITY, Units::Imperial), "—");
         assert_eq!(format_distance(-1.0, Units::Metric), "—");
+    }
+
+    #[test]
+    fn single_point_total_has_no_negative_zero() {
+        let mut m = Measure::default();
+        assert!(m.add(0.3, 0.4));
+        let total = m.total_km();
+        assert!(total.is_sign_positive());
+        for units in [Units::Metric, Units::Imperial] {
+            let text = format_distance(total, units);
+            assert!(!text.contains('-'), "{text}");
+            assert!(text.starts_with("0 "), "{text}");
+        }
     }
 
     fn cam(lat: f64, lon: f64, alt: f64) -> Camera {

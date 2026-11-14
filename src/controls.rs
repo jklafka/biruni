@@ -17,6 +17,11 @@ use std::f64::consts::PI;
 
 /// A press that moves less than this many CSS pixels is a tap, not a drag.
 pub const TAP_SLOP_PX: f64 = 6.0;
+/// How long (ms) a tap waits for a second tap before it is confirmed as a
+/// single click. Matches the usual OS double-click interval.
+pub const DOUBLE_CLICK_MS: f64 = 350.0;
+/// A second tap within this many pixels of the first makes a double tap.
+const DOUBLE_TAP_SLOP_PX: f64 = 30.0;
 /// Arrow-key impulse in CSS pixels per millisecond; decays via inertia.
 pub const NUDGE_SPEED: f64 = 0.6;
 /// A pause this long (ms) between the last move and release cancels the fling.
@@ -115,6 +120,10 @@ pub struct Response {
     pub render: bool,
     /// A lone press was released in place: a click at these screen coordinates.
     pub tap: Option<(f64, f64)>,
+    /// A tap that no second tap or double-click followed within
+    /// `DOUBLE_CLICK_MS`: a definite single click. Slow actions (country
+    /// info) use this; instant ones (measure points) use `tap`.
+    pub single_tap: Option<(f64, f64)>,
 }
 
 struct Pointer {
@@ -155,6 +164,8 @@ pub struct Controls {
     velocity: (f64, f64),
     last_move_ms: f64,
     press: Option<Press>,
+    /// The last tap, waiting out the double-click interval: position and age (ms).
+    pending_tap: Option<(f64, f64, f64)>,
     /// Twist accumulated by the current two-finger gesture, radians.
     twist_acc: f64,
     /// The twist has passed `TWIST_START`, so it now turns the view.
@@ -205,6 +216,7 @@ impl Controls {
             velocity: (0.0, 0.0),
             last_move_ms: 0.0,
             press: None,
+            pending_tap: None,
             twist_acc: 0.0,
             twisting: false,
         }
@@ -245,6 +257,14 @@ impl Controls {
             }
             Event::PointerUp { id, t, cancel } => {
                 out.tap = self.pointer_up(id, t, cancel);
+                if let Some((x, y)) = out.tap {
+                    // A second tap close to a waiting one is a double tap:
+                    // neither is a single click. Otherwise start waiting.
+                    let second = self
+                        .pending_tap
+                        .is_some_and(|(px, py, _)| (x - px).hypot(y - py) <= DOUBLE_TAP_SLOP_PX);
+                    self.pending_tap = if second { None } else { Some((x, y, 0.0)) };
+                }
                 out.render = true;
             }
             Event::Wheel {
@@ -265,12 +285,23 @@ impl Controls {
                 self.zoom(cam, factor, Some((x, y)));
                 out.render = true;
             }
-            Event::Tick { dt } => out.render = self.tick(cam, dt),
+            Event::Tick { dt } => {
+                out.render = self.tick(cam, dt);
+                if let Some((x, y, age)) = self.pending_tap {
+                    if age + dt >= DOUBLE_CLICK_MS {
+                        self.pending_tap = None;
+                        out.single_tap = Some((x, y));
+                    } else {
+                        self.pending_tap = Some((x, y, age + dt));
+                    }
+                }
+            }
             Event::Zoom { factor, toward } => {
                 self.zoom(cam, factor, toward);
                 out.render = true;
             }
             Event::DoubleClick { x, y, shift } => {
+                self.pending_tap = None;
                 if let Some((lat, lon)) = cam.pick(x, y) {
                     let alt = cam.alt * if shift { 2.5 } else { 0.4 };
                     self.fly_to(cam, lat, lon, alt, None);
@@ -1060,6 +1091,84 @@ mod tests {
         assert!(k.flight.is_some());
         settle(&mut k, &mut c);
         assert!(sane(&c));
+    }
+
+    fn tap(k: &mut Controls, c: &mut Camera, x: f64, y: f64, t: f64) -> Response {
+        down(k, c, 1, x, y, t);
+        up(k, c, 1, t + 40.0)
+    }
+
+    /// Tick in 16 ms steps for `ms`, returning any confirmed single tap.
+    fn wait(k: &mut Controls, c: &mut Camera, ms: f64) -> Option<(f64, f64)> {
+        let mut found = None;
+        let mut elapsed = 0.0;
+        while elapsed < ms {
+            found = found.or(k.handle(c, Event::Tick { dt: 16.0 }).single_tap);
+            elapsed += 16.0;
+        }
+        found
+    }
+
+    #[test]
+    fn single_tap_confirms_after_the_double_click_window() {
+        let (mut c, mut k) = setup();
+        let r = tap(&mut k, &mut c, 100.0, 100.0, 0.0);
+        // The instant tap is still reported at once (measure mode).
+        assert_eq!(r.tap, Some((100.0, 100.0)));
+        assert_eq!(r.single_tap, None);
+        assert_eq!(wait(&mut k, &mut c, DOUBLE_CLICK_MS - 50.0), None);
+        assert_eq!(wait(&mut k, &mut c, 100.0), Some((100.0, 100.0)));
+        // Reported once only.
+        assert_eq!(wait(&mut k, &mut c, 1000.0), None);
+    }
+
+    #[test]
+    fn double_click_cancels_the_pending_single_tap() {
+        let (mut c, mut k) = setup();
+        tap(&mut k, &mut c, 600.0, 300.0, 0.0);
+        k.handle(
+            &mut c,
+            Event::DoubleClick {
+                x: 600.0,
+                y: 300.0,
+                shift: false,
+            },
+        );
+        assert_eq!(wait(&mut k, &mut c, 1000.0), None);
+    }
+
+    #[test]
+    fn double_tap_never_confirms_a_single_tap() {
+        let (mut c, mut k) = setup();
+        let r1 = tap(&mut k, &mut c, 100.0, 100.0, 0.0);
+        let r2 = tap(&mut k, &mut c, 104.0, 98.0, 120.0);
+        // Both taps are still reported instantly for measure mode.
+        assert!(r1.tap.is_some() && r2.tap.is_some());
+        assert_eq!(wait(&mut k, &mut c, 1000.0), None);
+        // A third tap starts over.
+        tap(&mut k, &mut c, 100.0, 100.0, 2000.0);
+        assert_eq!(wait(&mut k, &mut c, 1000.0), Some((100.0, 100.0)));
+    }
+
+    #[test]
+    fn taps_far_apart_or_far_in_time_are_two_single_taps() {
+        let (mut c, mut k) = setup();
+        tap(&mut k, &mut c, 100.0, 100.0, 0.0);
+        tap(&mut k, &mut c, 400.0, 300.0, 100.0);
+        assert_eq!(wait(&mut k, &mut c, 1000.0), Some((400.0, 300.0)));
+        tap(&mut k, &mut c, 100.0, 100.0, 5000.0);
+        assert_eq!(wait(&mut k, &mut c, 1000.0), Some((100.0, 100.0)));
+        tap(&mut k, &mut c, 100.0, 100.0, 9000.0);
+        assert_eq!(wait(&mut k, &mut c, 1000.0), Some((100.0, 100.0)));
+    }
+
+    #[test]
+    fn drags_never_confirm_a_single_tap() {
+        let (mut c, mut k) = setup();
+        down(&mut k, &mut c, 1, 100.0, 100.0, 0.0);
+        mv(&mut k, &mut c, 1, 160.0, 100.0, 10.0);
+        up(&mut k, &mut c, 1, 20.0);
+        assert_eq!(wait(&mut k, &mut c, 1000.0), None);
     }
 
     #[test]
