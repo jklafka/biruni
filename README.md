@@ -78,7 +78,7 @@ The HUD shows a scale bar (a round 1/2/5 × 10ⁿ distance) for the ground dista
 
 The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can link straight to a place, e.g. `#46.8,8.2,600`. A non-default layer is added as `&layer=<id>`, e.g. `#46.8,8.2,600&layer=mono`. Switching layers never moves the camera.
 
-The day/night terminator is off by default. `&sun=on` turns it on at load, and `&t=<unix seconds>` pins the sun to a fixed time instead of the clock (the visual tests use this so screenshots are deterministic). These two parameters are read at load only; the app does not write them back into the hash. While on, the sun follows the clock and is refreshed once a minute by a timer. That timer is the only work the app does while idle, and it only redraws when the terminator is on.
+The day/night terminator is off by default. `&sun=on` turns it on at load, and `&t=<unix seconds>` pins the sun to a fixed time instead of the clock (the visual tests use this so screenshots are deterministic). Both are read at load and again when you edit the hash by hand (a missing `sun` means off). The app writes them back: while the terminator is on, the hash and the share link include `&sun=on`, and `&t=` only if the time is pinned. In live-clock mode `t` is never written, so the hash does not change every minute. Turning the terminator off removes both from the hash, but a pinned time is remembered in the page and returns if you turn it back on. While on, the sun follows the clock and is refreshed once a minute by a timer. That timer is the only work the app does while idle, and it only redraws when the terminator is on.
 
 ## How it works
 
