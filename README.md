@@ -56,10 +56,14 @@ One-time setup for the repository owner:
 | Zoom | scroll wheel, trackpad pinch | pinch | `+` / `-` |
 | Fly to a point | double-click (shift + double-click zooms out) | double-tap | |
 | Reset view | ⟲ button | ⟲ button | `R` |
+| Country info | hover highlights a country; click opens the info panel | tap a country | `I` for the country at the view center |
+| Close the info panel | × button | × button | `Esc` |
 | Switch map layer | layer picker (top right; under the title on phones) | layer picker | `1`, `2`, or `L` to cycle |
 | Share a link to the current view | share button (bottom right) | share button (opens the share sheet where supported, else copies) | `S` |
 | Switch scale bar between km and mi | click the scale bar | tap the scale bar | `U` |
 | Measure distance | ruler button, then click points; the panel lists each leg and the total (km or mi, follows `U`) | ruler button, then tap points | `M` to start, `Enter` or `Space` to drop a point at the crosshair, `Backspace` to undo, `Esc` to clear and exit |
+
+Hovering a country (desktop) highlights it and shows its name in the HUD. Clicking or tapping a country opens a panel with its flag, name, continent, region, population and ISO codes; clicking the ocean, the × button or `Esc` closes it. Hover and click are ignored until the country data has loaded, which happens after the first frame. Tiny countries that are barely visible at the current zoom are hard to hit; zoom in.
 
 The HUD shows a scale bar (a round 1/2/5 × 10ⁿ distance) for the ground distance at the screen center. It is hidden when you are zoomed out far enough (above about 1 globe radius of altitude) that the scale varies too much across the view.
 
@@ -69,12 +73,13 @@ The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can 
 
 - **`src/camera.rs`**: an orbit camera that keeps north up. It handles picking (screen point → lat/lon), projection (lat/lon → screen point), and panning that makes the surface follow your cursor. When you zoom, the point under the cursor stays where it is.
 - **`src/geo.rs`**: fetches the compact binary layers (converted from [Natural Earth](https://www.naturalearthdata.com/) GeoJSON) and rasterizes them with Canvas 2D into an 8192×4096 equirectangular texture. The red channel holds land with lakes cut out; the green channel holds country borders.
-- **`src/render.rs`** and **`src/shaders/`**: WebGL2 draws one full-screen triangle. The fragment shader ray-traces the sphere for each pixel, converts the hit point to lat/lon, and samples the texture. Close up, it thresholds the mask so coastlines stay crisp. It also adds the graticule, lighting and atmosphere.
+- **`src/country.rs`**: decodes the country polygons and attribute table (also lazy-loaded), hit-tests a lat/lon against them (bounding-box prefilter, then even-odd point-in-polygon over outer rings and holes), and rasterizes a country ID per texel (`index + 1`, 4096×2048, one byte each) with a scanline fill. `src/info_panel.rs` fills the panel in `index.html`.
+- **`src/render.rs`** and **`src/shaders/`**: WebGL2 draws one full-screen triangle. The fragment shader ray-traces the sphere for each pixel, converts the hit point to lat/lon, and samples the texture. Close up, it thresholds the mask so coastlines stay crisp. It also adds the graticule, lighting and atmosphere. The country-ID raster is a second 8 MB `R8` texture; the shader tints the texels whose ID equals `u_highlight`, bilinearly blended so the edge stays smooth. Hover only changes that uniform, so it redraws once per country change, not per mouse move.
 - **`src/view.rs`**: formats the HUD text, picks the scale bar length, parses the URL hash, and defines the `Layer` enum. A layer is a shader palette selected by the `u_layer` uniform; layers that need their own data should lazy-load it on first selection.
 - **`src/main.rs`**: wires up the DOM, input events (pointer, wheel, keyboard) and the animation loop. The loop gives zoom easing, fly-to and pan inertia, and only redraws when something changes.
 
 ## Data
 
-Map data is from [Natural Earth](https://www.naturalearthdata.com/) (1:50m land, lakes and admin-0 boundary lines). It is in the public domain.
+Map data is from [Natural Earth](https://www.naturalearthdata.com/) (1:50m land, lakes, admin-0 boundary lines and admin-0 countries, whose names, ISO codes, continent, subregion and population estimate feed the info panel). It is in the public domain.
 
-The GeoJSON sources live in `data-src/`. The app downloads compact binary files (`assets/data/*.bin`, quantized to 1e-4° and delta/varint encoded, about 390 KB instead of 3.3 MB). After changing a source file, regenerate them with `python3 scripts/convert_geojson.py`; a test checks the committed files match the GeoJSON.
+The GeoJSON sources live in `data-src/`. The app downloads compact binary files (`assets/data/*.bin`, quantized to 1e-4° and delta/varint encoded, about 680 KB instead of 6.4 MB; the country file is about 290 KB, fetched after the first frame). After changing a source file, regenerate them with `python3 scripts/convert_geojson.py`; a test checks the committed files match the GeoJSON.

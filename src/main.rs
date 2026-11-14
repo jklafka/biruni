@@ -1,7 +1,9 @@
 //! Maps — an interactive globe written in Rust and compiled to WebAssembly.
 
 mod camera;
+mod country;
 mod geo;
+mod info_panel;
 mod measure;
 mod overlay;
 mod render;
@@ -28,6 +30,13 @@ type FrameLoop = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 
 struct Pointer {
     id: i32,
+    x: f64,
+    y: f64,
+}
+
+/// A lone pointer press that has not moved past `TAP_SLOP_PX` yet. Released
+/// in place it is a tap: it places a measure point or selects a country.
+struct Press {
     x: f64,
     y: f64,
 }
@@ -68,6 +77,18 @@ struct App {
     last_move_ms: f64,
     last_frame_ms: Option<f64>,
     cursor: Option<(f64, f64)>,
+    /// A primary press that may still turn out to be a click (not a drag).
+    press: Option<Press>,
+    /// The last pointer was a mouse, so the cursor position means hover.
+    mouse_hover: bool,
+    countries: Option<country::Countries>,
+    /// Country-ID raster, kept so a restored context can re-upload it.
+    ids: Option<Rc<Vec<u8>>>,
+    /// Country under the mouse cursor, and the one shown in the info panel.
+    hover: Option<usize>,
+    selected: Option<usize>,
+    info: info_panel::InfoPanel,
+    hud_country: HtmlElement,
     redraw: RedrawFlags,
     /// The URL hash needs to be rewritten once the view settles.
     hash_stale: bool,
@@ -88,9 +109,6 @@ struct App {
     measure: Measure,
     overlay: overlay::Overlay,
     measure_panel: overlay::Panel,
-    /// Where a single pointer went down in measure mode; a release near it
-    /// without dragging is a tap that places a point.
-    tap_start: Option<(f64, f64)>,
 }
 
 impl App {
@@ -103,7 +121,10 @@ impl App {
 
     fn context_restored(&mut self) {
         let layers = self.layers.clone();
-        match self.renderer.context_restored(layers.as_deref()) {
+        match self
+            .renderer
+            .context_restored(layers.as_deref(), self.ids.as_ref().map(|v| v.as_slice()))
+        {
             Ok(()) => {
                 if layers.is_some() {
                     let _ = self.status.class_list().add_1("hidden");
@@ -189,8 +210,10 @@ impl App {
             self.measure.exit();
         } else {
             self.measure.active = true;
+            self.select(None); // the info panel would overlap the measure panel
         }
         self.measure_changed();
+        self.update_hover();
     }
 
     fn measure_changed(&mut self) {
@@ -214,6 +237,59 @@ impl App {
     fn measure_undo(&mut self) {
         if self.measure.active && self.measure.undo() {
             self.measure_changed();
+        }
+    }
+
+    /// Whether a plain click or tap on the globe opens the country panel.
+    /// This is the one place to return false while another tool owns taps
+    /// on the globe (measure mode places points instead).
+    fn info_click_enabled(&self) -> bool {
+        !self.measure.active
+    }
+
+    /// Country at a screen point, once the country data has loaded.
+    fn country_at(&self, x: f64, y: f64) -> Option<usize> {
+        let (lat, lon) = self.camera.pick(x, y)?;
+        self.countries
+            .as_ref()?
+            .hit(lat.to_degrees(), lon.to_degrees())
+    }
+
+    /// Highlight follows the hovered country, else the selected one.
+    fn sync_highlight(&mut self) {
+        let id = self.hover.or(self.selected).map_or(0, |i| i as u8 + 1);
+        if self.renderer.set_highlight(id) {
+            self.redraw.mark_render();
+        }
+    }
+
+    /// Re-test the country under the mouse. Only a change redraws.
+    fn update_hover(&mut self) {
+        // Hover highlighting is off while measuring: the cursor is placing
+        // points there, and a tinted country would just be visual noise.
+        let hit = match self.cursor {
+            Some((x, y)) if self.mouse_hover && !self.measure.active => self.country_at(x, y),
+            _ => None,
+        };
+        if hit != self.hover {
+            self.hover = hit;
+            self.sync_highlight();
+            self.redraw.mark_hud();
+        }
+    }
+
+    /// Open the info panel for a country, or close it with `None`.
+    fn select(&mut self, country: Option<usize>) {
+        self.selected = country;
+        let c = country.and_then(|i| self.countries.as_ref()?.get(i));
+        self.info.show(c);
+        self.sync_highlight();
+    }
+
+    fn click(&mut self, x: f64, y: f64) {
+        if self.info_click_enabled() {
+            let hit = self.country_at(x, y);
+            self.select(hit);
         }
     }
 
@@ -292,6 +368,7 @@ impl App {
 
         let animating = self.step(dt);
         if animating {
+            self.update_hover(); // the globe moved under a still cursor
             self.redraw.mark_render();
         }
         let (draw, hud) = self.redraw.take();
@@ -327,6 +404,11 @@ impl App {
             .set_text_content(Some(&format_lat_lon(self.camera.lat, self.camera.lon)));
         self.hud_alt
             .set_text_content(Some(&format_altitude(self.camera.alt)));
+        let country = self
+            .hover
+            .and_then(|i| self.countries.as_ref()?.get(i))
+            .map_or("—", |c| c.name.as_str());
+        self.hud_country.set_text_content(Some(country));
         match scale_bar(&self.camera, self.units, SCALE_MAX_PX) {
             Some(bar) => {
                 let _ = self.hud_scale.style().set_property("display", "");
@@ -351,14 +433,20 @@ impl App {
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         self.stop_motion();
         self.pointers.retain(|p| p.id != e.pointer_id());
+        self.press = if self.pointers.is_empty() {
+            Some(Press {
+                x: e.client_x() as f64,
+                y: e.client_y() as f64,
+            })
+        } else {
+            None // a second finger makes this a pinch
+        };
         self.pointers.push(Pointer {
             id: e.pointer_id(),
             x: e.client_x() as f64,
             y: e.client_y() as f64,
         });
         self.pinch = None;
-        self.tap_start = (self.measure.active && self.pointers.len() == 1)
-            .then(|| (e.client_x() as f64, e.client_y() as f64));
         self.last_move_ms = self.now();
         let _ = self.canvas.class_list().add_1("dragging");
     }
@@ -366,13 +454,17 @@ impl App {
     fn pointer_move(&mut self, e: &PointerEvent) {
         let (x, y) = (e.client_x() as f64, e.client_y() as f64);
         self.cursor = Some((x, y));
+        self.mouse_hover = e.pointer_type() == "mouse";
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
-        if let Some((tx, ty)) = self.tap_start {
-            if (x - tx).hypot(y - ty) > TAP_SLOP_PX {
-                self.tap_start = None;
-            }
+        if self
+            .press
+            .as_ref()
+            .is_some_and(|p| (x - p.x).hypot(y - p.y) > TAP_SLOP_PX)
+        {
+            self.press = None;
         }
+        self.update_hover();
 
         let Some(idx) = self.pointers.iter().position(|p| p.id == e.pointer_id()) else {
             return;
@@ -419,16 +511,18 @@ impl App {
     }
 
     fn pointer_up(&mut self, e: &PointerEvent) {
-        if let Some((tx, ty)) = self.tap_start.take() {
-            let (x, y) = (e.client_x() as f64, e.client_y() as f64);
-            if e.type_() == "pointerup"
-                && self.pointers.len() == 1
-                && (x - tx).hypot(y - ty) <= TAP_SLOP_PX
-            {
-                self.measure_add_at(x, y);
+        self.pointers.retain(|p| p.id != e.pointer_id());
+        // The single tap detector: a lone press released near where it went
+        // down. Measure mode places a point; otherwise it selects a country.
+        if let Some(p) = self.press.take() {
+            if self.pointers.is_empty() && e.type_() == "pointerup" {
+                if self.measure.active {
+                    self.measure_add_at(p.x, p.y);
+                } else {
+                    self.click(p.x, p.y);
+                }
             }
         }
-        self.pointers.retain(|p| p.id != e.pointer_id());
         if self.pinch.is_some() || self.now() - self.last_move_ms > 80.0 {
             self.velocity = (0.0, 0.0); // no fling after a pinch or a pause
         }
@@ -524,6 +618,14 @@ fn start() -> Result<(), JsValue> {
         last_move_ms: 0.0,
         last_frame_ms: None,
         cursor: None,
+        press: None,
+        mouse_hover: false,
+        countries: None,
+        ids: None,
+        hover: None,
+        selected: None,
+        info: info_panel::InfoPanel::new(&doc)?,
+        hud_country: element(&doc, "hud-country")?,
         redraw: RedrawFlags::new(),
         hash_stale: false,
         last_hash: String::new(),
@@ -540,7 +642,6 @@ fn start() -> Result<(), JsValue> {
         measure: Measure::default(),
         overlay,
         measure_panel,
-        tap_start: None,
     }));
 
     app.borrow_mut().set_layer(initial_layer);
@@ -577,6 +678,7 @@ fn start() -> Result<(), JsValue> {
             if e.pointer_type() == "mouse" {
                 let mut a = app.borrow_mut();
                 a.cursor = None;
+                a.update_hover();
                 a.redraw.mark_hud();
             }
         })?;
@@ -659,6 +761,13 @@ fn start() -> Result<(), JsValue> {
                 "+" | "=" => a.zoom(0.6, None),
                 "-" | "_" => a.zoom(1.0 / 0.6, None),
                 "r" | "R" => a.reset(),
+                "i" | "I" if a.info_click_enabled() => {
+                    // Info for the country at the center of the view.
+                    let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
+                    let hit = a.countries.as_ref().and_then(|c| c.hit(lat, lon));
+                    a.select(hit);
+                    return;
+                }
                 "u" | "U" => {
                     // Only the HUD text changes; no need to redraw the globe.
                     a.units = a.units.toggled();
@@ -674,6 +783,11 @@ fn start() -> Result<(), JsValue> {
                 }
                 "m" | "M" => a.toggle_measure(),
                 "Escape" if a.measure.active => a.toggle_measure(),
+                "Escape" => {
+                    // Not measuring: close the info panel.
+                    a.select(None);
+                    return;
+                }
                 "Backspace" if a.measure.active => a.measure_undo(),
                 "Enter" | " " if a.measure.active => {
                     // Keyboard path: drop a point at the view center. Skip when
@@ -724,7 +838,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 6] = [
+    let buttons: [(&str, Action); 7] = [
         ("measure-toggle", |a| a.toggle_measure()),
         ("measure-undo", |a| a.measure_undo()),
         ("measure-exit", |a| {
@@ -735,6 +849,7 @@ fn start() -> Result<(), JsValue> {
         ("zoom-in", |a| a.zoom(0.5, None)),
         ("zoom-out", |a| a.zoom(2.0, None)),
         ("reset", |a| a.reset()),
+        ("ci-close", |a| a.select(None)),
     ];
     for (id, action) in buttons {
         let button: HtmlElement = element(&doc, id)?;
@@ -778,6 +893,7 @@ fn start() -> Result<(), JsValue> {
             Ok(layers) => app.borrow_mut().map_loaded(layers),
             Err(e) => Err(e),
         };
+        let ok = result.is_ok();
         match result {
             Ok(()) => {}
             Err(e) => {
@@ -785,6 +901,27 @@ fn start() -> Result<(), JsValue> {
                 web_sys::console::error_1(&e);
                 loading.set_text_content(Some(&format!("Failed to load map data: {msg}")));
                 let _ = loading.class_list().add_1("error");
+            }
+        }
+        // Country polygons are only needed for hover and click, so they load
+        // after the first frame. A failure here just disables those.
+        if ok {
+            match country::load().await {
+                Ok(countries) => {
+                    let ids = countries.rasterize_ids(country::ID_RASTER_WIDTH);
+                    let mut a = app.borrow_mut();
+                    // No-op while the context is lost; context_restored uploads it.
+                    if let Err(e) = a
+                        .renderer
+                        .upload_country_ids(&ids, country::ID_RASTER_WIDTH)
+                    {
+                        web_sys::console::error_1(&e);
+                    }
+                    a.ids = Some(Rc::new(ids));
+                    a.countries = Some(countries);
+                    a.update_hover();
+                }
+                Err(e) => web_sys::console::error_1(&e),
             }
         }
     });

@@ -13,6 +13,8 @@ uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
 uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
+uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
+uniform int u_highlight;      // country ID to highlight, 0 = none
 
 out vec4 outColor;
 
@@ -28,6 +30,7 @@ const vec3 COAST = vec3(0.780, 0.860, 0.900);
 const vec3 MONO_OCEAN = vec3(0.015, 0.020, 0.030);
 const vec3 MONO_LAND = vec3(0.180, 0.190, 0.210);
 const vec3 MONO_BORDER = vec3(0.700, 0.730, 0.780);
+const vec3 HIGHLIGHT = vec3(1.000, 0.780, 0.300);
 const vec3 ATMOSPHERE = vec3(0.300, 0.560, 1.000);
 
 float hash(vec2 p) {
@@ -109,6 +112,27 @@ void main() {
     float borderLine = smoothstep(0.5 - fwg, 0.5 + fwg, m.g);
     float border = mix(m.g, borderLine, sharpen) * land;
     ground = mix(ground, borderCol, border * borderMix);
+
+    // Highlighted country: bilinear blend of "texel is this country" so the
+    // edge of the 4096-wide ID raster stays smooth when magnified. The branch
+    // depends only on a uniform, so derivatives elsewhere are unaffected.
+    if (u_highlight > 0) {
+        ivec2 isz = textureSize(u_ids, 0);
+        vec2 q = vec2(u * float(isz.x), uv.y * float(isz.y)) - 0.5;
+        ivec2 i0 = ivec2(floor(q));
+        vec2 f = fract(q);
+        float h[4];
+        for (int k = 0; k < 4; k++) {
+            ivec2 c = i0 + ivec2(k & 1, k >> 1);
+            c.x = ((c.x % isz.x) + isz.x) % isz.x;
+            c.y = clamp(c.y, 0, isz.y - 1);
+            float id = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+            h[k] = id == float(u_highlight) ? 1.0 : 0.0;
+        }
+        float mask = mix(mix(h[0], h[1], f.x), mix(h[2], h[3], f.x), f.y);
+        float hl = smoothstep(0.35, 0.65, mask) * land * u_hasMap;
+        ground = mix(ground, HIGHLIGHT, 0.42 * hl);
+    }
 
     vec3 col = mix(ocean, ground, land);
     col = mix(col, COAST, coast * 0.35);
