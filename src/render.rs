@@ -2,15 +2,22 @@
 
 use crate::camera::{Camera, TAN_HALF_FOV};
 use crate::geo::Layers;
+use crate::lines::{lod_for, LineLevels, LineSet};
 use crate::view::Layer;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlTexture,
-    WebGlUniformLocation, WebGlVertexArrayObject,
+    HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlFramebuffer, WebGlProgram,
+    WebGlShader, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
 const VERT_SRC: &str = include_str!("shaders/globe.vert");
 const FRAG_SRC: &str = include_str!("shaders/globe.frag");
+const LINE_VERT_SRC: &str = include_str!("shaders/line.vert");
+const LINE_FRAG_SRC: &str = include_str!("shaders/line.frag");
+
+/// Line widths in CSS pixels (multiplied by the device pixel ratio).
+const COAST_WIDTH: f32 = 1.0;
+const BORDER_WIDTH: f32 = 1.25;
 
 // EXT_texture_filter_anisotropic
 const TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
@@ -38,7 +45,7 @@ pub enum TierOverride {
 /// Sizes of the two GL textures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextureBudget {
-    /// Map texture width (height is half). RG8 with a full mip chain.
+    /// Map texture width (height is half). R8 with a full mip chain.
     pub map_width: u32,
     /// Country-ID raster width (height is half). R8, no mipmaps.
     pub ids_width: usize,
@@ -49,7 +56,7 @@ const LOW_MEMORY_GB: f64 = 4.0;
 
 /// Pick texture sizes. Capable desktops keep 8192 (crisp coastlines at the
 /// closest zoom). Touch devices, low-memory devices and GPUs limited to 4096
-/// get a 4096 map (about 21 MB with mips) and a 2048 ID raster (2 MB): at
+/// get a 4096 map (about 11 MB with mips) and a 2048 ID raster (2 MB): at
 /// phone resolutions a 4096-wide map still has more texels than the globe
 /// has screen pixels at the default zoom. Both are clamped to the GPU limit.
 pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBudget {
@@ -75,14 +82,14 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
     }
 }
 
-/// GPU bytes for the map texture (RG8, full mip chain) and the ID raster
+/// GPU bytes for the map texture (R8, full mip chain) and the ID raster
 /// (R8). The mip chain adds a third of the base level.
 pub fn budget_bytes(b: &TextureBudget) -> (u64, u64) {
     let (w, h) = (b.map_width as u64, b.map_width as u64 / 2);
     let mut map = 0;
     let (mut lw, mut lh) = (w, h);
     loop {
-        map += lw * lh * 2;
+        map += lw * lh;
         if lw == 1 && lh == 1 {
             break;
         }
@@ -111,6 +118,7 @@ struct Uniforms {
     tan_half_fov: Option<WebGlUniformLocation>,
     rot: Option<WebGlUniformLocation>,
     map: Option<WebGlUniformLocation>,
+    lines: Option<WebGlUniformLocation>,
     has_map: Option<WebGlUniformLocation>,
     grid_step: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
@@ -121,8 +129,100 @@ struct Uniforms {
     sun_on: Option<WebGlUniformLocation>,
 }
 
+struct LineUniforms {
+    res: Option<WebGlUniformLocation>,
+    dist: Option<WebGlUniformLocation>,
+    tan_half_fov: Option<WebGlUniformLocation>,
+    rot: Option<WebGlUniformLocation>,
+    width: Option<WebGlUniformLocation>,
+    strength: Option<WebGlUniformLocation>,
+}
+
+/// Program and shared quad corners for the line pass.
+struct LinePass {
+    program: WebGlProgram,
+    uniforms: LineUniforms,
+    /// Four corners of the instanced quad (triangle strip).
+    corners: WebGlBuffer,
+}
+
+impl LinePass {
+    fn create(gl: &GL) -> Result<Self, JsValue> {
+        let vs = compile(gl, GL::VERTEX_SHADER, LINE_VERT_SRC)?;
+        let fs = compile(gl, GL::FRAGMENT_SHADER, LINE_FRAG_SRC)?;
+        let program = link(gl, &vs, &fs)?;
+        let lu = |name: &str| gl.get_uniform_location(&program, name);
+        let uniforms = LineUniforms {
+            res: lu("u_res"),
+            dist: lu("u_dist"),
+            tan_half_fov: lu("u_tanHalfFov"),
+            rot: lu("u_rot"),
+            width: lu("u_width"),
+            strength: lu("u_strength"),
+        };
+        let corners = gl.create_buffer().ok_or("failed to create buffer")?;
+        gl.bind_buffer(GL::ARRAY_BUFFER, Some(&corners));
+        let quad = js_sys::Float32Array::from(&[0.0f32, -1.0, 0.0, 1.0, 1.0, -1.0, 1.0, 1.0][..]);
+        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &quad, GL::STATIC_DRAW);
+        Ok(Self {
+            program,
+            uniforms,
+            corners,
+        })
+    }
+}
+
+/// One level of detail of one line layer, uploaded.
+struct LineBuf {
+    vao: WebGlVertexArrayObject,
+    buf: WebGlBuffer,
+    segments: i32,
+}
+
+/// Uploaded line geometry, one buffer per level of detail.
+struct LineGpu {
+    coast: Vec<LineBuf>,
+    borders: Vec<LineBuf>,
+}
+
+/// Screen-sized RG8 render target for the line pass (R coast, G borders).
+struct LineTarget {
+    fbo: WebGlFramebuffer,
+    tex: WebGlTexture,
+    w: i32,
+    h: i32,
+}
+
+fn upload_levels(gl: &GL, pass: &LinePass, levels: &LineLevels) -> Result<Vec<LineBuf>, JsValue> {
+    let mut out = Vec::with_capacity(levels.levels.len());
+    for data in &levels.levels {
+        let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
+        let buf = gl.create_buffer().ok_or("failed to create buffer")?;
+        gl.bind_vertex_array(Some(&vao));
+        gl.bind_buffer(GL::ARRAY_BUFFER, Some(&pass.corners));
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_with_i32(0, 2, GL::FLOAT, false, 0, 0);
+        gl.bind_buffer(GL::ARRAY_BUFFER, Some(&buf));
+        let arr = js_sys::Float32Array::from(data.as_slice());
+        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &arr, GL::STATIC_DRAW);
+        for (loc, offset) in [(1u32, 0), (2, 12)] {
+            gl.enable_vertex_attrib_array(loc);
+            gl.vertex_attrib_pointer_with_i32(loc, 3, GL::FLOAT, false, 24, offset);
+            gl.vertex_attrib_divisor(loc, 1);
+        }
+        out.push(LineBuf {
+            vao,
+            buf,
+            segments: (data.len() / 6) as i32,
+        });
+    }
+    gl.bind_vertex_array(None);
+    Ok(out)
+}
+
 /// GL objects that die with the context and must be rebuilt after a restore.
 struct Resources {
+    line_pass: LinePass,
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
@@ -143,6 +243,7 @@ impl Resources {
             tan_half_fov: u("u_tanHalfFov"),
             rot: u("u_rot"),
             map: u("u_map"),
+            lines: u("u_lines"),
             has_map: u("u_hasMap"),
             grid_step: u("u_gridStep"),
             dpr: u("u_dpr"),
@@ -153,6 +254,7 @@ impl Resources {
             sun_on: u("u_sunOn"),
         };
         let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
+        let line_pass = LinePass::create(gl)?;
 
         // 1×1 placeholder until the vector data has been rasterized.
         let map = gl.create_texture().ok_or("failed to create texture")?;
@@ -161,13 +263,13 @@ impl Resources {
         gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
             GL::TEXTURE_2D,
             0,
-            GL::RG8 as i32,
+            GL::R8 as i32,
             1,
             1,
             0,
-            GL::RG,
+            GL::RED,
             GL::UNSIGNED_BYTE,
-            Some(&[0, 0]),
+            Some(&[0]),
         )?;
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
@@ -189,6 +291,7 @@ impl Resources {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
 
         Ok(Self {
+            line_pass,
             program,
             vao,
             uniforms,
@@ -249,6 +352,11 @@ impl ContextState {
 
 pub struct Renderer {
     gl: GL,
+    line_pass: LinePass,
+    /// Uploaded line geometry (none until the map data has loaded).
+    lines: Option<LineGpu>,
+    /// Line-pass render target, resized to the canvas on demand.
+    target: Option<LineTarget>,
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
@@ -283,6 +391,9 @@ impl Renderer {
         let budget = choose_budget(&Self::detect_device(&gl), forced);
         Ok(Self {
             gl,
+            line_pass: r.line_pass,
+            lines: None,
+            target: None,
             program: r.program,
             vao: r.vao,
             uniforms: r.uniforms,
@@ -323,11 +434,15 @@ impl Renderer {
         let upload = self.ctx.on_restored();
         let r = Resources::create(&self.gl)?;
         self.program = r.program;
+        self.line_pass = r.line_pass;
         self.vao = r.vao;
         self.uniforms = r.uniforms;
         self.map = r.map;
         self.ids = r.ids;
         self.has_map = false;
+        // Buffers and the render target died with the old context.
+        self.lines = None;
+        self.target = None;
         if let (Some(ids), true) = (ids, self.ctx.ids_need_upload()) {
             self.upload_country_ids(ids, self.budget.ids_width)?;
         }
@@ -359,8 +474,8 @@ impl Renderer {
         }
     }
 
-    /// Rasterize the vector layers into a mipmapped equirectangular texture
-    /// whose width comes from [`choose_budget`].
+    /// Rasterize the land fill into a mipmapped equirectangular texture whose
+    /// width comes from [`choose_budget`], and upload the vector lines.
     ///
     /// The map is drawn as two square halves so no single canvas exceeds the
     /// 16.7 MP limit some mobile browsers enforce.
@@ -396,7 +511,7 @@ impl Renderer {
 
         let tex = gl.create_texture().ok_or("failed to create texture")?;
         gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
-        gl.tex_storage_2d(GL::TEXTURE_2D, levels, GL::RG8, width as i32, height as i32);
+        gl.tex_storage_2d(GL::TEXTURE_2D, levels, GL::R8, width as i32, height as i32);
         gl.pixel_storei(GL::UNPACK_COLORSPACE_CONVERSION_WEBGL, GL::NONE as i32);
         gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
         for x in [0, height] {
@@ -406,7 +521,7 @@ impl Renderer {
                 0,
                 x as i32,
                 0,
-                GL::RG,
+                GL::RED,
                 GL::UNSIGNED_BYTE,
                 &tile,
             )?;
@@ -441,7 +556,92 @@ impl Renderer {
         gl.delete_texture(Some(&self.map));
         self.map = tex;
         self.has_map = true;
+        self.upload_lines(layers.lines())
+    }
+
+    /// Upload coastline and border geometry, replacing any earlier upload.
+    fn upload_lines(&mut self, set: &LineSet) -> Result<(), JsValue> {
+        let gl = &self.gl;
+        let gpu = LineGpu {
+            coast: upload_levels(gl, &self.line_pass, &set.coast)?,
+            borders: upload_levels(gl, &self.line_pass, &set.borders)?,
+        };
+        if let Some(old) = self.lines.replace(gpu) {
+            for b in old.coast.iter().chain(&old.borders) {
+                gl.delete_vertex_array(Some(&b.vao));
+                gl.delete_buffer(Some(&b.buf));
+            }
+        }
         Ok(())
+    }
+
+    /// Make sure the line target matches the canvas size.
+    fn ensure_target(&mut self, w: i32, h: i32) -> Result<(), JsValue> {
+        if self.target.as_ref().is_some_and(|t| t.w == w && t.h == h) {
+            return Ok(());
+        }
+        let gl = &self.gl;
+        if let Some(old) = self.target.take() {
+            gl.delete_framebuffer(Some(&old.fbo));
+            gl.delete_texture(Some(&old.tex));
+        }
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.tex_storage_2d(GL::TEXTURE_2D, 1, GL::RG8, w, h);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+        let fbo = gl
+            .create_framebuffer()
+            .ok_or("failed to create framebuffer")?;
+        gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&fbo));
+        gl.framebuffer_texture_2d(
+            GL::FRAMEBUFFER,
+            GL::COLOR_ATTACHMENT0,
+            GL::TEXTURE_2D,
+            Some(&tex),
+            0,
+        );
+        gl.bind_framebuffer(GL::FRAMEBUFFER, None);
+        self.target = Some(LineTarget { fbo, tex, w, h });
+        Ok(())
+    }
+
+    /// Render coastlines (R) and borders (G) into the line target.
+    fn draw_lines(&self, camera: &Camera, w: u32, h: u32, dpr: f64) {
+        let (Some(gpu), Some(target)) = (&self.lines, &self.target) else {
+            return;
+        };
+        let gl = &self.gl;
+        let u = &self.line_pass.uniforms;
+        gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&target.fbo));
+        gl.viewport(0, 0, w as i32, h as i32);
+        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        gl.clear(GL::COLOR_BUFFER_BIT);
+        gl.use_program(Some(&self.line_pass.program));
+        gl.uniform2f(u.res.as_ref(), w as f32, h as f32);
+        gl.uniform1f(u.dist.as_ref(), camera.dist() as f32);
+        gl.uniform1f(u.tan_half_fov.as_ref(), TAN_HALF_FOV as f32);
+        gl.uniform_matrix3fv_with_f32_array(u.rot.as_ref(), false, &camera.rotation());
+        gl.enable(GL::BLEND);
+        gl.blend_equation(GL::MAX);
+        let level = lod_for(camera.alt, w.min(h) as f64, TAN_HALF_FOV);
+        let dpr = dpr as f32;
+        for (mask, width, bufs) in [
+            ([true, false, false, false], COAST_WIDTH, &gpu.coast),
+            ([false, true, false, false], BORDER_WIDTH, &gpu.borders),
+        ] {
+            let Some(b) = bufs.get(level.min(bufs.len().saturating_sub(1))) else {
+                continue;
+            };
+            gl.color_mask(mask[0], mask[1], mask[2], mask[3]);
+            gl.uniform1f(u.width.as_ref(), width * dpr);
+            gl.uniform1f(u.strength.as_ref(), 1.0);
+            gl.bind_vertex_array(Some(&b.vao));
+            gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, b.segments);
+        }
+        gl.color_mask(true, true, true, true);
+        gl.disable(GL::BLEND);
+        gl.bind_framebuffer(GL::FRAMEBUFFER, None);
     }
 
     /// Upload the country-ID raster (`width × width/2`, row 0 at the north).
@@ -493,9 +693,16 @@ impl Renderer {
         self.sun = sun;
     }
 
-    pub fn draw(&self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
+    pub fn draw(&mut self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
         if self.ctx.is_lost() {
             return;
+        }
+        if self.lines.is_some()
+            && self
+                .ensure_target(width_px as i32, height_px as i32)
+                .is_ok()
+        {
+            self.draw_lines(camera, width_px, height_px, dpr);
         }
         let gl = &self.gl;
         let u = &self.uniforms;
@@ -521,6 +728,11 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE1);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.ids));
         gl.uniform1i(u.ids.as_ref(), 1);
+        // The line target; unbound (reads as zero) until lines are uploaded.
+        gl.active_texture(GL::TEXTURE2);
+        let lines_tex = self.target.as_ref().filter(|_| self.lines.is_some());
+        gl.bind_texture(GL::TEXTURE_2D, lines_tex.map(|t| &t.tex));
+        gl.uniform1i(u.lines.as_ref(), 2);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         gl.active_texture(GL::TEXTURE0);
         gl.bind_vertex_array(Some(&self.vao));
@@ -605,13 +817,13 @@ mod tests {
             map_width: 8192,
             ids_width: 4096,
         });
-        assert!((map as f64 / MB - 85.3).abs() < 0.1);
+        assert!((map as f64 / MB - 42.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 8.0);
         let (map, ids) = budget_bytes(&TextureBudget {
             map_width: 4096,
             ids_width: 2048,
         });
-        assert!((map as f64 / MB - 21.3).abs() < 0.1);
+        assert!((map as f64 / MB - 10.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 2.0);
     }
 
@@ -663,6 +875,7 @@ mod tests {
             "u_tanHalfFov",
             "u_rot",
             "u_map",
+            "u_lines",
             "u_hasMap",
             "u_gridStep",
             "u_dpr",
@@ -674,6 +887,32 @@ mod tests {
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");
+            assert!(
+                include_str!("render.rs").contains(&lookup),
+                "{name} not looked up"
+            );
+        }
+    }
+
+    /// Same check for the line program, whose lookups use `lu(...)`.
+    #[test]
+    fn line_uniforms_are_declared_in_shaders() {
+        let declared: Vec<&str> = LINE_VERT_SRC
+            .lines()
+            .chain(LINE_FRAG_SRC.lines())
+            .filter_map(|l| l.trim().strip_prefix("uniform "))
+            .filter_map(|l| l.split(';').next()?.split_whitespace().last())
+            .collect();
+        for name in [
+            "u_res",
+            "u_dist",
+            "u_tanHalfFov",
+            "u_rot",
+            "u_width",
+            "u_strength",
+        ] {
+            assert!(declared.contains(&name), "{name} missing from line shaders");
+            let lookup = format!("lu(\"{name}\")");
             assert!(
                 include_str!("render.rs").contains(&lookup),
                 "{name} not looked up"
@@ -753,5 +992,7 @@ mod tests {
     fn shaders_target_glsl_es_300() {
         assert!(VERT_SRC.starts_with("#version 300 es"));
         assert!(FRAG_SRC.starts_with("#version 300 es"));
+        assert!(LINE_VERT_SRC.starts_with("#version 300 es"));
+        assert!(LINE_FRAG_SRC.starts_with("#version 300 es"));
     }
 }

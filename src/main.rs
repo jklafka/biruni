@@ -4,6 +4,7 @@ mod camera;
 mod country;
 mod geo;
 mod info_panel;
+mod lines;
 mod measure;
 mod overlay;
 mod render;
