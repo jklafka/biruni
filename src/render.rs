@@ -28,6 +28,8 @@ struct Uniforms {
     layer: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
+    sun: Option<WebGlUniformLocation>,
+    sun_on: Option<WebGlUniformLocation>,
 }
 
 /// GL objects that die with the context and must be rebuilt after a restore.
@@ -58,6 +60,8 @@ impl Resources {
             layer: u("u_layer"),
             ids: u("u_ids"),
             highlight: u("u_highlight"),
+            sun: u("u_sun"),
+            sun_on: u("u_sunOn"),
         };
         let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
 
@@ -162,6 +166,8 @@ pub struct Renderer {
     map: WebGlTexture,
     has_map: bool,
     layer: Layer,
+    /// World-space direction to the sun, or `None` when the terminator is off.
+    sun: Option<[f32; 3]>,
     ctx: ContextState,
     /// Country-ID raster texture (placeholder until uploaded).
     ids: WebGlTexture,
@@ -188,6 +194,7 @@ impl Renderer {
             map: r.map,
             has_map: false,
             layer: Layer::default(),
+            sun: None,
             ctx: ContextState::default(),
             ids: r.ids,
             highlight: 0,
@@ -362,6 +369,10 @@ impl Renderer {
         self.layer = layer;
     }
 
+    pub fn set_sun(&mut self, sun: Option<[f32; 3]>) {
+        self.sun = sun;
+    }
+
     pub fn draw(&self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64) {
         if self.ctx.is_lost() {
             return;
@@ -378,6 +389,12 @@ impl Renderer {
         gl.uniform1f(u.grid_step.as_ref(), camera.grid_step_deg() as f32);
         gl.uniform1f(u.dpr.as_ref(), dpr as f32);
         gl.uniform1i(u.layer.as_ref(), self.layer.shader_index());
+        let sun = self.sun.unwrap_or([0.0, 0.0, 1.0]);
+        gl.uniform3f(u.sun.as_ref(), sun[0], sun[1], sun[2]);
+        gl.uniform1f(
+            u.sun_on.as_ref(),
+            if self.sun.is_some() { 1.0 } else { 0.0 },
+        );
         gl.active_texture(GL::TEXTURE0);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.map));
         gl.uniform1i(u.map.as_ref(), 0);
@@ -447,6 +464,8 @@ mod tests {
             "u_layer",
             "u_ids",
             "u_highlight",
+            "u_sun",
+            "u_sunOn",
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");
