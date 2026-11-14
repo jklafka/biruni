@@ -164,9 +164,33 @@ pub fn scale_bar(cam: &Camera, units: Units, max_px: f64) -> Option<ScaleBar> {
     })
 }
 
+/// Day/night terminator state as carried by the URL hash.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SunView {
+    pub on: bool,
+    /// Fixed unix time loaded from `&t=`; `None` follows the clock.
+    pub pin: Option<f64>,
+}
+
+impl SunView {
+    /// Read `&sun=` and `&t=` from a hash. `sun` absent or unrecognised
+    /// means off; `t` is kept only when it is a finite, non-negative number.
+    pub fn from_hash(hash: &str) -> SunView {
+        let h = crate::sun::parse_hash_sun(hash);
+        SunView {
+            on: h.enabled.unwrap_or(false),
+            pin: h.time.filter(|t| *t >= 0.0),
+        }
+    }
+}
+
 /// `#lat,lon,altitude_km` — e.g. `#48.8566,2.3522,800`. A non-default layer
-/// is appended as `&layer=<id>`.
-pub fn format_view_hash(c: &Camera, layer: Layer) -> String {
+/// is appended as `&layer=<id>`. When the terminator is on, `&sun=on` is
+/// appended, plus `&t=<unix seconds>` only if the time is pinned: a live
+/// clock never writes `t`, so the hash does not change every minute. When
+/// the terminator is off neither is written (a pin is remembered by the app
+/// but not shared).
+pub fn format_view_hash(c: &Camera, layer: Layer, sun: SunView) -> String {
     let mut hash = format!(
         "#{:.4},{:.4},{:.0}",
         c.lat.to_degrees(),
@@ -177,15 +201,21 @@ pub fn format_view_hash(c: &Camera, layer: Layer) -> String {
         hash.push_str("&layer=");
         hash.push_str(layer.id());
     }
+    if sun.on {
+        hash.push_str("&sun=on");
+        if let Some(t) = sun.pin.filter(|t| t.is_finite() && *t >= 0.0) {
+            hash.push_str(&format!("&t={t}"));
+        }
+    }
     hash
 }
 
 /// Full shareable link for the current view: `page_url` without any
 /// existing `#fragment`, plus the view hash. Built from the live camera, so
 /// it is current even if the debounced URL hash has not been written yet.
-pub fn share_url(page_url: &str, c: &Camera, layer: Layer) -> String {
+pub fn share_url(page_url: &str, c: &Camera, layer: Layer, sun: SunView) -> String {
     let base = page_url.split('#').next().unwrap_or("");
-    format!("{base}{}", format_view_hash(c, layer))
+    format!("{base}{}", format_view_hash(c, layer, sun))
 }
 
 /// Parse a view hash. Altitude is optional; out-of-range values are clamped
@@ -295,7 +325,7 @@ mod tests {
     #[test]
     fn hash_round_trip() {
         let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
-        let hash = format_view_hash(&c, Layer::Political);
+        let hash = format_view_hash(&c, Layer::Political, SunView::default());
         assert_eq!(hash, "#46.8000,8.2000,600");
         let back = parse_view_hash(&hash).unwrap();
         assert!(close(back.lat, c.lat, 1e-6));
@@ -335,10 +365,10 @@ mod tests {
         let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
         // Default layer keeps the old, shorter URL form.
         assert_eq!(
-            format_view_hash(&c, Layer::Political),
+            format_view_hash(&c, Layer::Political, SunView::default()),
             "#46.8000,8.2000,600"
         );
-        let hash = format_view_hash(&c, Layer::Monochrome);
+        let hash = format_view_hash(&c, Layer::Monochrome, SunView::default());
         assert_eq!(hash, "#46.8000,8.2000,600&layer=mono");
         assert_eq!(parse_hash_layer(&hash), Some(Layer::Monochrome));
         let back = parse_view_hash(&hash).unwrap();
@@ -352,18 +382,143 @@ mod tests {
             share_url(
                 "https://example.com/maps/#1,2,3&layer=mono",
                 &c,
-                Layer::Political
+                Layer::Political,
+                SunView::default()
             ),
             "https://example.com/maps/#46.8000,8.2000,600"
         );
         assert_eq!(
-            share_url("https://example.com/?a=1", &c, Layer::Monochrome),
+            share_url(
+                "https://example.com/?a=1",
+                &c,
+                Layer::Monochrome,
+                SunView::default()
+            ),
             "https://example.com/?a=1#46.8000,8.2000,600&layer=mono"
         );
         assert_eq!(
-            share_url("https://example.com/#", &c, Layer::Political),
+            share_url(
+                "https://example.com/#",
+                &c,
+                Layer::Political,
+                SunView::default()
+            ),
             "https://example.com/#46.8000,8.2000,600"
         );
+    }
+
+    fn cam() -> Camera {
+        Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM)
+    }
+
+    #[test]
+    fn hash_carries_sun_on_without_time_for_live_clock() {
+        let sun = SunView {
+            on: true,
+            pin: None,
+        };
+        let hash = format_view_hash(&cam(), Layer::Political, sun);
+        assert_eq!(hash, "#46.8000,8.2000,600&sun=on");
+        assert!(!hash.contains("t="));
+        assert_eq!(SunView::from_hash(&hash), sun);
+    }
+
+    #[test]
+    fn hash_carries_pinned_time() {
+        let sun = SunView {
+            on: true,
+            pin: Some(1_718_992_800.0),
+        };
+        let hash = format_view_hash(&cam(), Layer::Political, sun);
+        assert_eq!(hash, "#46.8000,8.2000,600&sun=on&t=1718992800");
+        assert_eq!(SunView::from_hash(&hash), sun);
+    }
+
+    #[test]
+    fn hash_omits_sun_and_time_when_off() {
+        let sun = SunView {
+            on: false,
+            pin: Some(1_718_992_800.0),
+        };
+        let hash = format_view_hash(&cam(), Layer::Political, sun);
+        assert_eq!(hash, "#46.8000,8.2000,600");
+        assert_eq!(SunView::from_hash(&hash), SunView::default());
+    }
+
+    #[test]
+    fn hash_layer_and_sun_together() {
+        let sun = SunView {
+            on: true,
+            pin: Some(86_400.0),
+        };
+        let hash = format_view_hash(&cam(), Layer::Monochrome, sun);
+        assert_eq!(hash, "#46.8000,8.2000,600&layer=mono&sun=on&t=86400");
+        assert_eq!(parse_hash_layer(&hash), Some(Layer::Monochrome));
+        assert_eq!(SunView::from_hash(&hash), sun);
+        let back = parse_view_hash(&hash).unwrap();
+        assert!(close(back.alt, cam().alt, 1e-6));
+    }
+
+    #[test]
+    fn share_url_includes_sun() {
+        let sun = SunView {
+            on: true,
+            pin: Some(1_718_992_800.0),
+        };
+        assert_eq!(
+            share_url(
+                "https://x.test/#1,2,3&sun=off",
+                &cam(),
+                Layer::Political,
+                sun
+            ),
+            "https://x.test/#46.8000,8.2000,600&sun=on&t=1718992800"
+        );
+        let live = SunView {
+            on: true,
+            pin: None,
+        };
+        assert_eq!(
+            share_url("https://x.test/", &cam(), Layer::Monochrome, live),
+            "https://x.test/#46.8000,8.2000,600&layer=mono&sun=on"
+        );
+    }
+
+    #[test]
+    fn sun_hash_rejects_malformed_time_and_ignores_unknown_keys() {
+        for bad in ["NaN", "inf", "-inf", "-5", "abc", "", "1e999"] {
+            let h = format!("#1,2,3&sun=on&t={bad}");
+            assert_eq!(
+                SunView::from_hash(&h),
+                SunView {
+                    on: true,
+                    pin: None
+                },
+                "{bad:?}"
+            );
+        }
+        // Huge but finite is kept, and is never written back as NaN/inf.
+        let huge = SunView::from_hash("#1,2,3&sun=on&t=1e300");
+        assert_eq!(huge.pin, Some(1e300));
+        let unknown = SunView::from_hash("#1,2,3&foo=bar&sun=on&zzz&t=60&x=");
+        assert_eq!(
+            unknown,
+            SunView {
+                on: true,
+                pin: Some(60.0)
+            }
+        );
+        // A non-finite pin is never formatted.
+        let h = format_view_hash(
+            &cam(),
+            Layer::Political,
+            SunView {
+                on: true,
+                pin: Some(f64::NAN),
+            },
+        );
+        assert_eq!(h, "#46.8000,8.2000,600&sun=on");
+        assert_eq!(SunView::from_hash("#1,2,3&sun=maybe"), SunView::default());
     }
 
     #[test]
@@ -376,7 +531,7 @@ mod tests {
             (90.0, 0.0),
         ] {
             let c = Camera::new(lat, lon, 400.0 / EARTH_RADIUS_KM);
-            let url = share_url("https://x.test/", &c, Layer::Monochrome);
+            let url = share_url("https://x.test/", &c, Layer::Monochrome, SunView::default());
             let hash = &url[url.find('#').unwrap()..];
             let back = parse_view_hash(hash).expect("parses");
             assert!(back.lat.abs() <= 85f64.to_radians() + 1e-9);
