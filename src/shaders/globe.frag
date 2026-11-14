@@ -83,7 +83,16 @@ void main() {
     float u = fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2;
     vec2 uv = vec2(u, 0.5 - lat / PI);
 
-    float m = texture(u_map, uv).r * u_hasMap;
+    // The texture is equirectangular, so a screen pixel spans 1/cos(lat) times
+    // more u than v near a pole. Implicit LOD would take the longer axis and
+    // pick a far-too-coarse mip (blurred coasts). Scale the u gradient by
+    // cos(lat) so the footprint matches the real surface area. Keep in sync
+    // with `polar_u_scale` in src/camera.rs.
+    float uScale = max(cos(lat), 0.02);
+    vec2 duvdx = vec2(dFdx(u) * uScale, dFdx(uv.y));
+    vec2 duvdy = vec2(dFdy(u) * uScale, dFdy(uv.y));
+
+    float m = textureGrad(u_map, uv, duvdx, duvdy).r * u_hasMap;
     // Vector coastlines (R) and borders (G), drawn at constant pixel width.
     vec2 ln = texelFetch(u_lines, ivec2(gl_FragCoord.xy), 0).rg;
 
@@ -91,7 +100,9 @@ void main() {
     // vector-like edges. When minified, the mipmapped value already is an
     // antialiased coverage estimate, so use it directly.
     vec2 texSize = vec2(textureSize(u_map, 0));
-    float texelsPerPx = max(fwidth(uv.x) * texSize.x, fwidth(uv.y) * texSize.y);
+    float texelsPerPx = max(
+        (abs(duvdx.x) + abs(duvdy.x)) * texSize.x,
+        (abs(duvdx.y) + abs(duvdy.y)) * texSize.y);
     float sharpen = (1.0 - smoothstep(0.6, 1.6, texelsPerPx)) * u_hasMap;
     float fw = max(fwidth(m), 1e-4);
     float land = mix(m, smoothstep(0.5 - fw, 0.5 + fw, m), sharpen);
