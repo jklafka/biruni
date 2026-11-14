@@ -8,7 +8,7 @@ mod view;
 use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use std::cell::RefCell;
 use std::rc::Rc;
-use view::{format_altitude, format_lat_lon, format_view_hash, parse_view_hash, HOME};
+use view::{format_altitude, format_lat_lon, format_view_hash, parse_view_hash, RedrawFlags, HOME};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -54,7 +54,7 @@ struct App {
     last_move_ms: f64,
     last_frame_ms: Option<f64>,
     cursor: Option<(f64, f64)>,
-    dirty: bool,
+    redraw: RedrawFlags,
     /// The URL hash needs to be rewritten once the view settles.
     hash_stale: bool,
     last_hash: String,
@@ -84,14 +84,14 @@ impl App {
                 .pick(sx, sy)
                 .map(|(lat, lon)| Anchor { lat, lon, sx, sy })
         });
-        self.dirty = true;
+        self.redraw.mark_render();
     }
 
     fn fly_to(&mut self, lat: f64, lon: f64, alt: f64) {
         self.stop_motion();
         self.flight = Some(Flight { lat, lon });
         self.target_alt = alt.clamp(MIN_ALT, MAX_ALT);
-        self.dirty = true;
+        self.redraw.mark_render();
     }
 
     fn reset(&mut self) {
@@ -162,20 +162,22 @@ impl App {
         if pw != self.canvas.width() || ph != self.canvas.height() {
             self.canvas.set_width(pw);
             self.canvas.set_height(ph);
-            self.dirty = true;
+            self.redraw.mark_render();
         }
         self.camera.width = cw;
         self.camera.height = ch;
 
         let animating = self.step(dt);
         if animating {
-            self.dirty = true;
+            self.redraw.mark_render();
         }
-        if self.dirty {
+        let (draw, hud) = self.redraw.take();
+        if draw {
             self.renderer.draw(&self.camera, pw, ph, dpr);
-            self.update_hud();
-            self.dirty = false;
             self.hash_stale = true;
+        }
+        if hud {
+            self.update_hud();
         }
         if self.hash_stale && !animating && self.pointers.is_empty() {
             self.hash_stale = false;
@@ -224,11 +226,13 @@ impl App {
     fn pointer_move(&mut self, e: &PointerEvent) {
         let (x, y) = (e.client_x() as f64, e.client_y() as f64);
         self.cursor = Some((x, y));
-        self.dirty = true;
+        // The cursor readout alone never needs a redraw of the globe.
+        self.redraw.mark_hud();
 
         let Some(idx) = self.pointers.iter().position(|p| p.id == e.pointer_id()) else {
             return;
         };
+        self.redraw.mark_render();
         let now = self.now();
         let (px, py) = (self.pointers[idx].x, self.pointers[idx].y);
 
@@ -278,7 +282,7 @@ impl App {
             self.pinch = None;
             let _ = self.canvas.class_list().remove_1("dragging");
         }
-        self.dirty = true;
+        self.redraw.mark_render();
     }
 }
 
@@ -348,7 +352,7 @@ fn start() -> Result<(), JsValue> {
         last_move_ms: 0.0,
         last_frame_ms: None,
         cursor: None,
-        dirty: true,
+        redraw: RedrawFlags::new(),
         hash_stale: false,
         last_hash: String::new(),
         hud_cursor: element(&doc, "hud-cursor")?,
@@ -382,7 +386,7 @@ fn start() -> Result<(), JsValue> {
             if e.pointer_type() == "mouse" {
                 let mut a = app.borrow_mut();
                 a.cursor = None;
-                a.dirty = true;
+                a.redraw.mark_hud();
             }
         })?;
     }
@@ -429,7 +433,7 @@ fn start() -> Result<(), JsValue> {
                 "r" | "R" => a.reset(),
                 _ => return,
             }
-            a.dirty = true;
+            a.redraw.mark_render();
         })?;
     }
 
@@ -488,7 +492,7 @@ fn start() -> Result<(), JsValue> {
         match result {
             Ok(()) => {
                 let _ = loading.class_list().add_1("hidden");
-                app.borrow_mut().dirty = true;
+                app.borrow_mut().redraw.mark_render();
             }
             Err(e) => {
                 let msg = e.as_string().unwrap_or_else(|| format!("{e:?}"));

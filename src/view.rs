@@ -66,6 +66,42 @@ pub fn parse_view_hash(hash: &str) -> Option<Camera> {
     ))
 }
 
+/// Tracks what the next frame must redo. Moving the cursor over the globe
+/// only changes the HUD readout, so it must not trigger a full ray-trace.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RedrawFlags {
+    render: bool,
+    hud: bool,
+}
+
+impl RedrawFlags {
+    /// Start dirty so the first frame draws.
+    pub fn new() -> Self {
+        Self {
+            render: true,
+            hud: true,
+        }
+    }
+
+    /// The camera, canvas size or map texture changed.
+    pub fn mark_render(&mut self) {
+        self.render = true;
+    }
+
+    /// Only HUD text may have changed.
+    pub fn mark_hud(&mut self) {
+        self.hud = true;
+    }
+
+    /// Returns `(draw, update_hud)` for this frame and clears the flags.
+    /// A redraw always refreshes the HUD too.
+    pub fn take(&mut self) -> (bool, bool) {
+        let out = (self.render, self.render || self.hud);
+        *self = Self::default();
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +198,26 @@ mod tests {
         ] {
             assert!(parse_view_hash(bad).is_none(), "accepted {bad:?}");
         }
+    }
+
+    #[test]
+    fn cursor_move_updates_hud_without_redraw() {
+        let mut f = RedrawFlags::default();
+        f.mark_hud();
+        assert_eq!(f.take(), (false, true));
+        assert_eq!(f.take(), (false, false));
+    }
+
+    #[test]
+    fn render_change_redraws_and_refreshes_hud() {
+        let mut f = RedrawFlags::default();
+        f.mark_render();
+        assert_eq!(f.take(), (true, true));
+        assert_eq!(f.take(), (false, false));
+    }
+
+    #[test]
+    fn first_frame_draws() {
+        assert_eq!(RedrawFlags::new().take(), (true, true));
     }
 }
