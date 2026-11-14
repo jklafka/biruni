@@ -12,6 +12,7 @@ uniform sampler2D u_map;      // R = land mask, G = borders
 uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
+uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
 
 out vec4 outColor;
 
@@ -24,6 +25,9 @@ const vec3 LAND_DRY = vec3(0.600, 0.570, 0.420);
 const vec3 ICE = vec3(0.900, 0.925, 0.950);
 const vec3 BORDER = vec3(0.150, 0.170, 0.130);
 const vec3 COAST = vec3(0.780, 0.860, 0.900);
+const vec3 MONO_OCEAN = vec3(0.015, 0.020, 0.030);
+const vec3 MONO_LAND = vec3(0.180, 0.190, 0.210);
+const vec3 MONO_BORDER = vec3(0.700, 0.730, 0.780);
 const vec3 ATMOSPHERE = vec3(0.300, 0.560, 1.000);
 
 float hash(vec2 p) {
@@ -91,11 +95,20 @@ void main() {
     vec3 ground = mix(LAND, LAND_DRY, smoothstep(14.0, 22.0, alat) * (1.0 - smoothstep(30.0, 38.0, alat)) * 0.55);
     float iceLat = latDeg < 0.0 ? 62.0 : 72.0;
     ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat));
+    vec3 borderCol = BORDER;
+    float borderMix = 0.5;
+    if (u_layer == 1) {
+        // Monochrome: dark ocean, grey land, light borders.
+        ocean = MONO_OCEAN;
+        ground = MONO_LAND;
+        borderCol = MONO_BORDER;
+        borderMix = 0.8;
+    }
 
     float fwg = max(fwidth(m.g), 1e-4);
     float borderLine = smoothstep(0.5 - fwg, 0.5 + fwg, m.g);
     float border = mix(m.g, borderLine, sharpen) * land;
-    ground = mix(ground, BORDER, border * 0.5);
+    ground = mix(ground, borderCol, border * borderMix);
 
     vec3 col = mix(ocean, ground, land);
     col = mix(col, COAST, coast * 0.35);

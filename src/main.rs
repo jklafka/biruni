@@ -9,8 +9,8 @@ use camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use std::cell::RefCell;
 use std::rc::Rc;
 use view::{
-    format_altitude, format_lat_lon, format_view_hash, parse_view_hash, scale_bar, RedrawFlags,
-    Units, HOME,
+    format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_view_hash,
+    scale_bar, Layer, RedrawFlags, Units, HOME,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -49,6 +49,8 @@ struct App {
     window: Window,
     canvas: HtmlCanvasElement,
     renderer: render::Renderer,
+    layer: Layer,
+    layer_buttons: Vec<(Layer, HtmlElement)>,
     camera: Camera,
     target_alt: f64,
     anchor: Option<Anchor>,
@@ -102,6 +104,17 @@ impl App {
         self.flight = Some(Flight { lat, lon });
         self.target_alt = alt.clamp(MIN_ALT, MAX_ALT);
         self.redraw.mark_render();
+    }
+
+    /// Switch the map style. The camera is untouched.
+    fn set_layer(&mut self, layer: Layer) {
+        self.layer = layer;
+        self.renderer.set_layer(layer);
+        for (l, b) in &self.layer_buttons {
+            let _ = b.set_attribute("aria-pressed", if *l == layer { "true" } else { "false" });
+        }
+        self.redraw.mark_render();
+        self.hash_stale = true;
     }
 
     fn reset(&mut self) {
@@ -191,7 +204,7 @@ impl App {
         }
         if self.hash_stale && !animating && self.pointers.is_empty() {
             self.hash_stale = false;
-            let hash = format_view_hash(&self.camera);
+            let hash = format_view_hash(&self.camera, self.layer);
             if hash != self.last_hash {
                 if let Ok(history) = self.window.history() {
                     let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&hash));
@@ -361,10 +374,24 @@ fn start() -> Result<(), JsValue> {
         .and_then(|h| parse_view_hash(&h))
         .unwrap_or_else(|| Camera::new(HOME.0, HOME.1, HOME.2));
 
+    let initial_layer = window
+        .location()
+        .hash()
+        .ok()
+        .and_then(|h| parse_hash_layer(&h))
+        .unwrap_or_default();
+    let mut layer_buttons = Vec::new();
+    for layer in Layer::ALL {
+        let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
+        layer_buttons.push((layer, b));
+    }
+
     let app = Rc::new(RefCell::new(App {
         window: window.clone(),
         canvas: canvas.clone(),
         renderer,
+        layer: initial_layer,
+        layer_buttons: layer_buttons.clone(),
         camera,
         target_alt: camera.alt,
         anchor: None,
@@ -386,6 +413,14 @@ fn start() -> Result<(), JsValue> {
         hud_scale_label: element(&doc, "hud-scale-label")?,
         units: Units::Metric,
     }));
+
+    app.borrow_mut().set_layer(initial_layer);
+    for (layer, button) in layer_buttons {
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            app.borrow_mut().set_layer(layer);
+        })?;
+    }
 
     // Pointer input (mouse, touch, pen).
     let target: &EventTarget = canvas.as_ref();
@@ -475,6 +510,16 @@ fn start() -> Result<(), JsValue> {
                     a.redraw.mark_hud();
                     return;
                 }
+                "l" | "L" => {
+                    let next = a.layer.next();
+                    a.set_layer(next);
+                }
+                k @ ("1" | "2") => {
+                    let i = k.parse::<usize>().unwrap_or(1) - 1;
+                    if let Some(l) = Layer::ALL.get(i) {
+                        a.set_layer(*l);
+                    }
+                }
                 _ => return,
             }
             a.redraw.mark_render();
@@ -491,8 +536,10 @@ fn start() -> Result<(), JsValue> {
             true,
             move |_: web_sys::Event| {
                 let hash = window2.location().hash().unwrap_or_default();
+                let mut a = app.borrow_mut();
+                a.set_layer(parse_hash_layer(&hash).unwrap_or_default());
                 if let Some(c) = parse_view_hash(&hash) {
-                    app.borrow_mut().fly_to(c.lat, c.lon, c.alt);
+                    a.fly_to(c.lat, c.lon, c.alt);
                 }
             },
         )?;
