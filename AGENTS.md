@@ -22,7 +22,8 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/scrub.rs`, `src/scrub_ui.rs` | Day/night time scrubber: browser-free UTC time math and play stepping, and the panel's DOM glue. Panels that sit bottom left offset themselves by `--scrub` in `index.html` |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, line pass and globe draw call |
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel, or inverts a flat projection (`u_mode`). `morph.vert` draws the globe <-> flat morph mesh. `line.vert`/`line.frag` draw coastlines and borders (in every projection) as screen-space-width lines into an offscreen target that `globe.frag` reads. |
-| `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
+| `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk, then moved to content-hashed names under `dist/data/files/` with a `manifest.json` by `scripts/hash_data.py` (a Trunk post-build hook) |
+| `src/data.rs` | Data files by name: loads `data/manifest.json` once and resolves each name to its hashed URL (`data::fetch`) |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `build.rs`, `shader_minify.rs` | Strip comments and indentation from `src/shaders/*` into `OUT_DIR` before `include_str!` embeds them (the minify function is unit tested in `render.rs`) |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin`, `places.tsv` and `labels.tsv`; `marine_label_points.py` derives ocean label points from the Natural Earth marine shapefile; `make_blue_marble.py` builds the satellite imagery `assets/data/blue_marble.webp` from NASA |
@@ -34,7 +35,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 ## Setup and commands
 
-You need rustup with the `wasm32-unknown-unknown` target, plus [Trunk](https://trunkrs.dev).
+You need rustup with the `wasm32-unknown-unknown` target, [Trunk](https://trunkrs.dev), and Python 3 (Trunk runs `scripts/hash_data.py` after every build).
 
 ```sh
 trunk serve                 # dev server with live reload at http://127.0.0.1:8080
@@ -140,6 +141,7 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 - CI (job "Data") runs `scripts/check-data.sh`, which regenerates everything into a temp dir and compares it byte-for-byte with `assets/data/` (`*.bin`, `places.tsv`, `labels.tsv`). Run it locally before opening a PR that touches `data-src/` or `scripts/`. The converter is stdlib-only Python 3 and must stay deterministic across platforms (no reliance on dict/set order, locale or newline translation; write bytes). `data-src/ne_50m_marine_label_points.geojson` is a committed source: `scripts/marine_label_points.py` needs a separate Natural Earth download, so it is not part of the check.
 - `assets/data/blue_marble.webp` (NASA Blue Marble, credited in `README.md`) is not generated from `data-src/`: CI cannot download it, so `scripts/check-data.sh` only checks its format and size. Rebuild it with `scripts/make_blue_marble.py`. Its decoded GPU memory (44.7 MB high tier, 11.2 MB low tier) is allocated only when the Satellite layer is first selected.
 - Keep large data out of the wasm binary. Fetch it at runtime from `assets/` instead of using `include_str!`/`include_bytes!`.
+- Fetch data files with `data::fetch("<name in assets/data>")`, never by a `data/...` path: the deployed files have content-hashed names that only the manifest knows. The hashed files are cached as immutable, so never serve changed bytes under an existing hashed name.
 - If you change data files or how they are loaded, note the download size in the PR.
 
 ## Documentation

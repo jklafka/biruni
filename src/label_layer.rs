@@ -219,12 +219,12 @@ impl LabelLayer {
     }
 }
 
-/// Fetch and parse `data/labels.tsv`.
+/// Fetch and parse `labels.tsv`.
 pub async fn load() -> Result<Vec<Label>, JsValue> {
-    let bytes = crate::geo::fetch_bytes("data/labels.tsv").await?;
+    let bytes = crate::data::fetch("labels.tsv").await?;
     let text =
         String::from_utf8(bytes).map_err(|_| JsValue::from_str("labels.tsv is not UTF-8"))?;
-    labels::parse(&text).map_err(|e| JsValue::from_str(&format!("data/labels.tsv: {e}")))
+    labels::parse(&text).map_err(|e| JsValue::from_str(&format!("labels.tsv: {e}")))
 }
 
 /// Ids of the UI panels labels must stay out from under.

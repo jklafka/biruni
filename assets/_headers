@@ -19,5 +19,11 @@
 /index.html
   Cache-Control: public, max-age=300, must-revalidate
 
-/data/*
-  Cache-Control: public, max-age=3600
+# Data files have content-hashed names (scripts/hash_data.py), so they never
+# change; the manifest that names them must revalidate. Pages merges every
+# rule that matches a URL, so these two must not overlap: no /data/* rule.
+/data/files/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/data/manifest.json
+  Cache-Control: public, max-age=60, must-revalidate

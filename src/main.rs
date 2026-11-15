@@ -4,6 +4,7 @@ mod camera;
 mod controls;
 mod country;
 mod country_cycle;
+mod data;
 mod geo;
 mod geodesic;
 mod imagery;
@@ -281,12 +282,12 @@ impl App {
 
     fn fetch_layer(&mut self, layer: Layer) {
         let Some(app) = self.me.upgrade() else { return };
-        let Some(url) = layer.data_url() else {
+        let Some(name) = layer.data_file() else {
             // Cannot happen: only layers with data are fetched.
             return;
         };
         wasm_bindgen_futures::spawn_local(async move {
-            let result = Self::load_layer_data(&app, layer, url).await;
+            let result = Self::load_layer_data(&app, layer, name).await;
             let mut a = app.borrow_mut();
             let effects = a.layers_state.finished(layer, result);
             a.apply_layer_effects(effects);
@@ -298,10 +299,10 @@ impl App {
     async fn load_layer_data(
         app: &Rc<RefCell<App>>,
         layer: Layer,
-        url: &str,
+        name: &str,
     ) -> Result<(), String> {
         let js_msg = |e: JsValue| e.as_string().unwrap_or_else(|| format!("{e:?}"));
-        let bytes = geo::fetch_bytes(url).await.map_err(js_msg)?;
+        let bytes = data::fetch(name).await.map_err(js_msg)?;
         // Today the only layer with data is the satellite imagery.
         debug_assert_eq!(layer, Layer::Imagery);
         let width = app.borrow().renderer.imagery_width();

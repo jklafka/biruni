@@ -5,3 +5,10 @@ dist = "dist"
 [serve]
 addresses = ["127.0.0.1"]
 port = 8080
+
+# Move the data files to content-hashed names and write data/manifest.json
+# (see scripts/hash_data.py and src/data.rs). Runs for `trunk serve` too.
+[[hooks]]
+stage = "post_build"
+command = "python3"
+command_arguments = ["scripts/hash_data.py"]

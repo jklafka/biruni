@@ -321,16 +321,16 @@ impl Layers {
     /// `map_width` pixels wide is rasterized off the main thread while this
     /// thread decodes the shapes and builds the line levels.
     pub async fn load(map_width: u32) -> Result<Layers, JsValue> {
-        const LAND: &str = "data/ne_50m_land.bin";
-        const LAKES: &str = "data/ne_50m_lakes.bin";
-        const BORDERS: &str = "data/ne_50m_admin_0_boundary_lines_land.bin";
-        const GLACIERS: &str = "data/ne_50m_glaciated_areas.bin";
-        const SHELVES: &str = "data/ne_50m_antarctic_ice_shelves_polys.bin";
-        let land = fetch_bytes(LAND);
-        let lakes = fetch_bytes(LAKES);
-        let borders = fetch_bytes(BORDERS);
-        let glaciers = fetch_bytes(GLACIERS);
-        let shelves = fetch_bytes(SHELVES);
+        const LAND: &str = "ne_50m_land.bin";
+        const LAKES: &str = "ne_50m_lakes.bin";
+        const BORDERS: &str = "ne_50m_admin_0_boundary_lines_land.bin";
+        const GLACIERS: &str = "ne_50m_glaciated_areas.bin";
+        const SHELVES: &str = "ne_50m_antarctic_ice_shelves_polys.bin";
+        let land = crate::data::fetch(LAND);
+        let lakes = crate::data::fetch(LAKES);
+        let borders = crate::data::fetch(BORDERS);
+        let glaciers = crate::data::fetch(GLACIERS);
+        let shelves = crate::data::fetch(SHELVES);
         let (land_bytes, lakes_bytes, borders_bytes) = (land.await?, lakes.await?, borders.await?);
         let (glacier_bytes, shelf_bytes) = (glaciers.await?, shelves.await?);
         let job = if worker_supported() {
