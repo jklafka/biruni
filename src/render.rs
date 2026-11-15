@@ -139,6 +139,8 @@ struct Uniforms {
     layer: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
+    id_color: Option<WebGlUniformLocation>,
+    political: Option<WebGlUniformLocation>,
     sun: Option<WebGlUniformLocation>,
     sun_on: Option<WebGlUniformLocation>,
     bounds: Option<WebGlUniformLocation>,
@@ -173,6 +175,8 @@ impl Uniforms {
             layer: u("u_layer"),
             ids: u("u_ids"),
             highlight: u("u_highlight"),
+            id_color: u("u_idColor"),
+            political: u("u_political"),
             sun: u("u_sun"),
             sun_on: u("u_sunOn"),
             bounds: u("u_bounds"),
@@ -645,6 +649,10 @@ pub struct Renderer {
     ids: WebGlTexture,
     /// ID of the highlighted country, 0 for none.
     highlight: u8,
+    /// Political fill color index per country ID, once the country data has
+    /// loaded. Kept on the CPU so it survives context loss. `None` draws plain
+    /// land, as before the data arrives.
+    country_colors: Option<[f32; 256]>,
     /// Texture sizes, chosen once from the device and kept across context loss.
     budget: TextureBudget,
     /// With `?debug=ctxloss`, the `WEBGL_lose_context` extension for the debug
@@ -699,6 +707,7 @@ impl Renderer {
             ctx: ContextState::default(),
             ids: r.ids,
             highlight: 0,
+            country_colors: None,
             budget,
             lose_ext,
         })
@@ -1016,6 +1025,12 @@ impl Renderer {
         changed
     }
 
+    /// Per-ID political color indexes (see `Countries::id_colors`). Call this
+    /// together with [`Self::upload_country_ids`]: the fills need both.
+    pub fn set_country_colors(&mut self, colors: &[u8; 256]) {
+        self.country_colors = Some(colors.map(f32::from));
+    }
+
     pub fn set_layer(&mut self, layer: Layer) {
         self.layer = layer;
     }
@@ -1211,6 +1226,15 @@ impl Renderer {
         gl.bind_texture(GL::TEXTURE_2D, lines_tex);
         gl.uniform1i(u.lines.as_ref(), 2);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
+        // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
+        let colors = self.country_colors.as_ref();
+        gl.uniform1f(
+            u.political.as_ref(),
+            if colors.is_some() { 1.0 } else { 0.0 },
+        );
+        if let Some(c) = colors {
+            gl.uniform4fv_with_f32_array(u.id_color.as_ref(), c);
+        }
         gl.active_texture(GL::TEXTURE0);
     }
 
@@ -1477,6 +1501,7 @@ mod tests {
             .chain(MORPH_VERT_SRC.lines())
             .filter_map(|l| l.trim().strip_prefix("uniform "))
             .filter_map(|l| l.split(';').next()?.split_whitespace().last())
+            .map(|n| n.split('[').next().unwrap_or(n))
             .collect();
         for name in [
             "u_res",
@@ -1491,6 +1516,8 @@ mod tests {
             "u_layer",
             "u_ids",
             "u_highlight",
+            "u_idColor",
+            "u_political",
             "u_sun",
             "u_sunOn",
             "u_bounds",
@@ -1563,6 +1590,7 @@ mod tests {
             .chain(LINE_FRAG_SRC.lines())
             .filter_map(|l| l.trim().strip_prefix("uniform "))
             .filter_map(|l| l.split(';').next()?.split_whitespace().last())
+            .map(|n| n.split('[').next().unwrap_or(n))
             .collect();
         for name in [
             "u_res",

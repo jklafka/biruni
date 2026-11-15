@@ -151,6 +151,8 @@ try {
     }
     // Labels load after the map; the app flags the canvas once they are drawn.
     await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
+    // Country data (hover, political fills) loads last; the app flags the canvas.
+    await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
     await page.evaluate(
       () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
     );

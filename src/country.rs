@@ -8,13 +8,17 @@
 //! integers are LEB128 varints):
 //!
 //! ```text
-//! "MAPC" | version u8 = 1 | scale | country_count
+//! "MAPC" | version u8 = 2 | scale | country_count
 //! country_count × (
 //!     name | iso2 | iso3 | continent | subregion   (strings: len, UTF-8 bytes)
-//!     population | polygon_count
+//!     population | color u8 (political fill, 0..PALETTE_SIZE) | polygon_count
 //!     polygon_count × ( ring_count | ring_count × ( point_count | points ) )
 //! )
 //! ```
+//!
+//! `color` is a graph coloring computed by the converter: countries that share
+//! a border edge never get the same color (checked by a test against the ID
+//! raster). The palette itself lives in `globe.frag`.
 //!
 //! `points` are zigzag `(dlon, dlat)` deltas in 1/`scale` degree from the
 //! previous point of the file. Rings are implicitly closed (the repeated
@@ -32,7 +36,9 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
 const MAGIC: &[u8; 4] = b"MAPC";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
+/// Number of political fill colors; `PALETTE` in `globe.frag` has this many.
+pub const PALETTE_SIZE: u8 = 6;
 /// IDs in the raster are `index + 1` in a byte, with 0 meaning no country.
 pub const MAX_COUNTRIES: usize = 255;
 
@@ -60,6 +66,8 @@ pub struct Country {
     pub continent: String,
     pub subregion: String,
     pub population: u64,
+    /// Political fill color index, below [`PALETTE_SIZE`].
+    pub color: u8,
     polygons: Vec<Polygon>,
 }
 
@@ -138,6 +146,11 @@ pub fn decode_countries(data: &[u8]) -> Result<Countries, String> {
         let continent = read_string(data, &mut pos)?;
         let subregion = read_string(data, &mut pos)?;
         let population = read_varint(data, &mut pos)?;
+        let color = *data.get(pos).ok_or("truncated color")?;
+        pos += 1;
+        if color >= PALETTE_SIZE {
+            return Err("color index out of range".into());
+        }
         let n_polys = read_varint(data, &mut pos)?;
         // A polygon needs at least a ring count, a point count and 3 points.
         if n_polys > (data.len() - pos) as u64 / 8 {
@@ -184,6 +197,7 @@ pub fn decode_countries(data: &[u8]) -> Result<Countries, String> {
             continent,
             subregion,
             population,
+            color,
             polygons,
         });
     }
@@ -248,6 +262,16 @@ impl Countries {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.list.len()
+    }
+
+    /// Fill color per raster ID: entry `id` is the color of country `id - 1`,
+    /// entry 0 (no country) is 0. Always 256 long, matching the shader table.
+    pub fn id_colors(&self) -> [u8; 256] {
+        let mut out = [0u8; 256];
+        for (i, c) in self.list.iter().enumerate() {
+            out[i + 1] = c.color;
+        }
+        out
     }
 
     pub fn get(&self, index: usize) -> Option<&Country> {
@@ -747,15 +771,16 @@ mod tests {
 
     /// One country per entry; polygons are lists of rings in whole degrees.
     fn build(countries: &[(&str, Vec<Rings>)]) -> Vec<u8> {
-        let mut out = b"MAPC\x01".to_vec();
+        let mut out = b"MAPC\x02".to_vec();
         put(&mut out, 1);
         put(&mut out, countries.len() as u64);
         let (mut px, mut py) = (0, 0);
-        for (name, polys) in countries {
+        for (i, (name, polys)) in countries.iter().enumerate() {
             for s in [name, "XX", "XXX", "Land", "Sub"] {
                 put_str(&mut out, s);
             }
             put(&mut out, 1234);
+            out.push(i as u8 % 3);
             put(&mut out, polys.len() as u64);
             for rings in polys {
                 put(&mut out, rings.len() as u64);
@@ -836,10 +861,10 @@ mod tests {
         assert!(decode_countries(b"").is_err());
         assert!(decode_countries(b"MAPD\x01\x01\x00").is_err(), "bad magic");
         assert!(
-            decode_countries(b"MAPC\x02\x01\x00").is_err(),
-            "bad version"
+            decode_countries(b"MAPC\x01\x01\x00").is_err(),
+            "old version"
         );
-        assert!(decode_countries(b"MAPC\x01\x00\x00").is_err(), "zero scale");
+        assert!(decode_countries(b"MAPC\x02\x00\x00").is_err(), "zero scale");
         for len in 0..good.len() {
             assert!(
                 decode_countries(&good[..len]).is_err(),
@@ -850,7 +875,7 @@ mod tests {
         trailing.push(0);
         assert!(decode_countries(&trailing).is_err());
         // Huge counts and string lengths must not allocate or panic.
-        assert!(decode_countries(b"MAPC\x01\x01\xff\xff\xff\xff\x0f").is_err());
+        assert!(decode_countries(b"MAPC\x02\x01\xff\xff\xff\xff\x0f").is_err());
         assert!(decode_countries(b"MAPC\x01\x01\x01\xff\xff\xff\xff\x0f").is_err());
         // Coordinates beyond lon/lat range.
         let bad = build(&[("A", vec![vec![square(0, 0, 181, 10)]])]);
@@ -860,8 +885,67 @@ mod tests {
     }
 
     #[test]
+    fn colors_round_trip_and_are_validated() {
+        let data = build(&[
+            ("A", vec![vec![square(0, 0, 10, 10)]]),
+            ("B", vec![vec![square(10, 0, 20, 10)]]),
+            ("C", vec![vec![square(20, 0, 30, 10)]]),
+            ("D", vec![vec![square(30, 0, 40, 10)]]),
+        ]);
+        let w = decode_countries(&data).unwrap();
+        let colors = w.id_colors();
+        assert_eq!(&colors[..6], &[0, 0, 1, 2, 0, 0]);
+        // A color index outside the palette is rejected. The color byte of the
+        // only country follows the header (7 bytes), its strings (18) and population (2).
+        let good = build(&[("A", vec![vec![square(0, 0, 10, 10)]])]);
+        let at = 7 + 18 + 2;
+        assert_eq!(good[at], 0);
+        let mut bad = good.clone();
+        bad[at] = PALETTE_SIZE;
+        assert!(decode_countries(&bad).is_err());
+    }
+
+    /// The bundled coloring never gives two neighboring countries the same
+    /// color. Neighbors are found on the ID raster, which is what the shader
+    /// draws: any two countries with 4-adjacent texels must differ. A few
+    /// resolutions cover every texture tier.
+    #[test]
+    fn bundled_coloring_is_valid() {
+        let w = world();
+        let colors = w.id_colors();
+        let mut used = [false; PALETTE_SIZE as usize];
+        for c in &w.list {
+            used[c.color as usize] = true;
+        }
+        assert!(used.iter().all(|&u| u), "every palette color is used");
+        for width in [1024, 2048, 4096] {
+            let ids = w.rasterize_ids(width);
+            let check = |a: u8, b: u8| {
+                if a != 0 && b != 0 && a != b {
+                    assert_ne!(
+                        colors[a as usize],
+                        colors[b as usize],
+                        "{} and {} touch at width {width} but share a color",
+                        w.list[a as usize - 1].name,
+                        w.list[b as usize - 1].name
+                    );
+                }
+            };
+            for row in 0..width / 2 {
+                for col in 0..width {
+                    let a = ids[row * width + col];
+                    check(a, ids[row * width + (col + 1) % width]);
+                    if row + 1 < width / 2 {
+                        check(a, ids[(row + 1) * width + col]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn empty_file_has_no_countries() {
-        let w = decode_countries(b"MAPC\x01\x01\x00").unwrap();
+        let w = decode_countries(b"MAPC\x02\x01\x00").unwrap();
         assert_eq!(w.len(), 0);
         assert_eq!(w.hit(0.0, 0.0), None);
         assert!(w.rasterize_ids(8).iter().all(|&b| b == 0));
