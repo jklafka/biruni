@@ -5,6 +5,7 @@ mod controls;
 mod country;
 mod country_cycle;
 mod geo;
+mod imagery;
 mod info_panel;
 mod label_layer;
 mod labels;
@@ -58,7 +59,8 @@ struct App {
     renderer: render::Renderer,
     /// Which layer is shown, wanted and loading. See `layer_loader`.
     layers_state: LayerLoader<Layer>,
-    /// Fetched data of layers that need it (none do yet).
+    /// Fetched (still encoded) data of layers that need it. Kept so a lost
+    /// WebGL context can rebuild the layer's texture without a download.
     layer_data: HashMap<Layer, Rc<Vec<u8>>>,
     /// Handle to this app, for spawning layer fetches.
     me: Weak<RefCell<App>>,
@@ -130,6 +132,7 @@ struct App {
 impl App {
     fn context_lost(&mut self) {
         self.renderer.context_lost();
+        self.sync_imagery_attr();
         self.send(Event::CancelInertia);
         self.status.set_text_content(Some("Restoring map…"));
         let _ = self.status.class_list().remove_2("hidden", "error");
@@ -142,6 +145,8 @@ impl App {
             .context_restored(layers.as_deref(), self.ids.as_ref().map(|v| v.as_slice()))
         {
             Ok(()) => {
+                self.sync_imagery_attr();
+                self.restore_imagery();
                 if layers.is_some() {
                     let _ = self.status.class_list().add_1("hidden");
                 } else {
@@ -253,12 +258,14 @@ impl App {
                     debug_assert!(self.layers_state.shown() == l);
                     self.renderer.set_layer(l);
                     self.redraw.mark_render();
+                    // Lets the visual tests wait for the layer to be on screen.
+                    self.set_globe_attr("data-layer", l.id());
                 }
                 Effect::Fetch(l) => self.fetch_layer(l),
                 Effect::Failed(l, msg) => {
                     web_sys::console::error_1(&JsValue::from_str(&msg));
                     self.layer_error =
-                        Some(format!("Could not load {}. Select it to retry.", l.id()));
+                        Some(format!("Could not load {}. Select it to retry.", l.label()));
                 }
             }
         }
@@ -276,16 +283,67 @@ impl App {
             return;
         };
         wasm_bindgen_futures::spawn_local(async move {
-            let result = geo::fetch_bytes(url)
-                .await
-                .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")));
+            let result = Self::load_layer_data(&app, layer, url).await;
             let mut a = app.borrow_mut();
-            let result = result.map(|bytes| {
-                a.layer_data.insert(layer, Rc::new(bytes));
-            });
             let effects = a.layers_state.finished(layer, result);
             a.apply_layer_effects(effects);
         });
+    }
+
+    /// Fetch, decode and upload one layer's data. No borrow of the app is
+    /// held across an await.
+    async fn load_layer_data(
+        app: &Rc<RefCell<App>>,
+        layer: Layer,
+        url: &str,
+    ) -> Result<(), String> {
+        let js_msg = |e: JsValue| e.as_string().unwrap_or_else(|| format!("{e:?}"));
+        let bytes = geo::fetch_bytes(url).await.map_err(js_msg)?;
+        // Today the only layer with data is the satellite imagery.
+        debug_assert_eq!(layer, Layer::Imagery);
+        let width = app.borrow().renderer.imagery_width();
+        let bitmap = imagery::decode(&bytes, width).await.map_err(js_msg)?;
+        let mut a = app.borrow_mut();
+        a.layer_data.insert(layer, Rc::new(bytes));
+        // A no-op while the context is lost; `context_restored` redoes it.
+        let uploaded = a.renderer.upload_imagery(&bitmap);
+        bitmap.close();
+        uploaded.map_err(js_msg)?;
+        a.sync_imagery_attr();
+        Ok(())
+    }
+
+    /// After a context restore: decode the kept bytes again and upload them.
+    fn restore_imagery(&mut self) {
+        let Some(bytes) = self.layer_data.get(&Layer::Imagery).cloned() else {
+            return;
+        };
+        let Some(app) = self.me.upgrade() else { return };
+        let width = self.renderer.imagery_width();
+        wasm_bindgen_futures::spawn_local(async move {
+            let bitmap = match imagery::decode(&bytes, width).await {
+                Ok(b) => b,
+                Err(e) => return web_sys::console::error_1(&e),
+            };
+            let mut a = app.borrow_mut();
+            if let Err(e) = a.renderer.upload_imagery(&bitmap) {
+                web_sys::console::error_1(&e);
+            }
+            bitmap.close();
+            a.sync_imagery_attr();
+            a.redraw.mark_render();
+        });
+    }
+
+    fn set_globe_attr(&self, name: &str, value: &str) {
+        let _ = self.canvas.set_attribute(name, value);
+    }
+
+    /// `data-imagery` on the canvas tells the tests whether the satellite
+    /// texture is in GPU memory.
+    fn sync_imagery_attr(&self) {
+        let on = self.renderer.has_imagery();
+        self.set_globe_attr("data-imagery", if on { "1" } else { "0" });
     }
 
     /// Picker buttons show the wanted layer as pressed and the one being
@@ -300,7 +358,7 @@ impl App {
             );
         }
         let text = match (pending, &self.layer_error) {
-            (Some(l), _) => format!("Loading {}…", l.id()),
+            (Some(l), _) => format!("Loading {}…", l.label()),
             (None, Some(e)) => e.clone(),
             _ => String::new(),
         };
@@ -1410,7 +1468,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2") => {
+                    k @ ("1" | "2" | "3") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);

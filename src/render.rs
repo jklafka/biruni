@@ -54,6 +54,9 @@ pub struct TextureBudget {
     pub map_width: u32,
     /// Country-ID raster width (height is half). R8, no mipmaps.
     pub ids_width: usize,
+    /// Satellite imagery width (height is half). RGBA8 with a full mip
+    /// chain, allocated only when the Imagery layer is first selected.
+    pub imagery_width: u32,
 }
 
 /// Devices with at most this much RAM take the small tier.
@@ -74,7 +77,11 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
                 || d.device_memory_gb.is_some_and(|m| m <= LOW_MEMORY_GB)
         }
     };
-    let (map, ids) = if low { (4096, 2048) } else { (8192, 4096) };
+    let (map, ids, imagery) = if low {
+        (4096, 2048, 2048)
+    } else {
+        (8192, 4096, 4096)
+    };
     // Largest power of two the GPU supports (at least 1024).
     let cap = if d.max_texture_size >= 1024 {
         1 << (31 - d.max_texture_size.leading_zeros())
@@ -84,7 +91,25 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
     TextureBudget {
         map_width: map.min(cap),
         ids_width: (ids as u32).min(cap) as usize,
+        imagery_width: imagery.min(cap),
     }
+}
+
+/// GPU bytes for the satellite imagery (RGBA8, full mip chain), which exists
+/// only once the Imagery layer has been opened: 44.7 MB at 4096 wide, 11.2 MB
+/// at 2048 wide.
+pub fn imagery_bytes(b: &TextureBudget) -> u64 {
+    let (mut w, mut h) = (b.imagery_width as u64, b.imagery_width as u64 / 2);
+    let mut total = 0;
+    loop {
+        total += w * h * 4;
+        if w == 1 && h == 1 {
+            break;
+        }
+        w = (w / 2).max(1);
+        h = (h / 2).max(1);
+    }
+    total
 }
 
 /// GPU bytes for the map texture (R8, full mip chain) and the ID raster
@@ -137,6 +162,8 @@ struct Uniforms {
     grid_step: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
     layer: Option<WebGlUniformLocation>,
+    imagery: Option<WebGlUniformLocation>,
+    has_imagery: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
@@ -173,6 +200,8 @@ impl Uniforms {
             grid_step: u("u_gridStep"),
             dpr: u("u_dpr"),
             layer: u("u_layer"),
+            imagery: u("u_imagery"),
+            has_imagery: u("u_hasImagery"),
             ids: u("u_ids"),
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
@@ -351,6 +380,8 @@ struct Resources {
     map: WebGlTexture,
     /// Country-ID raster (R8, one byte per texel, 0 = no country).
     ids: WebGlTexture,
+    /// Satellite imagery: a 1x1 placeholder until the layer's file is decoded.
+    imagery: WebGlTexture,
 }
 
 impl Resources {
@@ -418,6 +449,23 @@ impl Resources {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
 
+        let imagery = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&imagery));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::RGBA8 as i32,
+            1,
+            1,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&[0, 0, 0, 255]),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+
         Ok(Self {
             line_pass,
             space,
@@ -428,6 +476,7 @@ impl Resources {
             uniforms,
             map,
             ids,
+            imagery,
         })
     }
 }
@@ -641,6 +690,10 @@ pub struct Renderer {
     uniforms: Uniforms,
     map: WebGlTexture,
     has_map: bool,
+    /// Satellite imagery texture (placeholder until uploaded) and whether
+    /// the real image is in it.
+    imagery: WebGlTexture,
+    has_imagery: bool,
     layer: Layer,
     /// World-space direction to the sun, or `None` when the terminator is off.
     sun: Option<[f32; 3]>,
@@ -702,6 +755,8 @@ impl Renderer {
             uniforms: r.uniforms,
             map: r.map,
             has_map: false,
+            imagery: r.imagery,
+            has_imagery: false,
             layer: Layer::default(),
             sun: None,
             ctx: ContextState::default(),
@@ -740,8 +795,107 @@ impl Renderer {
         self.budget.map_width
     }
 
+    /// Width of the satellite imagery this device uses (see [`choose_budget`]).
+    pub fn imagery_width(&self) -> u32 {
+        self.budget.imagery_width
+    }
+
+    /// Whether the satellite imagery is in GPU memory right now.
+    pub fn has_imagery(&self) -> bool {
+        self.has_imagery
+    }
+
     pub fn is_lost(&self) -> bool {
         self.ctx.is_lost()
+    }
+
+    /// Upload the decoded satellite image as an RGBA8 texture with mipmaps,
+    /// sized from the bitmap. While the context is lost nothing is done (the
+    /// caller decodes and uploads again after the restore).
+    pub fn upload_imagery(&mut self, bitmap: &web_sys::ImageBitmap) -> Result<(), JsValue> {
+        if self.gl.is_context_lost() || self.ctx.is_lost() {
+            return Ok(());
+        }
+        let gl = &self.gl;
+        let (w, h) = (bitmap.width(), bitmap.height());
+        let max = gl
+            .get_parameter(GL::MAX_TEXTURE_SIZE)
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(4096.0) as u32;
+        if w == 0 || h == 0 || w > max {
+            return Err(format!("satellite image {w}x{h} does not fit this GPU").into());
+        }
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.tex_storage_2d(
+            GL::TEXTURE_2D,
+            crate::imagery::mip_levels(w, h),
+            GL::RGBA8,
+            w as i32,
+            h as i32,
+        );
+        gl.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 0);
+        gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        if let Err(e) = gl.tex_sub_image_2d_with_u32_and_u32_and_image_bitmap(
+            GL::TEXTURE_2D,
+            0,
+            0,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            bitmap,
+        ) {
+            gl.delete_texture(Some(&tex));
+            return Err(e);
+        }
+        gl.generate_mipmap(GL::TEXTURE_2D);
+        gl.tex_parameteri(
+            GL::TEXTURE_2D,
+            GL::TEXTURE_MIN_FILTER,
+            GL::LINEAR_MIPMAP_LINEAR as i32,
+        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+        self.set_anisotropy();
+        self.gl.delete_texture(Some(&self.imagery));
+        self.imagery = tex;
+        self.has_imagery = true;
+        web_sys::console::log_1(
+            &format!(
+                "satellite texture {w}x{h}: {:.1} MB",
+                imagery_bytes(&TextureBudget {
+                    imagery_width: w,
+                    ..self.budget
+                }) as f64
+                    / 1048576.0
+            )
+            .into(),
+        );
+        Ok(())
+    }
+
+    /// Anisotropic filtering on the bound texture, up to 8x where available.
+    fn set_anisotropy(&self) {
+        let gl = &self.gl;
+        if gl
+            .get_extension("EXT_texture_filter_anisotropic")
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            let max = gl
+                .get_parameter(MAX_TEXTURE_MAX_ANISOTROPY_EXT)
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0);
+            gl.tex_parameterf(
+                GL::TEXTURE_2D,
+                TEXTURE_MAX_ANISOTROPY_EXT,
+                max.min(8.0) as f32,
+            );
+        }
     }
 
     /// The context was lost: stop issuing GL calls until it is restored.
@@ -769,6 +923,9 @@ impl Renderer {
         self.uniforms = r.uniforms;
         self.map = r.map;
         self.ids = r.ids;
+        self.imagery = r.imagery;
+        // The caller decodes the imagery again from its encoded bytes.
+        self.has_imagery = false;
         self.has_map = false;
         // Buffers and the render target died with the old context.
         self.lines = None;
@@ -848,24 +1005,9 @@ impl Renderer {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
-        if gl
-            .get_extension("EXT_texture_filter_anisotropic")
-            .ok()
-            .flatten()
-            .is_some()
-        {
-            let max = gl
-                .get_parameter(MAX_TEXTURE_MAX_ANISOTROPY_EXT)
-                .ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0);
-            gl.tex_parameterf(
-                GL::TEXTURE_2D,
-                TEXTURE_MAX_ANISOTROPY_EXT,
-                max.min(8.0) as f32,
-            );
-        }
+        self.set_anisotropy();
 
+        let gl = &self.gl;
         gl.delete_texture(Some(&self.map));
         self.map = tex;
         self.has_map = true;
@@ -1204,6 +1346,10 @@ impl Renderer {
         gl.uniform1f(u.grid_step.as_ref(), camera.grid_step_deg() as f32);
         gl.uniform1f(u.dpr.as_ref(), dpr as f32);
         gl.uniform1i(u.layer.as_ref(), self.layer.shader_index());
+        gl.uniform1f(
+            u.has_imagery.as_ref(),
+            if self.has_imagery { 1.0 } else { 0.0 },
+        );
         let sun = self.sun.unwrap_or([0.0, 0.0, 1.0]);
         gl.uniform3f(u.sun.as_ref(), sun[0], sun[1], sun[2]);
         gl.uniform1f(
@@ -1225,6 +1371,9 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE2);
         gl.bind_texture(GL::TEXTURE_2D, lines_tex);
         gl.uniform1i(u.lines.as_ref(), 2);
+        gl.active_texture(GL::TEXTURE3);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&self.imagery));
+        gl.uniform1i(u.imagery.as_ref(), 3);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
         let colors = self.country_colors.as_ref();
@@ -1438,15 +1587,38 @@ mod tests {
         let (map, ids) = budget_bytes(&TextureBudget {
             map_width: 8192,
             ids_width: 4096,
+            imagery_width: 4096,
         });
         assert!((map as f64 / MB - 42.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 8.0);
         let (map, ids) = budget_bytes(&TextureBudget {
             map_width: 4096,
             ids_width: 2048,
+            imagery_width: 2048,
         });
         assert!((map as f64 / MB - 10.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 2.0);
+    }
+
+    #[test]
+    fn imagery_budget_per_tier() {
+        let high = choose_budget(&dev(16384, Some(8.0), false), None);
+        assert_eq!(high.imagery_width, 4096);
+        assert!((imagery_bytes(&high) as f64 / MB - 42.7).abs() < 0.1);
+        for d in [
+            dev(16384, Some(2.0), true),
+            dev(16384, Some(0.5), false),
+            dev(4096, None, false),
+        ] {
+            let low = choose_budget(&d, None);
+            assert_eq!(low.imagery_width, 2048, "{d:?}");
+            assert!((imagery_bytes(&low) as f64 / MB - 10.7).abs() < 0.1);
+        }
+        // The forced tiers and the GPU limit apply to the imagery too.
+        let forced = choose_budget(&dev(16384, Some(8.0), false), Some(TierOverride::Low));
+        assert_eq!(forced.imagery_width, 2048);
+        let small = choose_budget(&dev(1024, None, false), Some(TierOverride::High));
+        assert_eq!(small.imagery_width, 1024);
     }
 
     #[test]
@@ -1514,6 +1686,8 @@ mod tests {
             "u_gridStep",
             "u_dpr",
             "u_layer",
+            "u_imagery",
+            "u_hasImagery",
             "u_ids",
             "u_highlight",
             "u_idColor",
