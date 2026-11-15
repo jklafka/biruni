@@ -33,6 +33,19 @@ impl Overlay {
         })
     }
 
+    /// Erase the overlay (during a projection morph).
+    pub fn clear(&mut self) {
+        if self.has_content {
+            let _ = self.ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+            self.ctx.clear_rect(
+                0.0,
+                0.0,
+                self.canvas.width() as f64,
+                self.canvas.height() as f64,
+            );
+        }
+    }
+
     /// Redraw for the current camera. Does nothing when there is nothing to
     /// draw now and nothing to clear.
     pub fn draw(&mut self, cam: &Camera, measure: &Measure, px: u32, py: u32, dpr: f64) {

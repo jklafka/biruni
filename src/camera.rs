@@ -16,6 +16,7 @@
 //! The same conventions are used by `shaders/globe.frag`, so picking and
 //! projection here match what is drawn pixel-for-pixel.
 
+use crate::projection::{self, Projection, FLAT_ZOOM};
 use std::f64::consts::PI;
 
 /// Closest the camera may get to the surface, in globe radii (~380 km).
@@ -54,6 +55,11 @@ pub struct Camera {
     /// Viewport size in CSS pixels.
     pub width: f64,
     pub height: f64,
+    /// The projection the view is heading for (or showing). For a flat
+    /// projection the camera is a 2D view: `lon` is the central meridian,
+    /// `lat` picks the row at the screen center, `alt` is the zoom, and the
+    /// bearing is always 0. See `projection.rs`.
+    pub proj: Projection,
 }
 
 type V3 = [f64; 3];
@@ -89,7 +95,60 @@ impl Camera {
             alt,
             width: 1.0,
             height: 1.0,
+            proj: Projection::Globe,
         }
+    }
+
+    /// Whether the view is a flat map rather than the globe.
+    pub fn is_flat(&self) -> bool {
+        self.proj.is_flat()
+    }
+
+    /// Switch projection. A flat map is always north-up, so the bearing is
+    /// dropped, and the center latitude is held inside what the map shows.
+    pub fn set_projection(&mut self, proj: Projection) {
+        self.proj = proj;
+        if proj.is_flat() {
+            self.bearing = 0.0;
+            self.north_up = true;
+            self.constrain();
+        }
+    }
+
+    /// Keep a flat view on its map: latitude within the projection's limit
+    /// (Mercator stops at about 85 degrees), longitude wrapped. No-op on the
+    /// globe.
+    pub fn constrain(&mut self) {
+        if self.is_flat() {
+            let m = self.proj.max_lat();
+            self.lat = if self.lat.is_finite() {
+                self.lat.clamp(-m, m)
+            } else {
+                0.0
+            };
+            self.lon = wrap_angle(self.lon);
+        }
+    }
+
+    /// Pixels per plane unit (radian on the equator) of a flat map, for a
+    /// viewport whose shorter side is `2 * half_min` pixels.
+    pub fn flat_scale(&self, half_min: f64) -> f64 {
+        half_min * FLAT_ZOOM / (self.alt * TAN_HALF_FOV)
+    }
+
+    /// Flat-map pixels per plane unit in CSS pixels.
+    pub fn flat_px(&self) -> f64 {
+        self.flat_scale(self.half_min())
+    }
+
+    /// Plane height of the screen center row (flat maps).
+    pub fn flat_center_y(&self) -> f64 {
+        projection::y_of_lat(self.proj, self.lat)
+    }
+
+    /// Width in CSS pixels of one whole world on a flat map.
+    pub fn flat_world_width_px(&self) -> f64 {
+        2.0 * self.proj.half_width() * self.flat_px()
     }
 
     /// A camera with a bearing in degrees. A nonzero bearing means free mode.
@@ -116,6 +175,11 @@ impl Camera {
     /// Ground distance in km covered by one CSS pixel at the view center.
     /// Not finite for a degenerate camera (NaN/∞ altitude).
     pub fn km_per_pixel(&self) -> f64 {
+        if self.is_flat() {
+            // East-west ground distance at the center row.
+            return EARTH_RADIUS_KM
+                / (self.flat_px() * projection::parallel_stretch(self.proj, self.lat));
+        }
         self.alt * TAN_HALF_FOV / self.half_min() * EARTH_RADIUS_KM
     }
 
@@ -156,6 +220,9 @@ impl Camera {
     /// Spin the view about the screen center. Positive is clockwise on
     /// screen, like a twist of two fingers.
     pub fn twist(&mut self, angle: f64) {
+        if self.is_flat() {
+            return;
+        }
         self.bearing = wrap_angle(self.bearing - angle);
     }
 
@@ -218,6 +285,13 @@ impl Camera {
 
     /// Latitude/longitude (radians) of the globe surface under a screen point.
     pub fn pick(&self, sx: f64, sy: f64) -> Option<(f64, f64)> {
+        if self.is_flat() {
+            let s = self.flat_px();
+            let x = (sx - self.width * 0.5) / s;
+            let y = self.flat_center_y() - (sy - self.height * 0.5) / s;
+            let (lat, rel) = projection::inverse(self.proj, x, y)?;
+            return Some((lat, wrap_angle(self.lon + rel)));
+        }
         let rd = self.ray(sx, sy);
         let d = self.dist();
         let b = d * rd[2];
@@ -238,6 +312,19 @@ impl Camera {
 
     /// Screen position (CSS pixels) of a surface point, if it faces the camera.
     pub fn project(&self, lat: f64, lon: f64) -> Option<(f64, f64)> {
+        if self.is_flat() {
+            // The copy of the world nearest the center, for the projections
+            // that repeat.
+            if !projection::in_domain(self.proj, lat) {
+                return None;
+            }
+            let (x, y) = projection::forward(self.proj, lat, wrap_angle(lon - self.lon))?;
+            let s = self.flat_px();
+            return Some((
+                self.width * 0.5 + x * s,
+                self.height * 0.5 - (y - self.flat_center_y()) * s,
+            ));
+        }
         let w = spherical(lat, lon);
         let b = self.basis();
         let n = [dot(b[0], w), dot(b[1], w), dot(b[2], w)];
@@ -258,6 +345,19 @@ impl Camera {
     /// grabbing the surface at every zoom level. This is a trackball rotation,
     /// so it is well defined everywhere, including over the poles.
     pub fn pan_pixels(&mut self, dx: f64, dy: f64) {
+        if self.is_flat() {
+            // Plain 2D drag. Sideways it turns the central meridian (exact
+            // for the cylindrical maps, exact at the center row for the
+            // others); vertically it moves along the map and stops at its
+            // top and bottom edge.
+            let s = self.flat_px();
+            let kx = projection::x_scale(self.proj, self.lat).max(0.15);
+            let y = self.flat_center_y() + dy / s;
+            self.lon = wrap_angle(self.lon - dx / (s * kx));
+            self.lat = projection::lat_of_y(self.proj, y);
+            self.constrain();
+            return;
+        }
         let rate = self.alt * TAN_HALF_FOV / self.half_min();
         self.trackball(dy * rate, dx * rate);
         if self.north_up {
@@ -268,6 +368,23 @@ impl Camera {
     /// Nudge the view so that a surface point sits under a screen position.
     /// Used to zoom toward the cursor and to pan while pinching.
     pub fn keep_point_at(&mut self, lat: f64, lon: f64, sx: f64, sy: f64) {
+        if self.is_flat() {
+            // Closed form: on a flat map x is linear in the longitude
+            // relative to the central meridian.
+            if !projection::in_domain(self.proj, lat) {
+                return;
+            }
+            let s = self.flat_px();
+            let a = projection::x_scale(self.proj, lat).max(1e-9);
+            let rel = (sx - self.width * 0.5) / s / a;
+            let y = projection::y_of_lat(self.proj, lat) + (sy - self.height * 0.5) / s;
+            if rel.is_finite() && y.is_finite() {
+                self.lon = wrap_angle(lon - rel);
+                self.lat = projection::lat_of_y(self.proj, y);
+                self.constrain();
+            }
+            return;
+        }
         for _ in 0..4 {
             match self.project(lat, lon) {
                 Some((px, py)) => {
@@ -291,6 +408,9 @@ impl Camera {
     /// whole screen is covered.
     pub fn globe_bounds(&self, w_px: f64, h_px: f64) -> [f64; 4] {
         let full = [-1.0, -1.0, 1.0, 1.0];
+        if self.is_flat() {
+            return full;
+        }
         let r = 1.0 + HALO_EXTENT;
         let d = self.dist();
         if !(d.is_finite() && w_px >= 1.0 && h_px >= 1.0) || d <= r {
@@ -354,6 +474,247 @@ mod tests {
     }
 
     use super::*;
+
+    fn flat_cam(p: Projection, lat: f64, lon: f64, alt: f64) -> Camera {
+        let mut c = Camera::new(lat, lon, alt);
+        c.width = 1200.0;
+        c.height = 800.0;
+        c.set_projection(p);
+        c
+    }
+
+    const FLATS: [Projection; 4] = [
+        Projection::Equirectangular,
+        Projection::Mercator,
+        Projection::Robinson,
+        Projection::Mollweide,
+    ];
+
+    #[test]
+    fn flat_pick_and_project_round_trip() {
+        for p in FLATS {
+            for (lat, lon, alt) in [(20.0, 10.0, 2.4), (-35.0, 170.0, 1.0), (60.0, -179.0, 4.0)] {
+                let c = flat_cam(p, lat, lon, alt);
+                for (sx, sy) in [
+                    (600.0, 400.0),
+                    (300.0, 250.0),
+                    (900.0, 600.0),
+                    (610.0, 80.0),
+                ] {
+                    let Some((la, lo)) = c.pick(sx, sy) else {
+                        continue; // outside the map
+                    };
+                    if (sx - 600.0).abs() > PI * c.flat_px() {
+                        continue; // another copy of the world: project() shows the nearest
+                    }
+                    let (px, py) = c.project(la, lo).unwrap();
+                    assert!(
+                        (px - sx).abs() < 1e-6 && (py - sy).abs() < 1e-6,
+                        "{p:?} {sx},{sy}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flat_center_is_the_screen_center() {
+        for p in FLATS {
+            let c = flat_cam(p, 33.0, 44.0, 2.0);
+            let (lat, lon) = c.pick(600.0, 400.0).unwrap();
+            assert!(
+                (lat - c.lat).abs() < 1e-9 && wrap_angle(lon - c.lon).abs() < 1e-9,
+                "{p:?}"
+            );
+            let (x, y) = c.project(c.lat, c.lon).unwrap();
+            assert!((x - 600.0).abs() < 1e-6 && (y - 400.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn flat_north_is_up_and_east_is_right() {
+        for p in FLATS {
+            let c = flat_cam(p, 10.0, 0.0, 2.0);
+            let (x0, y0) = c.project(0.2, 0.0).unwrap();
+            let (x1, y1) = c.project(0.4, 0.0).unwrap();
+            assert!(y1 < y0 && (x1 - x0).abs() < 1e-6, "{p:?} north is up");
+            let (x2, _) = c.project(0.2, 0.3).unwrap();
+            assert!(x2 > x0, "{p:?} east is right");
+        }
+    }
+
+    #[test]
+    fn flat_drag_keeps_the_grabbed_point_under_the_pointer() {
+        // Exact for the cylindrical maps anywhere, and along the center
+        // row for the others.
+        for p in [Projection::Equirectangular, Projection::Mercator] {
+            let mut c = flat_cam(p, 30.0, 20.0, 1.5);
+            let (lat, lon) = c.pick(500.0, 300.0).unwrap();
+            c.pan_pixels(120.0, -45.0);
+            let (px, py) = c.project(lat, lon).unwrap();
+            assert!(
+                (px - 620.0).abs() < 1e-6 && (py - 255.0).abs() < 1e-6,
+                "{p:?}"
+            );
+        }
+        for p in [Projection::Robinson, Projection::Mollweide] {
+            let mut c = flat_cam(p, 0.0, 20.0, 1.5);
+            let (lat, lon) = c.pick(500.0, 400.0).unwrap();
+            c.pan_pixels(120.0, 0.0);
+            let (px, py) = c.project(lat, lon).unwrap();
+            assert!(
+                (px - 620.0).abs() < 1e-3 && (py - 400.0).abs() < 1e-6,
+                "{p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flat_drag_wraps_longitude_across_the_seam() {
+        let mut c = flat_cam(Projection::Equirectangular, 0.0, 179.0, 1.5);
+        let before = c.lon;
+        c.pan_pixels(-400.0, 0.0); // drag left: the view moves east
+        assert!(
+            c.lon < 0.0 && c.lon >= -PI,
+            "wrapped into [-pi, pi): {}",
+            c.lon
+        );
+        assert!(
+            wrap_angle(c.lon - before) > 0.0,
+            "moved east across the seam"
+        );
+        // A point just west of the seam is still on screen.
+        let (x, _) = c.project(0.0, 179f64.to_radians()).unwrap();
+        assert!(x > 0.0 && x < c.width);
+        // Dragging right moves back.
+        c.pan_pixels(400.0, 0.0);
+        assert!(wrap_angle(c.lon - before).abs() < 1e-9);
+    }
+
+    #[test]
+    fn flat_drag_stops_at_the_map_edge() {
+        for p in FLATS {
+            let mut c = flat_cam(p, 0.0, 0.0, 1.0);
+            for _ in 0..200 {
+                c.pan_pixels(0.0, 50.0); // drag down: the view moves north
+            }
+            assert!(
+                c.lat.is_finite() && c.lat <= p.max_lat() + 1e-9,
+                "{p:?} {}",
+                c.lat
+            );
+            assert!(c.lat > 1.2, "{p:?} reaches the edge: {}", c.lat);
+            for _ in 0..400 {
+                c.pan_pixels(0.0, -50.0);
+            }
+            assert!(c.lat >= -p.max_lat() - 1e-9 && c.lat < -1.2, "{p:?}");
+            // Sideways drags at the poles stay finite (Mollweide's pole is a point).
+            c.lat = p.max_lat();
+            c.pan_pixels(300.0, 0.0);
+            assert!(c.lon.is_finite() && c.lat.is_finite());
+        }
+    }
+
+    #[test]
+    fn mercator_has_nothing_beyond_its_limit() {
+        let c = flat_cam(Projection::Mercator, 0.0, 0.0, 6.0);
+        assert!(c.project(86f64.to_radians(), 0.0).is_none());
+        assert!(c.project(-89f64.to_radians(), 0.0).is_none());
+        assert!(c.project(85f64.to_radians(), 0.0).is_some());
+        // Picking above the top edge hits nothing.
+        let (_, top) = c.project(projection::MERCATOR_MAX_LAT - 1e-9, 0.0).unwrap();
+        assert!(c.pick(600.0, top - 5.0).is_none());
+        assert!(c.pick(600.0, top + 5.0).is_some());
+        // A view centered at the pole is pulled onto the map.
+        let c = flat_cam(Projection::Mercator, 90.0, 0.0, 3.0);
+        assert!(c.lat.to_degrees() < 85.1);
+    }
+
+    #[test]
+    fn one_world_projections_have_an_outline() {
+        for p in [Projection::Robinson, Projection::Mollweide] {
+            let c = flat_cam(p, 0.0, 0.0, 6.0);
+            // The world's left and right ends at the equator.
+            let (x, y) = c.project(0.0, PI - 1e-6).unwrap();
+            assert!(c.pick(x - 3.0, y).is_some(), "{p:?}");
+            assert!(c.pick(x + 3.0, y).is_none(), "{p:?}");
+        }
+        // The cylindrical maps repeat: the same longitudes show again.
+        let c = flat_cam(Projection::Equirectangular, 0.0, 0.0, 6.0);
+        let (la, lo) = c.pick(1195.0, 400.0).unwrap();
+        assert!(la.abs() < 1e-9 && (-PI..=PI).contains(&lo));
+    }
+
+    #[test]
+    fn flat_zoom_keeps_the_point_under_the_cursor() {
+        for p in FLATS {
+            let mut c = flat_cam(p, 20.0, 30.0, 2.0);
+            let (sx, sy) = (800.0, 300.0);
+            let (lat, lon) = c.pick(sx, sy).unwrap();
+            for alt in [1.5, 1.0, 0.5, 0.2, 0.08] {
+                c.alt = alt;
+                c.keep_point_at(lat, lon, sx, sy);
+                let (px, py) = c.project(lat, lon).unwrap();
+                assert!(
+                    (px - sx).abs() < 1e-6 && (py - sy).abs() < 1e-6,
+                    "{p:?} alt {alt}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flat_maps_ignore_rotation_and_never_tilt() {
+        for p in FLATS {
+            let mut c = flat_cam(p, 40.0, 10.0, 2.0);
+            c.twist(1.0);
+            assert_eq!(c.bearing, 0.0);
+            // Switching from a rotated globe drops the bearing.
+            let mut g = Camera::new(40.0, 10.0, 2.0).with_bearing(135.0);
+            assert!(!g.north_up);
+            g.set_projection(p);
+            assert_eq!((g.bearing, g.north_up), (0.0, true));
+            // And back: the globe is shown north up.
+            g.set_projection(Projection::Globe);
+            assert!(!g.is_flat());
+            assert_eq!(g.bearing, 0.0);
+        }
+    }
+
+    #[test]
+    fn flat_bounds_are_the_whole_screen() {
+        let c = flat_cam(Projection::Robinson, 0.0, 0.0, 6.0);
+        assert_eq!(c.globe_bounds(1200.0, 800.0), [-1.0, -1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn flat_ground_scale() {
+        let mut c = flat_cam(Projection::Equirectangular, 0.0, 0.0, 2.0);
+        // On the equator an equirectangular pixel is the globe's km per
+        // pixel at the same altitude, 1 / FLAT_ZOOM times larger.
+        let g = Camera {
+            proj: Projection::Globe,
+            ..c
+        };
+        let want = g.km_per_pixel() / FLAT_ZOOM;
+        assert!((c.km_per_pixel() - want).abs() / want < 1e-9);
+        // Mercator's ground scale shrinks with cos(lat).
+        c.set_projection(Projection::Mercator);
+        let km0 = c.km_per_pixel();
+        c.lat = 60f64.to_radians();
+        assert!((c.km_per_pixel() * 2.0 - km0).abs() / km0 < 1e-9);
+        // A degenerate zoom gives nothing rather than panicking.
+        c.alt = f64::NAN;
+        assert!(!c.km_per_pixel().is_finite());
+        assert!(c.pick(10.0, 10.0).is_none());
+        assert!(c.pick(f64::NAN, 10.0).is_none());
+    }
+
+    #[test]
+    fn the_globe_is_the_default_projection() {
+        assert_eq!(Camera::new(0.0, 0.0, 1.0).proj, Projection::Globe);
+        assert!(!Camera::new(0.0, 0.0, 1.0).is_flat());
+    }
 
     fn cam() -> Camera {
         let mut c = Camera::new(30.0, -40.0, 1.5);

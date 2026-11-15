@@ -39,6 +39,14 @@ const VIEWS = [
   { name: "south-pole", hash: "#-90,0,6000" },
   { name: "rotated", hash: "#47,8.5,1500,135" },
   { name: "rotated-close", hash: "#47,8.5,400,250" },
+  // Flat projections: the whole world in each, then closer views and the
+  // seam. The camera center (lat, lon) is the middle row and central meridian.
+  { name: "proj-equirect", hash: "#0,0,19000&proj=equirect" },
+  { name: "proj-mercator", hash: "#10,10,19000&proj=mercator" },
+  { name: "proj-robinson", hash: "#0,0,19000&proj=robinson" },
+  { name: "proj-mollweide", hash: "#0,0,19000&proj=mollweide" },
+  { name: "proj-mercator-zoom", hash: "#47,8.5,1500&proj=mercator" },
+  { name: "proj-robinson-seam", hash: "#-10,175,19000&proj=robinson" },
   { name: "mono-mid-zoom", hash: "#38.5,22.5,1500&layer=mono" },
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.

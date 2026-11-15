@@ -189,6 +189,31 @@
       #layers #layer-status { align-self: center; padding: 0 8px; color: var(--muted); font-size: 12px; }
       #layers #layer-status[hidden] { display: none; }
       #layers button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #controls #proj-button svg { width: 20px; height: 20px; vertical-align: middle; }
+      #proj-menu {
+        right: 66px;
+        bottom: 324px; /* level with the projection button, which tops the column */
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px;
+        pointer-events: auto;
+      }
+      #proj-menu[hidden] { display: none; }
+      #proj-menu button {
+        min-height: 36px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      #proj-menu button:hover { color: var(--text); }
+      #proj-menu button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
+      #proj-menu button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #search {
         top: 88px;
         left: 16px;
@@ -314,6 +339,9 @@
       <div id="search-status" role="status" hidden></div>
     </div>
     <div id="controls">
+      <button id="proj-button" aria-haspopup="true" aria-expanded="false" aria-controls="proj-menu" title="Projection: Globe (P cycles, G globe)" aria-label="Map projection: Globe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg>
+      </button>
       <button id="compass" aria-pressed="true" title="Compass: click to face north (F)" aria-label="Compass. Face north and lock north-up">
         <span id="compass-needle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 L17 12 L7 12 Z" fill="#e0524a"/><path d="M12 22 L17 12 L7 12 Z" fill="#9aa6bd"/><circle cx="12" cy="12" r="1.6" fill="#10151f"/></svg></span>
       </button>
@@ -325,6 +353,13 @@
       <button id="measure-toggle" aria-pressed="false" title="Measure distance (M)" aria-label="Measure distance">&#128207;</button>
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
       <button id="reset" title="Reset view (R)" aria-label="Reset view">⟲</button>
+    </div>
+    <div id="proj-menu" class="panel" role="group" aria-label="Map projection" hidden>
+      <button data-proj="globe" aria-pressed="true">Globe</button>
+      <button data-proj="equirect" aria-pressed="false">Equirectangular</button>
+      <button data-proj="mercator" aria-pressed="false">Mercator</button>
+      <button data-proj="robinson" aria-pressed="false">Robinson</button>
+      <button data-proj="mollweide" aria-pressed="false">Mollweide</button>
     </div>
     <div id="toast" class="panel" role="status" aria-live="polite" hidden></div>
     <div id="share-fallback" class="panel" hidden>

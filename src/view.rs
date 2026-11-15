@@ -2,6 +2,7 @@
 //! the shareable `#lat,lon,altitude_km` URL hash.
 
 use crate::camera::{wrap_angle, Camera, EARTH_RADIUS_KM, MAX_ALT, MIN_ALT};
+use crate::projection::Projection;
 
 /// Default view: latitude°, longitude°, altitude in globe radii.
 pub const HOME: (f64, f64, f64) = (25.0, 0.0, 2.4);
@@ -68,6 +69,17 @@ pub fn parse_hash_layer(hash: &str) -> Option<Layer> {
         .skip(1)
         .find_map(|kv| kv.strip_prefix("layer="))
         .and_then(Layer::from_id)
+}
+
+/// Projection named by `&proj=<id>` in a hash. Unknown or missing means the
+/// globe, so old links keep working.
+pub fn parse_hash_proj(hash: &str) -> Projection {
+    hash.trim_start_matches('#')
+        .split('&')
+        .skip(1)
+        .find_map(|kv| kv.strip_prefix("proj="))
+        .and_then(Projection::from_id)
+        .unwrap_or_default()
 }
 
 /// Latitude/longitude (radians) as e.g. `48.86° N  2.35° E`.
@@ -206,7 +218,9 @@ impl SunView {
 /// bearing is the compass direction at the top of the screen in degrees
 /// (0 to 360) and is written only when the view is not facing north, so
 /// links to a north-up view stay short and old links keep working. A non-default layer
-/// is appended as `&layer=<id>`. When the terminator is on, `&sun=on` is
+/// is appended as `&layer=<id>`, and a flat projection as `&proj=<id>` (the
+/// globe writes nothing). On a flat map the center is the point on the
+/// central meridian at that latitude, and there is never a bearing. When the terminator is on, `&sun=on` is
 /// appended, plus `&t=<unix seconds>` only if the time is pinned: a live
 /// clock never writes `t`, so the hash does not change every minute. When
 /// the terminator is off neither is written (a pin is remembered by the app
@@ -226,6 +240,10 @@ pub fn format_view_hash(c: &Camera, layer: Layer, sun: SunView) -> String {
     if layer != Layer::default() {
         hash.push_str("&layer=");
         hash.push_str(layer.id());
+    }
+    if c.proj.is_flat() {
+        hash.push_str("&proj=");
+        hash.push_str(c.proj.id());
     }
     if sun.on {
         hash.push_str("&sun=on");
@@ -265,14 +283,14 @@ pub fn parse_view_hash(hash: &str) -> Option<Camera> {
     {
         return None;
     }
-    Some(
-        Camera::new(
-            lat.clamp(-90.0, 90.0),
-            wrap_angle(lon.to_radians()).to_degrees(),
-            (alt_km / EARTH_RADIUS_KM).clamp(MIN_ALT, MAX_ALT),
-        )
-        .with_bearing(bearing),
+    let mut cam = Camera::new(
+        lat.clamp(-90.0, 90.0),
+        wrap_angle(lon.to_radians()).to_degrees(),
+        (alt_km / EARTH_RADIUS_KM).clamp(MIN_ALT, MAX_ALT),
     )
+    .with_bearing(bearing);
+    cam.set_projection(parse_hash_proj(hash));
+    Some(cam)
 }
 
 /// Tracks what the next frame must redo. Moving the cursor over the globe
@@ -394,6 +412,81 @@ mod tests {
         assert!(close(back.lat, c.lat, 1e-6));
         assert!(close(back.lon, c.lon, 1e-6));
         assert!(close(back.alt, c.alt, 1e-6));
+    }
+
+    #[test]
+    fn hash_carries_projection() {
+        let mut c = Camera::new(46.8, 8.2, 3000.0 / EARTH_RADIUS_KM);
+        // The globe keeps the old, shorter URL form.
+        assert_eq!(
+            format_view_hash(&c, Layer::Political, SunView::default()),
+            "#46.8000,8.2000,3000"
+        );
+        c.set_projection(Projection::Mercator);
+        let hash = format_view_hash(&c, Layer::Political, SunView::default());
+        assert_eq!(hash, "#46.8000,8.2000,3000&proj=mercator");
+        assert_eq!(parse_hash_proj(&hash), Projection::Mercator);
+        let back = parse_view_hash(&hash).unwrap();
+        assert_eq!(back.proj, Projection::Mercator);
+        assert!(close(back.lat, c.lat, 1e-6) && close(back.lon, c.lon, 1e-6));
+        // Together with the layer and the sun, in any order.
+        let both = format_view_hash(
+            &c,
+            Layer::Monochrome,
+            SunView {
+                on: true,
+                pin: Some(5.0),
+            },
+        );
+        assert_eq!(
+            both,
+            "#46.8000,8.2000,3000&layer=mono&proj=mercator&sun=on&t=5"
+        );
+        assert_eq!(
+            parse_hash_proj("#1,2,3&sun=on&proj=robinson&layer=mono"),
+            Projection::Robinson
+        );
+        assert_eq!(parse_hash_layer(&both), Some(Layer::Monochrome));
+        assert!(SunView::from_hash(&both).on);
+        // Every projection round-trips through the hash.
+        for p in Projection::ALL {
+            c.set_projection(p);
+            let h = format_view_hash(&c, Layer::Political, SunView::default());
+            assert_eq!(parse_view_hash(&h).unwrap().proj, p, "{h}");
+        }
+    }
+
+    #[test]
+    fn old_links_and_bad_projections_mean_the_globe() {
+        assert_eq!(parse_hash_proj("#46.8,8.2,600"), Projection::Globe);
+        assert_eq!(parse_hash_proj(""), Projection::Globe);
+        assert_eq!(parse_hash_proj("#1,2,3&proj=nope"), Projection::Globe);
+        assert_eq!(parse_hash_proj("#1,2,3&proj="), Projection::Globe);
+        // The view part never counts as a parameter.
+        assert_eq!(parse_hash_proj("proj=mercator"), Projection::Globe);
+        assert_eq!(
+            parse_view_hash("#1,2,3&proj=nope").unwrap().proj,
+            Projection::Globe
+        );
+    }
+
+    #[test]
+    fn flat_hash_has_no_bearing_and_clamps_mercator_latitude() {
+        // A bearing in the link is dropped on a flat map.
+        let c = parse_view_hash("#10,20,9000,135&proj=robinson").unwrap();
+        assert_eq!(c.bearing, 0.0);
+        assert!(c.north_up);
+        // Mercator ends at about 85 degrees, so a link to the pole is pulled in.
+        let c = parse_view_hash("#90,0,9000&proj=mercator").unwrap();
+        assert!(close(c.lat.to_degrees(), 85.0511, 1e-3));
+        let hash = format_view_hash(&c, Layer::Political, SunView::default());
+        assert!(
+            !hash.contains(",0.0&") && hash.ends_with("&proj=mercator"),
+            "{hash}"
+        );
+        // Mollweide and the others keep the pole.
+        let c = parse_view_hash("#90,0,9000&proj=mollweide").unwrap();
+        assert!(close(c.lat.to_degrees(), 90.0, 1e-9));
     }
 
     #[test]

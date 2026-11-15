@@ -157,6 +157,15 @@ pub fn priority_class(kind: Kind, tier: u8) -> u8 {
 /// How visible a surface point is: 0 on or beyond the horizon, 1 well inside
 /// it, ramping in between. Not finite input gives 0.
 pub fn facing(cam: &Camera, lat: f64, lon: f64) -> f64 {
+    if cam.is_flat() {
+        // A flat map has no horizon: a point is visible if the map shows it.
+        return if lat.is_finite() && lon.is_finite() && crate::projection::in_domain(cam.proj, lat)
+        {
+            1.0
+        } else {
+            0.0
+        };
+    }
     let a = spherical(lat, lon);
     let b = spherical(cam.lat, cam.lon);
     let cos_c = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -242,6 +251,9 @@ pub struct Placed {
 
 /// Pixels per radian of arc at the view center.
 fn px_per_rad(cam: &Camera) -> f64 {
+    if cam.is_flat() {
+        return cam.flat_px();
+    }
     0.5 * cam.width.min(cam.height).max(1.0) / (cam.alt * TAN_HALF_FOV)
 }
 
@@ -715,5 +727,52 @@ mod tests {
         // Fully off screen.
         assert!(Rect::from_dom(900.0, 0.0, 10.0, 10.0, 800.0, 600.0).is_none());
         assert!(Rect::from_dom(-50.0, 0.0, 10.0, 10.0, 800.0, 600.0).is_none());
+    }
+
+    #[test]
+    fn flat_labels_are_placed_where_the_map_puts_them() {
+        use crate::projection::Projection;
+        for p in [
+            Projection::Equirectangular,
+            Projection::Mercator,
+            Projection::Robinson,
+            Projection::Mollweide,
+        ] {
+            let mut c = cam(20.0, 10.0, 2.0);
+            c.set_projection(p);
+            let list = real_labels();
+            let placed = select(&c, &list, &[], |_| false);
+            assert!(!placed.is_empty(), "{p:?} shows labels");
+            for pl in &placed {
+                let l = &list[pl.index];
+                // The anchor is exactly the camera's projection of the place.
+                let (x, y) = c.project(l.lat, l.lon).unwrap();
+                assert_eq!((pl.x, pl.y), (x, y), "{p:?} {}", l.text);
+                assert_eq!(pl.facing, 1.0, "no horizon on a flat map");
+                // And picking that screen point gives the place back.
+                let (la, lo) = c.pick(x, y).unwrap();
+                assert!((la - l.lat).abs() < 1e-6, "{p:?} {}", l.text);
+                assert!(
+                    crate::camera::wrap_angle(lo - l.lon).abs() < 1e-6,
+                    "{p:?} {}",
+                    l.text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flat_labels_on_the_far_side_of_the_globe_show() {
+        use crate::projection::Projection;
+        // Sydney is over the horizon from London on the globe, not on a map.
+        let sydney = (-33.9f64.to_radians(), 151.2f64.to_radians());
+        let mut c = cam(51.5, 0.0, 2.0);
+        assert_eq!(facing(&c, sydney.0, sydney.1), 0.0);
+        c.set_projection(Projection::Robinson);
+        assert_eq!(facing(&c, sydney.0, sydney.1), 1.0);
+        // Past Mercator's limit, and for bad input, nothing shows.
+        c.set_projection(Projection::Mercator);
+        assert_eq!(facing(&c, 88f64.to_radians(), 0.0), 0.0);
+        assert_eq!(facing(&c, f64::NAN, 0.0), 0.0);
     }
 }

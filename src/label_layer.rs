@@ -97,6 +97,25 @@ impl LabelLayer {
         true
     }
 
+    /// Remove every label at once (during a projection morph, when no fixed
+    /// position is right). They fade back in afterwards.
+    pub fn clear(&mut self) {
+        if self.alpha.is_empty() && !self.has_content {
+            return;
+        }
+        self.alpha.clear();
+        self.target.clear();
+        self.animating = false;
+        self.has_content = false;
+        let _ = self.ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        self.ctx.clear_rect(
+            0.0,
+            0.0,
+            self.canvas.width() as f64,
+            self.canvas.height() as f64,
+        );
+    }
+
     /// A fade is running, so the next frame must update again.
     pub fn animating(&self) -> bool {
         self.animating
