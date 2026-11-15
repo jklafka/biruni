@@ -8,6 +8,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 python3 scripts/convert_geojson.py data-src "$tmp" > /dev/null
+python3 scripts/test_frame_box.py > /dev/null 2>&1 || { python3 scripts/test_frame_box.py; exit 1; }
 
 drift=()
 for f in "$tmp"/*; do
