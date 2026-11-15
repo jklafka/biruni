@@ -13,7 +13,7 @@
 
 use crate::camera::{wrap_angle, Camera, MAX_ALT, MIN_ALT};
 use crate::view::HOME;
-use std::f64::consts::PI;
+use std::f64::consts::{FRAC_PI_2, PI};
 
 /// A press that moves less than this many CSS pixels is a tap, not a drag.
 pub const TAP_SLOP_PX: f64 = 6.0;
@@ -100,6 +100,12 @@ pub enum Event {
         lon: f64,
         alt: f64,
         bearing: Option<f64>,
+    },
+    /// Fly to the North (`true`) or South Pole, keeping the central meridian,
+    /// the altitude and (in free mode) the bearing. A flat map flies to the
+    /// nearest row it can show: the top or bottom edge, or Mercator's limit.
+    FlyToPole {
+        north: bool,
     },
     /// The compass: animate back to north-up and lock it.
     NorthUp,
@@ -197,6 +203,7 @@ impl Event {
             } => finite(&[lat, lon, alt]) && bearing.is_none_or(f64::is_finite),
             Event::Rotate(a) => finite(&[a]),
             Event::Nudge(_)
+            | Event::FlyToPole { .. }
             | Event::NorthUp
             | Event::ToggleNorthUp
             | Event::Reset
@@ -327,6 +334,13 @@ impl Controls {
                     cam.north_up = wrap_angle(b) == 0.0;
                 }
                 self.fly_to(cam, lat, lon, alt, bearing);
+                out.render = true;
+            }
+            Event::FlyToPole { north } => {
+                let lat = if north { FRAC_PI_2 } else { -FRAC_PI_2 };
+                // Keep the zoom, including one that is still easing.
+                let alt = self.target_alt;
+                self.fly_to(cam, lat, cam.lon, alt, None);
                 out.render = true;
             }
             Event::NorthUp => {
@@ -1590,6 +1604,96 @@ mod tests {
             let (plat, _) = c.pick(c.width * 0.5, c.height * 0.5).unwrap();
             assert!((plat - sign * PI / 2.0).abs() < 1e-9, "centered exactly");
         }
+    }
+
+    fn pole_flight(
+        proj: crate::projection::Projection,
+        lat_deg: f64,
+        lon_deg: f64,
+        bearing: f64,
+        north: bool,
+    ) -> Camera {
+        let (mut c, mut k) = flat_setup(proj);
+        c.lat = lat_deg.to_radians();
+        c.lon = lon_deg.to_radians();
+        if !c.is_flat() {
+            c.bearing = bearing;
+            c.north_up = bearing == 0.0;
+        }
+        let (alt, lon) = (c.alt, c.lon);
+        assert!(k.handle(&mut c, Event::FlyToPole { north }).render);
+        assert!(k.in_motion(&c));
+        settle(&mut k, &mut c);
+        assert!(sane(&c));
+        assert!((c.alt - alt).abs() < 1e-9, "keeps the altitude");
+        assert!(
+            (wrap_angle(c.lon - lon)).abs() < 1e-9 || c.lat.abs() > 1.4,
+            "keeps the meridian"
+        );
+        c
+    }
+
+    #[test]
+    fn pole_shortcut_flies_to_the_pole_on_the_globe() {
+        use crate::projection::Projection::Globe;
+        // From the other pole, the seam, mid latitudes, and a rotated view.
+        for (lat, lon, bearing) in [
+            (-90.0, 0.0, 0.0),
+            (90.0, 0.0, 0.0),
+            (30.0, 179.9, 0.0),
+            (-30.0, -179.9, 0.0),
+            (45.0, 20.0, 1.2),
+            (-70.0, 100.0, -2.5),
+        ] {
+            for north in [true, false] {
+                let want = if north { FRAC_PI_2 } else { -FRAC_PI_2 };
+                let c = pole_flight(Globe, lat, lon, bearing, north);
+                assert!((c.lat - want).abs() < 1e-12, "{lat},{lon},{bearing}");
+                let (plat, _) = c.pick(c.width * 0.5, c.height * 0.5).unwrap();
+                assert!((plat - want).abs() < 1e-9, "centered exactly");
+                if bearing != 0.0 && c.lat.abs() < FRAC_PI_2 - 1e-12 {
+                    assert!(wrap_angle(c.bearing - bearing).abs() < 1e-9);
+                }
+                if bearing == 0.0 {
+                    assert_eq!(c.bearing, 0.0, "north-up stays north-up");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pole_shortcut_on_every_flat_projection_reaches_the_edge_row() {
+        use crate::projection::Projection::*;
+        for p in [Equirectangular, Mercator, Robinson, Mollweide] {
+            for north in [true, false] {
+                for (lat, lon) in [(-90.0, 0.0), (90.0, 0.0), (10.0, 179.9), (-40.0, -179.9)] {
+                    let c = pole_flight(p, lat, lon, 0.0, north);
+                    let want = p.max_lat() * if north { 1.0 } else { -1.0 };
+                    assert!((c.lat - want).abs() < 1e-9, "{p:?} {lat},{lon}: {}", c.lat);
+                    assert_eq!(c.bearing, 0.0);
+                    // The target row is what the screen center shows. (The pole
+                    // row itself is the map's edge, where picking is undefined.)
+                    let (_, sy) = c.project(want, c.lon).unwrap();
+                    assert!((sy - c.height * 0.5).abs() < 1e-6, "{p:?} centered {sy}");
+                }
+            }
+        }
+        assert!(Mercator.max_lat() < FRAC_PI_2, "Mercator stops short");
+    }
+
+    #[test]
+    fn pole_shortcut_keeps_a_zoom_that_is_still_easing() {
+        let (mut c, mut k) = setup();
+        k.handle(
+            &mut c,
+            Event::Zoom {
+                factor: 0.5,
+                toward: None,
+            },
+        );
+        k.handle(&mut c, Event::FlyToPole { north: true });
+        settle(&mut k, &mut c);
+        assert!((c.alt - 0.5).abs() < 1e-6, "{}", c.alt);
     }
 
     #[test]
