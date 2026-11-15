@@ -221,6 +221,77 @@ def _largest_polygon_box(geom):
     return best[1]
 
 
+FRAME_LINK_DEG = 15.0  # polygons farther than this from the cluster are left out of a country's frame
+
+
+def _polygon_boxes(geom):
+    """Bounding box (lon0, lat0, lon1, lat1) of each polygon's outer ring."""
+    polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+    boxes = []
+    for poly in polys:
+        pts = poly[0]
+        lons, lats = [p[0] for p in pts], [p[1] for p in pts]
+        boxes.append((min(lons), min(lats), max(lons), max(lats)))
+    return boxes
+
+
+def _lon_gap(a, b):
+    """Gap in degrees between lon intervals a and b on the circle (0 if they touch or overlap)."""
+    best = 360.0
+    for shift in (-360.0, 0.0, 360.0):
+        lo2, hi2 = b[0] + shift, b[1] + shift
+        best = min(best, max(0.0, lo2 - a[1], a[0] - hi2))
+    return best
+
+
+def _frame_box(boxes):
+    """(lon_center, lat0, lat1, lon_width) of the area to frame for a country.
+
+    Starting from the polygon with the largest bounding box (the mainland),
+    every polygon within FRAME_LINK_DEG of the growing set is added
+    (single linkage, longitudes compared on the circle, latitudes plainly), so
+    archipelagos (Indonesia, Philippines, Fiji, Kiribati) are framed whole but
+    far-flung overseas parts (French Guiana, Hawaii, Easter Island) are not.
+    The longitude span is the smallest arc of the circle that covers the
+    chosen polygons, so a country that straddles the 180th meridian (Fiji,
+    Russia, Kiribati) gets a narrow frame instead of one 360 degrees wide.
+    lon_center is in [-180, 180).
+    """
+    area = lambda b: (b[2] - b[0]) * (b[3] - b[1])
+    start = max(range(len(boxes)), key=lambda i: (area(boxes[i]), -i))
+    chosen = {start}
+    grew = True
+    while grew:
+        grew = False
+        for i, b in enumerate(boxes):
+            if i in chosen:
+                continue
+            for j in chosen:
+                o = boxes[j]
+                dlat = max(0.0, b[1] - o[3], o[1] - b[3])
+                if max(dlat, _lon_gap((b[0], b[2]), (o[0], o[2]))) <= FRAME_LINK_DEG:
+                    chosen.add(i)
+                    grew = True
+                    break
+    sel = [boxes[i] for i in sorted(chosen)]
+    lat0, lat1 = min(b[1] for b in sel), max(b[3] for b in sel)
+    # Merge the lon intervals, then cut the circle at its largest gap.
+    iv = sorted((b[0], b[2]) for b in sel)
+    merged = [list(iv[0])]
+    for lo, hi in iv[1:]:
+        if lo <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], hi)
+        else:
+            merged.append([lo, hi])
+    gaps = [(merged[i + 1][0] - merged[i][1], i) for i in range(len(merged) - 1)]
+    gaps.append((merged[0][0] + 360.0 - merged[-1][1], len(merged) - 1))
+    gap, k = max(gaps, key=lambda g: (g[0], -g[1]))
+    start_lon = merged[(k + 1) % len(merged)][0]
+    width = 360.0 - gap
+    center = (start_lon + width / 2 + 180.0) % 360.0 - 180.0
+    return center, lat0, lat1, width
+
+
 def build_places(src: Path) -> bytes:
     """Search index: a header line, then one tab-separated line per entry:
 
@@ -236,9 +307,9 @@ def build_places(src: Path) -> bytes:
         p, g = f["properties"], f.get("geometry")
         if not g:
             continue
-        lon0, lat0, lon1, lat1 = _largest_polygon_box(g)
-        clat, clon = (lat0 + lat1) / 2, (lon0 + lon1) / 2
-        extent = max(lat1 - lat0, (lon1 - lon0) * math.cos(math.radians(clat)))
+        clon, lat0, lat1, width = _frame_box(_polygon_boxes(g))
+        clat = (lat0 + lat1) / 2
+        extent = max(lat1 - lat0, width * math.cos(math.radians(clat)))
         name = _clean(p["NAME"])
         aliases = []
         for k in ("NAME_LONG", "ADMIN"):

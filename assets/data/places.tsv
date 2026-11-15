@@ -1,35 +1,35 @@
 MAPSPLACES1
-C	China		36.91	104.18	1397715000	48.9	
-C	India		21.79	82.75	1366417754	27.4	
-C	United States of America		37.25	-95.85	328239523	45.9	United States
-C	Indonesia		-0.14	100.63	270625568	11.5	
+C	China		35.89	104.18	1397715000	49.5	
+C	India		21.12	82.75	1366417754	28.7	
+C	United States of America		47.98	-127.25	328239523	80.7	United States
+C	Indonesia		-2.50	118.09	270625568	45.7	
 C	Pakistan		30.40	68.95	216565318	14.0	
 C	Brazil		-14.24	-54.40	211049527	39.0	
 C	Nigeria		9.08	8.66	200963599	11.8	
 C	Bangladesh		23.68	90.33	163046161	5.8	
-C	Russia		59.46	103.68	144373535	77.6	Russian Federation
-C	Mexico		23.63	-101.95	127575529	27.8	
-C	Japan		37.50	136.44	126264931	8.8	
+C	Russia		61.53	104.94	144373535	81.4	Russian Federation
+C	Mexico		23.63	-102.55	127575529	29.0	
+C	Japan		34.89	134.76	126264931	21.2	
 C	Ethiopia		9.15	40.49	112078730	14.8	
-C	Philippines		15.59	121.95	108116615	6.0	
+C	Philippines		12.95	121.78	108116615	15.8	
 C	Egypt		26.82	30.79	100388073	10.9	
 C	Vietnam		15.96	105.79	96462106	14.8	
 C	Dem. Rep. Congo		-4.07	21.74	86790567	19.0	Democratic Republic of the Congo
-C	Turkey		38.95	35.46	83429615	14.6	
-C	Germany		51.09	10.44	83132799	7.6	
+C	Turkey		38.96	35.24	83429615	14.9	
+C	Germany		51.17	10.44	83132799	7.8	
 C	Iran		32.44	53.66	82913906	16.3	
 C	Thailand		13.03	101.51	69625582	14.8	
-C	France		46.72	1.69	67059887	8.8	
-C	United Kingdom		54.34	-2.19	66834405	8.6	
-C	Italy		42.51	12.56	60297396	9.1	
-C	South Africa		-28.47	24.67	58558270	14.5	
+C	France		46.24	2.40	67059887	9.9	
+C	United Kingdom		55.43	-3.20	66834405	10.8	
+C	Italy		41.88	12.56	60297396	10.4	
+C	South Africa		-34.55	27.17	58558270	24.8	
 C	Tanzania		-6.36	34.89	58005463	11.1	United Republic of Tanzania
-C	Myanmar		19.28	96.66	54045420	18.5	
+C	Myanmar		19.20	96.66	54045420	18.6	
 C	Kenya		0.40	37.89	52573973	10.2	
-C	South Korea		36.47	127.87	51709098	4.3	Republic of Korea
+C	South Korea		35.91	128.47	51709098	5.4	Republic of Korea
 C	Colombia		4.10	-72.95	50339443	16.7	
-C	Spain		39.90	-2.96	47076781	9.6	
-C	Argentina		-37.08	-63.62	44938712	30.6	
+C	Spain		35.71	-6.92	47076781	18.3	
+C	Argentina		-38.42	-63.62	44938712	33.2	
 C	Ukraine		48.79	31.13	44385155	11.9	
 C	Uganda		1.38	32.27	44269594	5.7	
 C	Algeria		28.04	1.64	43053054	18.2	
@@ -37,25 +37,25 @@ C	Sudan		15.43	30.22	42813238	16.2
 C	Iraq		33.22	43.66	39309783	8.3	
 C	Afghanistan		33.92	67.69	38041754	12.0	
 C	Poland		51.93	19.12	37970874	6.2	
-C	Canada		56.83	-98.34	37589262	46.7	
+C	Canada		62.40	-96.83	37589262	41.4	
 C	Morocco		28.68	-9.03	36471769	14.5	
 P	Tokyo	Japan	35.69	139.75	35676000	0.0	
 C	Saudi Arabia		24.25	45.13	34268528	19.2	
 C	Uzbekistan		41.36	64.56	33580650	12.9	
 C	Peru		-9.19	-75.01	32510453	18.3	
-C	Malaysia		3.93	114.40	31949777	9.7	
-C	Angola		-11.94	17.89	31825295	12.2	
+C	Malaysia		4.11	109.46	31949777	19.6	
+C	Angola		-11.22	17.89	31825295	13.6	
 C	Ghana		7.96	-1.03	30417856	6.4	
 C	Mozambique		-18.66	35.53	30366036	16.4	
-C	Yemen		15.80	47.87	29161922	10.0	
+C	Yemen		15.66	48.53	29161922	11.5	
 C	Nepal		28.37	84.11	28608710	7.1	
 C	Venezuela		6.43	-66.60	28515829	13.5	
 C	Madagascar		-18.83	46.87	26969307	13.5	
 C	Cameroon		7.38	12.36	25876380	11.4	
 C	Côte d'Ivoire		7.54	-5.55	25716544	6.4	Ivory Coast
 C	North Korea		40.36	127.52	25666161	5.3	Dem. Rep. Korea
-C	Australia		-24.93	133.40	25364307	36.7	
-C	Taiwan		23.60	121.00	23568378	3.4	
+C	Australia		-32.40	135.93	25364307	44.7	
+C	Taiwan		23.60	120.11	23568378	3.4	
 C	Niger		17.61	8.06	23310715	15.1	
 C	Sri Lanka		7.88	80.79	21803000	3.9	
 C	Burkina Faso		12.25	-1.57	20321378	7.7	
@@ -64,13 +64,13 @@ C	Romania		45.97	24.97	19356544	6.6
 P	New York	United States of America	40.75	-73.98	19040000	0.0	New York-Newark
 P	Mexico City	Mexico	19.44	-99.13	19028000	0.0	Ciudad de M
 P	Mumbai	India	19.02	72.86	18978000	0.0	
-C	Chile		-35.69	-71.36	18952038	36.4	
+C	Chile		-36.70	-72.71	18952038	38.4	
 P	São Paulo	Brazil	-23.56	-46.63	18845000	0.0	Sao Paulo|Sio Paulo
 C	Malawi		-13.26	34.28	18628747	7.7	
 C	Kazakhstan		48.00	66.97	18513930	27.2	
 C	Zambia		-13.12	27.82	17861030	11.4	
-C	Ecuador		-1.77	-78.11	17373662	6.4	
-C	Netherlands		52.10	5.32	17332850	2.7	
+C	Ecuador		-1.77	-83.45	17373662	16.4	
+C	Netherlands		52.19	5.27	17332850	2.9	
 C	Syria		34.81	39.06	17070135	5.4	
 C	Guatemala		15.78	-90.23	16604026	4.1	
 C	Cambodia		12.56	104.96	16486542	5.2	
@@ -95,25 +95,25 @@ C	Bolivia		-16.30	-63.57	11513100	13.2
 C	Belgium		50.50	4.44	11484055	2.4	
 C	Cuba		21.52	-79.51	11333483	10.0	
 P	Ōsaka	Japan	34.75	135.46	11294000	0.0	Osaka-Kobe
-C	Haiti		18.98	-73.06	11263077	2.7	
+C	Haiti		19.07	-73.06	11263077	2.7	
 P	Beijing	China	39.93	116.39	11106000	0.0	
 P	Manila	Philippines	14.61	120.98	11100000	0.0	
 C	S. Sudan		7.86	29.71	11062113	11.0	South Sudan
 C	Dominican Rep.		18.77	-70.17	10738958	3.5	Dominican Republic
-C	Greece		39.10	23.31	10716322	5.3	
+C	Greece		38.34	23.94	10716322	6.8	
 C	Czechia		49.81	15.46	10669709	4.4	Czech Republic
 P	Moscow	Russia	55.75	37.61	10452000	0.0	
 C	Sweden		62.19	17.65	10285453	13.7	
-C	Portugal		39.57	-7.85	10269417	5.1	
+C	Portugal		37.39	-18.75	10269417	19.9	
 C	Somalia		5.14	46.18	10192317	13.7	
 C	Jordan		31.28	37.12	10101694	4.2	
 P	Istanbul	Turkey	41.11	29.01	10061000	0.0	
-C	Azerbaijan		40.14	47.68	10023318	4.1	
+C	Azerbaijan		40.14	47.57	10023318	4.3	
 P	Paris	France	48.87	2.33	9904000	0.0	
 P	Seoul	South Korea	37.57	127.00	9796000	0.0	
 C	United Arab Emirates		24.34	53.98	9770529	4.4	
 C	Hungary		47.15	19.48	9769949	4.6	
-C	Honduras		14.50	-86.26	9746117	6.0	
+C	Honduras		14.75	-86.26	9746117	6.0	
 C	Belarus		53.71	27.94	9466856	5.6	
 P	Lagos	Nigeria	6.45	3.39	9466000	0.0	
 C	Tajikistan		38.86	71.23	9321018	6.0	
@@ -122,7 +122,7 @@ C	Israel		31.45	35.07	9053300	3.9
 P	Chicago	United States of America	41.83	-87.75	8990000	0.0	
 C	Austria		47.70	13.34	8877067	5.1	
 P	Guangzhou	China	23.15	113.32	8829000	0.0	Dongguan;Guangdong
-C	Papua New Guinea		-6.63	145.86	8776109	9.9	
+C	Papua New Guinea		-6.49	148.41	8776109	15.0	
 C	Switzerland		46.80	8.21	8574832	3.1	
 P	London	United Kingdom	51.50	-0.12	8567000	0.0	
 C	Togo		8.60	0.84	8082366	5.0	
@@ -132,7 +132,7 @@ P	Kinshasa	Congo (Kinshasa)	-4.33	15.31	7843000	0.0
 C	Sierra Leone		8.45	-11.79	7813215	3.1	
 P	Bogota	Colombia	4.60	-74.09	7772000	0.0	
 P	Shenzhen	China	22.55	114.12	7581000	0.0	
-C	Hong Kong		22.43	114.12	7507400	0.4	Hong Kong S.A.R.
+C	Hong Kong		22.38	114.09	7507400	0.5	Hong Kong S.A.R.
 P	Wuhan	China	30.58	114.27	7243000	0.0	
 P	Hong Kong	Hong Kong S.A.R.	22.31	114.18	7206000	0.0	
 P	Tianjin	China	39.13	117.20	7180000	0.0	
@@ -154,7 +154,7 @@ C	El Salvador		13.80	-88.91	6453553	2.3
 P	Hyderabad	India	17.40	78.48	6376000	0.0	
 C	Eritrea		15.19	39.77	6081196	6.5	
 C	Turkmenistan		38.97	59.56	5942089	11.0	
-C	Denmark		56.27	9.52	5818553	2.9	
+C	Denmark		56.18	11.63	5818553	3.9	
 P	Amaravati	India	16.53	80.52	5800000	0.0	
 P	Santiago	Chile	-33.45	-70.67	5720000	0.0	
 C	Singapore		1.36	103.82	5703569	0.3	
@@ -166,7 +166,7 @@ P	Philadelphia	United States of America	40.00	-75.17	5492000	0.0
 C	Slovakia		48.68	19.70	5454073	3.7	
 C	Congo		-0.66	14.88	5380508	8.7	Republic of the Congo
 P	Ahmedabad	India	23.03	72.58	5375000	0.0	Ahmadabad
-C	Norway		64.56	17.94	5347896	13.1	
+C	Norway		69.25	12.27	5347896	22.5	
 P	Ho Chi Minh City	Vietnam	10.78	106.69	5314000	0.0	Th nh Pho Ho Chy Minh
 P	Toronto	Canada	43.70	-79.42	5213000	0.0	
 P	Singapore	Singapore	1.29	103.85	5183700	0.0	
@@ -174,17 +174,17 @@ P	Luanda	Angola	-8.84	13.23	5172900	0.0
 C	Somaliland		9.75	45.80	5096159	6.2	
 P	Baghdad	Iraq	33.34	44.39	5054000	0.0	
 C	Costa Rica		9.63	-84.24	5047561	3.3	
-C	Oman		20.81	55.91	4974986	8.3	
+C	Oman		21.50	55.91	4974986	9.7	
 C	Ireland		53.42	-8.21	4941444	3.9	
 C	Liberia		6.44	-9.45	4937374	4.2	
 P	Barcelona	Spain	41.39	2.18	4920000	0.0	
-C	New Zealand		-43.56	170.42	4917000	6.1	
+C	New Zealand		-43.50	174.88	4917000	18.1	
 P	Haora	India	22.58	88.33	4841638	0.0	
 P	Dallas	United States of America	32.82	-96.84	4798000	0.0	Dallas-Fort Worth
 P	Shenyeng	China	41.81	123.45	4787000	0.0	Shenyang
 P	Khartoum	Sudan	15.59	32.53	4754000	0.0	Al-Khartum
 C	Central African Rep.		6.63	20.92	4745185	12.9	Central African Republic
-C	Palestine		31.94	35.22	4685306	1.2	
+C	Palestine		31.87	34.89	4685306	1.3	
 P	Pune	India	18.53	73.85	4672000	0.0	Poona
 P	Sydney	Australia	-33.92	151.18	4630000	0.0	
 P	St. Petersburg	Russia	59.94	30.31	4553000	0.0	Sankt Peterburg|Saint Petersburg
@@ -205,7 +205,7 @@ P	Alexandria	Egypt	31.20	29.95	4165000	0.0	Al-Iskandariyah
 P	Chengdu	China	30.67	104.07	4123000	0.0	
 P	Detroit	United States of America	42.33	-83.08	4101000	0.0	
 P	Yangon	Myanmar	16.79	96.16	4088000	0.0	
-C	Croatia		44.74	16.46	4067500	4.2	
+C	Croatia		44.48	16.46	4067500	4.2	
 P	Xian	China	34.28	108.89	4009000	0.0	Xi'an;Shaanxi
 P	Porto Alegre	Brazil	-30.05	-51.20	3917000	0.0	
 P	New Taipei	Taiwan	25.01	121.47	3893740	0.0	
@@ -242,7 +242,7 @@ P	Athens	Greece	37.99	23.73	3242000	0.0	Athinai
 P	Nagoya	Japan	35.16	136.91	3230000	0.0	
 C	Mongolia		46.86	103.82	3225167	22.0	
 P	Cape Town	South Africa	-33.92	18.43	3215000	0.0	
-C	Puerto Rico		18.23	-66.44	3193694	1.6	
+C	Puerto Rico		18.23	-66.62	3193694	2.5	
 P	Changchun	China	43.87	125.34	3183000	0.0	
 P	Casablanca	Morocco	33.60	-7.62	3181000	0.0	Dar-el-Beida
 P	Dalian	China	38.92	121.63	3167000	0.0	
@@ -277,7 +277,7 @@ P	Lisbon	Portugal	38.72	-9.15	2812000	0.0
 P	Jinan	China	36.68	116.99	2798000	0.0	Shandong
 P	Fukuoka	Japan	33.60	130.41	2792000	0.0	Fukuoka-Kitakyushu
 P	Campinas	Brazil	-22.90	-47.10	2791000	0.0	
-C	Lithuania		55.15	23.91	2786844	3.3	
+C	Lithuania		55.15	23.84	2786844	3.4	
 P	Kaohsiung	Taiwan	22.63	120.27	2769072	0.0	
 P	Quezon City	Philippines	14.65	121.03	2761720	0.0	
 P	Katowice	Poland	50.26	19.02	2746000	0.0	
@@ -498,7 +498,7 @@ P	Marseille	France	43.29	5.37	1400000	0.0	Marseille-Aix-en-Provence
 P	Meerut	India	29.00	77.70	1398000	0.0	
 P	Mianyang	China	31.47	104.77	1396000	0.0	Sichuan
 P	Semarang	Indonesia	-6.96	110.42	1396000	0.0	
-C	Trinidad and Tobago		10.45	-61.41	1394973	1.0	
+C	Trinidad and Tobago		10.70	-61.22	1394973	1.4	
 P	Faridabad	India	28.44	77.31	1394000	0.0	
 P	Novosibirsk	Russia	55.03	82.96	1389000	0.0	
 P	Milwaukee	United States of America	43.05	-87.92	1388000	0.0	
@@ -506,7 +506,7 @@ P	Makkah	Saudi Arabia	21.43	39.82	1385000	0.0
 P	Dubai	United Arab Emirates	25.23	55.28	1379000	0.0	
 P	Auckland	New Zealand	-36.85	174.76	1377200	0.0	
 P	Maanshan	China	31.73	118.48	1366302	0.0	
-C	Eq. Guinea		1.63	10.36	1355986	1.9	Equatorial Guinea
+C	Eq. Guinea		2.36	9.88	1355986	2.9	Equatorial Guinea
 P	Brazzaville	Congo (Brazzaville)	-4.26	15.28	1355000	0.0	
 P	Lubumbashi	Congo (Kinshasa)	-11.68	27.48	1352000	0.0	Lumumbashi
 P	Varanasi	India	25.33	83.00	1352000	0.0	Benares
@@ -520,7 +520,7 @@ P	Porto	Portugal	41.15	-8.62	1337000	0.0
 P	Asansol	India	23.69	86.98	1328000	0.0	
 P	Lusaka	Zambia	-15.41	28.28	1328000	0.0	
 P	Changzhou	China	31.78	119.97	1327000	0.0	Jiangsu
-C	Estonia		58.58	25.79	1326590	2.5	
+C	Estonia		58.58	25.00	1326590	3.3	
 P	Mosul	Iraq	36.35	43.14	1316000	0.0	Al-Mawsil
 P	Yekaterinburg	Russia	56.85	60.60	1313000	0.0	Sverdlovsk
 P	Peshawar	Pakistan	34.01	71.53	1303000	0.0	
@@ -528,7 +528,7 @@ P	Jamshedpur	India	22.79	86.20	1300000	0.0
 P	Mandalay	Myanmar	21.97	96.08	1300000	0.0	
 P	Mbuji-Mayi	Congo (Kinshasa)	-6.15	23.60	1295000	0.0	
 P	Madurai	India	9.92	78.12	1294000	0.0	
-C	Timor-Leste		-8.91	126.11	1293119	2.4	East Timor
+C	Timor-Leste		-8.83	125.67	1293119	3.2	East Timor
 P	Adana	Turkey	37.00	35.32	1293000	0.0	Seyhan
 P	Sheffield	United Kingdom	53.37	-1.50	1292900	0.0	
 P	Jabalpur	India	23.18	79.95	1285000	0.0	
@@ -744,7 +744,7 @@ P	Tarsus	Turkey	36.92	34.88	894318	0.0
 P	Bengbu	China	32.95	117.33	894000	0.0	
 P	Mendoza	Argentina	-32.88	-68.82	893000	0.0	
 P	Hubballi	India	15.36	75.12	890000	0.0	
-C	Fiji		-17.79	177.96	889953	1.3	
+C	Fiji		-17.09	178.17	889953	9.2	
 P	Concepción	Chile	-36.83	-73.05	889725	0.0	
 P	Zaria	Nigeria	11.08	7.71	889000	0.0	
 P	Anyang	China	36.08	114.35	887000	0.0	
@@ -787,7 +787,7 @@ P	Padang	Indonesia	-0.96	100.36	855000	0.0
 P	Valparaíso	Chile	-33.05	-71.62	854000	0.0	Valparaiso
 P	Zhenjiang	China	32.22	119.43	854000	0.0	Jiangsu
 P	Shache	China	38.43	77.25	851374	0.0	
-C	Comoros		-11.64	43.36	850886	0.5	
+C	Comoros		-11.87	43.88	850886	1.3	
 P	Anshun	China	26.25	105.93	849000	0.0	
 P	Pingdingshan	China	33.73	113.30	849000	0.0	Henan
 P	Zunyi	China	27.70	106.92	849000	0.0	
@@ -954,7 +954,7 @@ P	Catania	Italy	37.50	15.08	674542	0.0
 P	Gorakhpur	India	26.75	83.38	674246	0.0	
 P	Ipoh	Malaysia	4.60	101.06	673318	0.0	
 P	Chongjin	North Korea	41.78	129.79	672614	0.0	Ch'ongjin
-C	Solomon Is.		-8.05	159.17	669823	1.4	Solomon Islands
+C	Solomon Is.		-9.22	161.30	669823	11.1	Solomon Islands
 P	Utsunomiya	Japan	36.55	139.87	667752	0.0	
 P	Puyang	China	35.70	114.98	666322	0.0	
 P	Najaf	Iraq	32.00	44.34	665552	0.0	An Najaf
@@ -1093,7 +1093,7 @@ P	Ribeirão Preto	Brazil	-21.17	-47.83	551267	0.0
 P	Kanazawa	Japan	36.56	136.64	551249	0.0	
 P	Orenburg	Russia	51.78	55.11	550204	0.0	
 P	Málaga	Spain	36.72	-4.42	550058	0.0	
-C	Cabo Verde		15.12	-23.61	549935	0.4	Republic of Cabo Verde
+C	Cabo Verde		16.01	-24.01	549935	2.6	Republic of Cabo Verde
 P	Tabuk	Saudi Arabia	28.38	36.55	547957	0.0	
 P	Puerto la Cruz	Venezuela	10.17	-64.68	546616	0.0	
 P	Jiujiang	China	29.73	115.98	545616	0.0	
@@ -1119,7 +1119,7 @@ P	Linxia	China	35.60	103.20	534555	0.0
 P	Matsuyama	Japan	33.85	132.77	533541	0.0	
 P	Rouen	France	49.43	1.08	532559	0.0	
 P	Jiangmen	China	22.58	113.08	532419	0.0	
-C	Maldives		4.20	73.50	530953	0.1	
+C	Maldives		3.74	73.46	530953	1.0	
 P	Oaxaca	Mexico	17.08	-96.67	530728	0.0	Oaxaca de Juárez
 P	Beira	Mozambique	-19.82	34.87	530604	0.0	
 P	Guntur	India	16.33	80.45	530577	0.0	
@@ -1163,7 +1163,7 @@ P	Pingtung	Taiwan	22.68	120.48	503530	0.0
 P	Annaba	Algeria	36.92	7.76	503524	0.0	
 P	Akola	India	20.71	77.01	503502	0.0	
 P	Brighton	United Kingdom	50.83	-0.17	503008	0.0	
-C	Malta		35.90	14.46	502653	0.2	
+C	Malta		35.95	14.37	502653	0.3	
 P	Astrakhan	Russia	46.35	48.05	502533	0.0	
 P	Bradford	United Kingdom	53.80	-1.75	501700	0.0	
 P	Kansas City	United States of America	39.11	-94.63	501577	0.0	
@@ -1293,7 +1293,7 @@ P	Pohang	South Korea	36.02	129.37	435266	0.0
 P	Kaliningrad	Russia	54.70	20.50	434954	0.0	
 P	Laredo	United States of America	27.51	-99.51	434768	0.0	
 P	Likasi	Congo (Kinshasa)	-10.97	26.78	434408	0.0	
-C	Brunei		4.52	114.56	433285	1.0	Brunei Darussalam
+C	Brunei		4.52	114.70	433285	1.3	Brunei Darussalam
 P	Spanish Town	Jamaica	17.98	-76.95	432704	0.0	
 P	San Luis	Argentina	-33.30	-66.35	432310	0.0	
 P	Katsina	Nigeria	12.99	7.60	432149	0.0	
@@ -1380,11 +1380,11 @@ P	Sandakan	Malaysia	5.84	118.11	392288	0.0
 P	Ahmednagar	India	19.11	74.75	391760	0.0	
 P	Osh	Kyrgyzstan	40.54	72.79	391277	0.0	
 P	Stoke	United Kingdom	53.00	-2.18	390801	0.0	
-C	Belize		17.19	-88.66	390353	2.6	
+C	Belize		17.19	-88.51	390353	2.6	
 P	Palm Springs	United States of America	33.78	-116.53	390115	0.0	
 P	Bhilwara	India	25.35	74.64	389911	0.0	
 P	Elgin	United States of America	42.04	-88.29	389514	0.0	
-C	Bahamas		26.42	-77.49	389482	1.0	The Bahamas
+C	Bahamas		23.94	-75.87	389482	6.0	The Bahamas
 P	Comilla	Bangladesh	23.47	91.17	389411	0.0	
 P	Samut Prakan	Thailand	13.61	100.61	388920	0.0	
 P	Greensboro	United States of America	36.07	-79.80	388887	0.0	
@@ -1683,7 +1683,7 @@ P	Qyzylorda	Kazakhstan	44.80	65.46	300000	0.0	Qyzlorda|Kyzylorda
 P	Rạch Giá	Vietnam	10.02	105.09	300000	0.0	
 P	Sóc Trăng	Vietnam	9.60	105.98	300000	0.0	
 P	Curepipe	Mauritius	-20.32	57.52	299975	0.0	
-C	Vanuatu		-15.14	166.86	299882	1.0	
+C	Vanuatu		-16.98	168.21	299882	6.5	
 P	Fort Wayne	United States of America	41.08	-85.13	299871	0.0	
 P	Kanggye	North Korea	40.97	126.60	299514	0.0	
 P	Baqubah	Iraq	33.75	44.66	299479	0.0	Ba qubah
@@ -1730,7 +1730,7 @@ P	Karimnagar	India	18.46	79.11	288251	0.0
 P	Sinuiju	North Korea	40.09	124.42	288112	0.0	
 P	Talcahuano	Chile	-36.72	-73.12	288074	0.0	
 P	Ciudad Obregon	Mexico	27.47	-109.92	288002	0.0	
-C	New Caledonia		-21.26	165.52	287800	2.8	
+C	New Caledonia		-20.89	164.03	287800	7.7	
 P	Worcester	United States of America	42.27	-71.80	287365	0.0	
 P	Coatzacoalcos	Mexico	18.12	-94.42	287285	0.0	
 P	Tirupati	India	13.65	79.42	287035	0.0	
@@ -1772,7 +1772,7 @@ P	Xinzhou	China	38.41	112.72	279607	0.0
 P	Cotabato	Philippines	7.22	124.25	279519	0.0	
 P	Rize	Turkey	41.02	40.52	279450	0.0	
 P	Ica	Peru	-14.07	-75.73	279420	0.0	
-C	Fr. Polynesia		-17.68	-149.39	279287	0.5	French Polynesia
+C	Fr. Polynesia		-14.83	-143.90	279287	14.7	French Polynesia
 P	Sumqayt	Azerbaijan	40.58	49.63	279159	0.0	
 P	Taganrog	Russia	47.23	38.92	279056	0.0	
 P	Kaolack	Senegal	14.15	-16.10	277812	0.0	
@@ -2114,7 +2114,7 @@ P	Nablus	Palestine	32.22	35.25	215981	0.0
 P	Kielce	Poland	50.89	20.66	215733	0.0	
 P	Mulhouse	France	47.75	7.35	215454	0.0	
 P	Biysk	Russia	52.53	85.18	215430	0.0	
-C	São Tomé and Principe		0.23	6.61	215056	0.4	
+C	São Tomé and Principe		0.87	6.96	215056	1.7	
 P	Owerri	Nigeria	5.49	7.03	215038	0.0	
 P	Zamora	Mexico	19.98	-102.28	214947	0.0	
 P	Navoi	Uzbekistan	40.11	65.35	214828	0.0	
@@ -2239,7 +2239,7 @@ P	Proddatur	India	14.75	78.57	197451	0.0
 P	El Tigre	Venezuela	8.89	-64.26	197440	0.0	
 P	Gurgaon	India	28.45	77.02	197340	0.0	
 P	Burhanpur	India	21.30	76.13	197233	0.0	
-C	Samoa		-13.63	-172.48	197097	0.6	
+C	Samoa		-13.76	-172.11	197097	1.3	
 P	Kure	Japan	34.25	132.57	196991	0.0	
 P	Cartago	Costa Rica	9.87	-83.93	196946	0.0	
 P	Porlamar	Venezuela	10.96	-63.85	196934	0.0	
@@ -3006,7 +3006,7 @@ P	Agadez	Niger	17.00	7.98	117770	0.0
 P	Jalingo	Nigeria	8.90	11.36	117757	0.0	
 P	Dunedin	New Zealand	-45.89	170.49	117700	0.0	
 P	Achinsk	Russia	56.27	90.50	117634	0.0	
-C	Kiribati		1.88	-157.38	117606	0.4	
+C	Kiribati		-3.77	-171.13	117606	38.6	
 P	Anaco	Venezuela	9.44	-64.46	117596	0.0	
 P	Punta Arenas	Chile	-53.16	-70.94	117430	0.0	
 P	San Martín	Argentina	-33.07	-68.49	117399	0.0	
@@ -3061,7 +3061,7 @@ P	Zhijiang	China	27.44	109.68	113907	0.0
 P	Kecskemét	Hungary	46.90	19.70	113895	0.0	
 P	Laghouat	Algeria	33.81	2.88	113872	0.0	
 P	Botucatu	Brazil	-22.88	-48.45	113862	0.0	
-C	Micronesia		6.88	158.23	113815	0.2	Federated States of Micronesia
+C	Micronesia		7.44	150.53	113815	24.7	Federated States of Micronesia
 P	Tobolsk	Russia	58.20	68.26	113800	0.0	
 P	Curicó	Chile	-34.98	-71.24	113711	0.0	
 P	Bærum	Norway	59.91	11.35	113659	0.0	
@@ -3103,7 +3103,7 @@ P	Manzanillo	Mexico	19.05	-104.32	110735	0.0
 P	Santa Maria	United States of America	34.94	-120.44	110705	0.0	
 P	Pemba	Mozambique	-12.98	40.53	110643	0.0	
 P	Volos	Greece	39.37	22.95	110632	0.0	
-C	St. Vin. and Gren.		13.25	-61.20	110589	0.2	Saint Vincent and the Grenadines
+C	St. Vin. and Gren.		13.03	-61.24	110589	0.7	Saint Vincent and the Grenadines
 P	Noyabrsk	Russia	63.17	75.62	110572	0.0	
 P	Yaynangyoung	Myanmar	20.46	94.88	110553	0.0	
 P	Manzini	eSwatini	-26.50	31.39	110537	0.0	
@@ -3169,7 +3169,7 @@ P	Ratchaburi	Thailand	13.54	99.82	106996	0.0
 P	Elista	Russia	46.33	44.21	106971	0.0	
 P	Taungoo	Myanmar	18.95	96.42	106945	0.0	
 P	Douliou	Taiwan	23.71	120.54	106653	0.0	Douliu
-C	U.S. Virgin Is.		17.75	-64.73	106631	0.3	United States Virgin Islands
+C	U.S. Virgin Is.		18.04	-64.80	106631	0.7	United States Virgin Islands
 P	Burco	Somaliland	9.52	45.54	106593	0.0	Burao
 P	Coimbra	Portugal	40.20	-8.42	106582	0.0	
 P	Drobeta-Turnu Severin	Romania	44.65	22.67	106578	0.0	Drobeta- Turmu Sererin
@@ -3209,7 +3209,7 @@ P	Gera	Germany	50.87	12.07	104659	0.0
 P	Torbat-e Jam	Iran	35.22	60.61	104578	0.0	
 P	Billings	United States of America	45.79	-108.54	104552	0.0	
 P	Nong Khai	Thailand	17.87	102.75	104505	0.0	
-C	Tonga		-21.17	-175.22	104494	0.3	
+C	Tonga		-20.01	-174.64	104494	2.9	
 P	Brindisi	Italy	40.64	17.93	104437	0.0	
 P	Mmabatho	South Africa	-25.83	25.61	104428	0.0	MMabatho (Mafikeng)
 P	Zhezqazghan	Kazakhstan	47.78	67.77	104357	0.0	Zhezkazgan
@@ -3337,7 +3337,7 @@ P	Az Zahran	Saudi Arabia	26.29	50.16	97446	0.0	Dhahran
 P	Turkistan	Kazakhstan	43.30	68.25	97360	0.0	
 P	San Carlos del Zulia	Venezuela	9.01	-71.92	97288	0.0	
 P	Târgu Jiu	Romania	45.05	23.27	97179	0.0	
-C	Antigua and Barb.		17.08	-61.79	97118	0.2	Antigua and Barbuda
+C	Antigua and Barb.		17.36	-61.79	97118	0.7	Antigua and Barbuda
 P	Shangzhi	China	45.22	127.97	96980	0.0	
 P	Guasave	Mexico	25.57	-108.47	96860	0.0	
 P	Shostka	Ukraine	51.87	33.48	96825	0.0	
@@ -3986,7 +3986,7 @@ P	Ji-Paraná	Brazil	-10.83	-61.97	65016	0.0
 P	Borås	Sweden	57.73	12.92	65008	0.0	
 P	Solwezi	Zambia	-12.18	26.40	65000	0.0	
 P	Saki	Azerbaijan	41.19	47.17	64968	0.0	
-C	Cayman Is.		19.33	-81.26	64948	0.3	Cayman Islands
+C	Cayman Is.		19.52	-80.58	64948	1.6	Cayman Islands
 P	Krasnoturinsk	Russia	59.79	60.48	64878	0.0	
 P	Tan Tan	Morocco	28.43	-11.10	64868	0.0	
 P	Gurupi	Brazil	-11.72	-49.06	64789	0.0	
@@ -4161,7 +4161,7 @@ P	Guanambi	Brazil	-14.23	-42.79	58877	0.0
 P	Hattiesburg	United States of America	31.33	-89.29	58874	0.0	
 P	Tezpur	India	26.63	92.80	58851	0.0	
 P	Morgantown	United States of America	39.63	-79.96	58808	0.0	
-C	Marshall Is.		7.12	171.21	58791	0.4	Marshall Islands
+C	Marshall Is.		8.48	169.30	58791	5.4	Marshall Islands
 P	Kamphaeng Phet	Thailand	16.47	99.53	58787	0.0	
 P	Arsenyev	Russia	44.16	133.28	58700	0.0	
 P	Embu	Kenya	-0.52	37.45	58620	0.0	
@@ -4202,7 +4202,7 @@ P	Kentau	Kazakhstan	43.52	68.52	57408	0.0
 P	Cheremkhovo	Russia	53.16	103.07	57395	0.0	
 P	Caborca	Mexico	30.72	-112.16	57357	0.0	
 P	Carson City	United States of America	39.16	-119.77	57341	0.0	
-C	N. Mariana Is.		15.19	145.75	57216	0.2	Northern Mariana Islands
+C	N. Mariana Is.		16.46	145.49	57216	4.7	Northern Mariana Islands
 P	Punta Alta	Argentina	-38.88	-62.08	57209	0.0	
 P	Arcoverde	Brazil	-8.42	-37.07	57163	0.0	
 P	Bragança	Brazil	-1.05	-46.77	57163	0.0	
@@ -4341,7 +4341,7 @@ P	Arrecife	Spain	28.97	-13.54	52944	0.0
 P	Crateús	Brazil	-5.17	-40.67	52933	0.0	
 P	Livny	Russia	52.42	37.60	52915	0.0	
 P	Mandera	Somalia	3.94	41.86	52885	0.0	
-C	St. Kitts and Nevis		17.31	-62.74	52834	0.2	Saint Kitts and Nevis
+C	St. Kitts and Nevis		17.25	-62.69	52834	0.3	Saint Kitts and Nevis
 P	Port Shepstone	South Africa	-30.72	30.46	52793	0.0	
 P	Lorica	Colombia	9.24	-75.82	52771	0.0	
 P	Slobozia	Romania	44.57	27.38	52693	0.0	
@@ -4465,7 +4465,7 @@ P	Lancaster	United States of America	39.72	-82.61	48829	0.0
 P	Waingapu	Indonesia	-9.66	120.25	48828	0.0	
 P	Cornwall	Canada	45.02	-74.73	48821	0.0	
 P	Megion	Russia	61.06	76.10	48691	0.0	
-C	Faeroe Is.		62.13	-6.90	48678	0.4	Faeroe Islands;Faroe Islands
+C	Faeroe Is.		61.88	-6.91	48678	0.9	Faeroe Islands;Faroe Islands
 P	Luleå	Sweden	65.60	22.16	48638	0.0	
 P	Songkhla	Thailand	7.21	100.56	48616	0.0	
 P	Namtu	Myanmar	23.08	97.40	48591	0.0	
@@ -4850,7 +4850,7 @@ P	Rēzekne	Latvia	56.50	27.32	38340	0.0
 P	Marion	United States of America	40.56	-85.66	38297	0.0	
 P	Chur	Switzerland	46.85	9.50	38293	0.0	
 P	Razgrad	Bulgaria	43.53	26.54	38285	0.0	
-C	Turks and Caicos Is.		21.80	-71.74	38191	0.2	Turks and Caicos Islands
+C	Turks and Caicos Is.		21.85	-71.99	38191	0.7	Turks and Caicos Islands
 P	Anbyon	North Korea	39.03	127.52	38142	0.0	
 P	Kandalaksha	Russia	67.16	32.41	38126	0.0	
 P	Tenkodogo	Burkina Faso	11.78	-0.37	38108	0.0	
@@ -5201,7 +5201,7 @@ P	Kombissiri	Burkina Faso	12.06	-1.33	30137	0.0
 P	Svetogorsk	Russia	61.10	28.92	30115	0.0	
 P	Wuyuan	China	41.09	108.27	30057	0.0	
 P	Villa Ángela	Argentina	-27.58	-60.72	30051	0.0	
-C	British Virgin Is.		18.49	-64.38	30030	0.1	British Virgin Islands
+C	British Virgin Is.		18.58	-64.48	30030	0.4	British Virgin Islands
 P	Kuta	Indonesia	-8.72	115.18	30012	0.0	Denpasar
 P	Bourem	Mali	16.90	-0.35	30000	0.0	
 P	Casma	Peru	-9.44	-78.21	30000	0.0	
@@ -5212,7 +5212,7 @@ P	Savanna-la-Mar	Jamaica	18.16	-77.95	30000	0.0	Sav-la-Mar;Sav;Savanna La Mar
 P	Warrnambool	Australia	-38.38	142.47	29928	0.0	
 P	Castro	Chile	-42.48	-73.76	29926	0.0	
 P	Sunbury	Australia	-37.57	144.71	29925	0.0	
-C	Åland		60.24	19.97	29884	0.3	Åland Islands;Aland
+C	Åland		60.21	20.07	29884	0.5	Åland Islands;Aland
 P	Kabalo	Congo (Kinshasa)	-6.05	26.91	29833	0.0	
 P	Shieli	Kazakhstan	44.17	66.75	29832	0.0	
 P	Iturama	Brazil	-19.73	-50.20	29805	0.0	
@@ -5811,7 +5811,7 @@ P	Abaza	Russia	52.67	90.10	18094	0.0
 P	Muramvya	Burundi	-3.26	29.61	18041	0.0	
 P	Keetmanshoop	Namibia	-26.57	18.13	18039	0.0	
 P	Mao	Chad	14.12	15.31	18031	0.0	
-C	Palau		7.54	134.58	18008	0.4	
+C	Palau		5.37	132.90	18008	4.7	
 P	Requena	Peru	-5.07	-73.91	18000	0.0	
 P	Kirsanov	Russia	52.66	42.72	17975	0.0	
 P	Port Alfred	South Africa	-33.60	26.88	17959	0.0	
@@ -6194,7 +6194,7 @@ P	Muswellbrook	Australia	-32.27	150.89	11630	0.0
 P	Alotau	Papua New Guinea	-10.30	150.46	11624	0.0	
 P	Pichilemu	Chile	-34.38	-72.00	11603	0.0	
 P	Severnyy	Russia	67.61	64.12	11562	0.0	
-C	Wallis and Futuna Is.		-14.28	-178.12	11558	0.1	Wallis and Futuna Islands;Wallis and Futuna
+C	Wallis and Futuna Is.		-13.77	-177.16	11558	2.0	Wallis and Futuna Islands;Wallis and Futuna
 P	Gramsh	Albania	40.87	20.20	11556	0.0	
 P	Omaruru	Namibia	-21.44	15.95	11547	0.0	
 P	Port Morant	Jamaica	17.89	-76.33	11536	0.0	
@@ -6638,7 +6638,7 @@ P	Norway House	Canada	53.97	-97.83	6000	0.0
 P	Phongsali	Laos	21.68	102.10	6000	0.0	
 C	Siachen Glacier		35.39	77.28	6000	0.8	
 P	Tessalit	Mali	20.20	1.09	6000	0.0	
-C	St. Pierre and Miquelon		46.95	-56.32	5997	0.3	Saint Pierre and Miquelon
+C	St. Pierre and Miquelon		46.93	-56.26	5997	0.3	Saint Pierre and Miquelon
 P	Wonthaggi	Australia	-38.61	145.59	5985	0.0	
 P	Tazovsky	Russia	67.47	78.70	5981	0.0	
 P	Port St. Johns	South Africa	-31.63	29.53	5939	0.0	
@@ -6745,8 +6745,8 @@ P	Brownsweg	Suriname	5.02	-55.17	4582	0.0
 P	Sioux Lookout	Canada	50.26	-91.92	4570	0.0	
 P	Otavi	Namibia	-19.64	17.34	4562	0.0	
 P	Tonantins	Brazil	-2.87	-67.80	4561	0.0	
-C	Saint Helena		-15.96	-5.72	4534	0.1	
-C	Antarctica		-76.61	0.00	4490	83.4	
+C	Saint Helena		-11.94	-10.04	4534	8.6	
+C	Antarctica		-75.26	0.00	4490	91.6	
 P	Abra Pampa	Argentina	-22.72	-65.70	4480	0.0	
 P	Aqtau	Kazakhstan	43.62	51.24	4479	0.0	
 P	Dillon	United States of America	45.22	-112.68	4463	0.0	
@@ -6850,7 +6850,7 @@ P	Kanab	United States of America	37.05	-112.53	3442	0.0
 P	Kitty Hawk	United States of America	36.08	-75.70	3413	0.0	
 P	Darregueira	Argentina	-37.70	-63.17	3412	0.0	
 P	Kaberamaido	Uganda	1.74	33.16	3400	0.0	
-C	Falkland Is.		-51.79	-58.72	3398	1.1	Falkland Islands / Malvinas;Falkland Islands
+C	Falkland Is.		-51.79	-59.47	3398	2.1	Falkland Islands / Malvinas;Falkland Islands
 P	Bukachacha	Russia	52.98	116.92	3372	0.0	
 P	Ugolnye Kopi	Russia	64.73	177.70	3367	0.0	
 P	Lukulu	Zambia	-14.39	23.24	3349	0.0	
@@ -6969,7 +6969,7 @@ P	Baures	Bolivia	-13.58	-63.58	2422	0.0
 P	Severo Kurilsk	Russia	50.69	156.09	2422	0.0	
 P	White Sulphur Springs	United States of America	37.79	-80.30	2407	0.0	
 P	Uspallata	Argentina	-32.59	-69.35	2390	0.0	
-C	Indian Ocean Ter.		-10.50	105.65	2387	0.1	Indian Ocean Territories
+C	Indian Ocean Ter.		-11.32	101.28	2387	8.7	Indian Ocean Territories
 P	El Dorado	Venezuela	6.73	-61.63	2383	0.0	
 P	Karungu	Kenya	-0.85	34.15	2376	0.0	
 P	Yuscarán	Honduras	13.94	-86.85	2371	0.0	
@@ -7486,7 +7486,7 @@ P	Sobral Base	Antarctica	-81.18	-40.50	40	0.0	Sobral Scientific Base
 P	False Pass	United States of America	54.85	-163.42	35	0.0	
 P	Lake Minchumina	United States of America	63.88	-152.31	32	0.0	
 P	Concordia Research Station	Antarctica	-74.67	124.17	30	0.0	
-C	S. Geo. and the Is.		-54.43	-36.91	30	1.3	South Georgia and the Islands
+C	S. Geo. and the Is.		-56.24	-32.14	30	6.5	South Georgia and the Islands
 P	Lumbala Nguimbo	Angola	-14.10	21.44	25	0.0	
 P	Red Devil	United States of America	61.76	-157.31	25	0.0	
 P	Vostok Station	Antarctica	-78.47	106.80	25	0.0	
