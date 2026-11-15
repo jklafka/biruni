@@ -6,7 +6,7 @@
 //! focus, never at startup. While typing, keystrokes stay inside the input:
 //! `main`'s global key handler ignores events whose target is an input.
 
-use crate::search::{Gazetteer, Kind, Place};
+use crate::search::{highlight_segments, Gazetteer, Kind, Place};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -87,6 +87,7 @@ impl State {
 
     fn render(&mut self) {
         self.list.set_text_content(None);
+        let query = self.input.value();
         for (i, p) in self.results.iter().enumerate() {
             let Ok(li) = self.doc.create_element("li") else {
                 continue;
@@ -97,7 +98,13 @@ impl State {
             let name = self.doc.create_element("span");
             let sub = self.doc.create_element("span");
             if let (Ok(name), Ok(sub)) = (name, sub) {
-                name.set_text_content(Some(&p.name));
+                // Built from text nodes and <mark> elements, never innerHTML.
+                for (text, hit) in highlight_segments(&p.name, &query) {
+                    if let Ok(piece) = self.doc.create_element(if hit { "mark" } else { "span" }) {
+                        piece.set_text_content(Some(text));
+                        let _ = name.append_child(&piece);
+                    }
+                }
                 let _ = name.set_attribute("class", "search-name");
                 sub.set_text_content(Some(match p.kind {
                     Kind::Country => "Country",

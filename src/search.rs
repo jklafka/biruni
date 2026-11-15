@@ -96,26 +96,97 @@ fn fold_letter(c: char) -> Option<&'static str> {
 /// Fold text for matching: lowercase, accents removed, every run of
 /// non-alphanumeric characters becomes one space, and the ends are trimmed.
 pub fn fold(text: &str) -> String {
+    fold_core(text, None)
+}
+
+/// [`fold`], plus for every byte of the result the byte range `(start, end)`
+/// of the original character it came from (`ß` -> `ss`: both bytes map to
+/// the `ß`). Accent marks written as separate characters are attached to the
+/// letter before them, so a range that ends on that letter includes them.
+fn fold_with_map(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut map = Vec::with_capacity(text.len());
+    let folded = fold_core(text, Some(&mut map));
+    (folded, map)
+}
+
+fn fold_core(text: &str, mut map: Option<&mut Vec<(usize, usize)>>) -> String {
     let mut out = String::with_capacity(text.len());
     let mut pending_space = false;
-    for c in text.chars().flat_map(char::to_lowercase) {
-        // Combining marks (accents written as separate characters).
-        if ('\u{300}'..='\u{36f}').contains(&c) {
-            continue;
+    for (start, ch) in text.char_indices() {
+        let end = start + ch.len_utf8();
+        for c in ch.to_lowercase() {
+            // Combining marks (accents written as separate characters).
+            if ('\u{300}'..='\u{36f}').contains(&c) {
+                if let Some(m) = map.as_deref_mut() {
+                    if let Some(&(s, _)) = m.last() {
+                        // Extend the letter this mark belongs to.
+                        for e in m.iter_mut().rev().take_while(|e| e.0 == s) {
+                            e.1 = end;
+                        }
+                    }
+                }
+                continue;
+            }
+            let folded = fold_letter(c);
+            if folded.is_some() || c.is_alphanumeric() {
+                let before = out.len();
+                if pending_space && !out.is_empty() {
+                    out.push(' ');
+                }
+                pending_space = false;
+                match folded {
+                    Some(s) => out.push_str(s),
+                    None => out.push(c),
+                }
+                if let Some(m) = map.as_deref_mut() {
+                    m.extend(std::iter::repeat_n((start, end), out.len() - before));
+                }
+            } else {
+                pending_space = true;
+            }
         }
-        let folded = fold_letter(c);
-        if folded.is_some() || c.is_alphanumeric() {
-            if pending_space && !out.is_empty() {
-                out.push(' ');
-            }
-            pending_space = false;
-            match folded {
-                Some(s) => out.push_str(s),
-                None => out.push(c),
-            }
+    }
+    out
+}
+
+/// Split `name` into `(text, matched)` pieces that concatenate back to
+/// `name`, marking the part the query matched, for highlighting in the
+/// results list. Pure and diacritic-insensitive: the match is found on the
+/// folded text and mapped back, so `zur` marks `Zür` in `Zürich`, and
+/// `sao paulo` marks all of `São Paulo`. Only the first match is marked,
+/// preferring one at the start of a word. Nothing is marked when the name
+/// itself does not contain the query: typo-tolerant matches and matches made
+/// through an alias (`Russian Federation`) show no highlight, because there
+/// is no honest range to show. Blank queries mark nothing.
+pub fn highlight_segments<'a>(name: &'a str, query: &str) -> Vec<(&'a str, bool)> {
+    let truncated: String = query.chars().take(MAX_QUERY_CHARS).collect();
+    let q = fold(&truncated);
+    let whole = || {
+        if name.is_empty() {
+            Vec::new()
         } else {
-            pending_space = true;
+            vec![(name, false)]
         }
+    };
+    if q.is_empty() {
+        return whole();
+    }
+    let (folded, map) = fold_with_map(name);
+    let hit = folded
+        .match_indices(&q)
+        .find(|&(i, _)| i == 0 || folded.as_bytes()[i - 1] == b' ')
+        .or_else(|| folded.match_indices(&q).next());
+    let Some((i, _)) = hit else {
+        return whole();
+    };
+    let (from, to) = (map[i].0, map[i + q.len() - 1].1);
+    let mut out = Vec::with_capacity(3);
+    if from > 0 {
+        out.push((&name[..from], false));
+    }
+    out.push((&name[from..to], true));
+    if to < name.len() {
+        out.push((&name[to..], false));
     }
     out
 }
@@ -498,6 +569,95 @@ mod tests {
             ..tiny
         };
         assert_eq!(huge.fly_altitude(), MAX_ALT);
+    }
+
+    // --- match highlighting ---
+
+    fn marked(name: &str, q: &str) -> String {
+        highlight_segments(name, q)
+            .iter()
+            .map(|&(t, m)| if m { format!("[{t}]") } else { t.to_string() })
+            .collect()
+    }
+
+    #[test]
+    fn highlights_prefix_word_and_substring_matches() {
+        assert_eq!(marked("Paris", "pari"), "[Pari]s");
+        assert_eq!(marked("Paris", "PARIS"), "[Paris]");
+        assert_eq!(marked("New York", "york"), "New [York]");
+        assert_eq!(marked("Washington", "ash"), "W[ash]ington");
+        // A word start wins over an earlier mid-word match.
+        assert_eq!(marked("Banana Ana", "ana"), "Banana [Ana]");
+        // Only the first match is marked.
+        assert_eq!(marked("Lalala", "la"), "[La]lala");
+    }
+
+    #[test]
+    fn highlights_through_diacritics_and_punctuation() {
+        assert_eq!(marked("Zürich", "zur"), "[Zür]ich");
+        assert_eq!(marked("São Paulo", "sao paulo"), "[São Paulo]");
+        assert_eq!(marked("São Paulo", "o pa"), "Sã[o Pa]ulo");
+        assert_eq!(marked("Saint-Denis", "saint denis"), "[Saint-Denis]");
+        assert_eq!(marked("Saint-Denis", "t-d"), "Sain[t-D]enis");
+        assert_eq!(marked("Cote d'Ivoire", "ivoire"), "Cote d'[Ivoire]");
+        // A letter that folds to two is marked whole.
+        assert_eq!(marked("Straße", "ss"), "Stra[ß]e");
+        assert_eq!(marked("Œuvre", "oe"), "[Œ]uvre");
+        // Combining accents (NFD) stay with their letter.
+        assert_eq!(marked("Zu\u{308}rich", "zu"), "[Zu\u{308}]rich");
+        assert_eq!(marked("Zu\u{308}rich", "ur"), "Z[u\u{308}r]ich");
+        // Non-Latin scripts match as is.
+        assert_eq!(marked("Москва", "моск"), "[Моск]ва");
+        // Multi-byte letters before and after the match keep valid slices.
+        assert_eq!(marked("Łódź Śląsk", "slask"), "Łódź [Śląsk]");
+    }
+
+    #[test]
+    fn no_highlight_without_a_literal_match() {
+        // Typo-tolerant and alias matches are not highlighted.
+        assert_eq!(marked("Paris", "pairs"), "Paris");
+        assert_eq!(marked("Russia", "russian federation"), "Russia");
+        assert_eq!(marked("Paris", "london"), "Paris");
+    }
+
+    #[test]
+    fn highlight_handles_degenerate_input() {
+        assert_eq!(highlight_segments("", "a"), []);
+        assert_eq!(highlight_segments("", ""), []);
+        assert_eq!(highlight_segments("Paris", ""), [("Paris", false)]);
+        assert_eq!(highlight_segments("Paris", "  -- "), [("Paris", false)]);
+        assert_eq!(marked("Ok", "okay"), "Ok");
+        // A query past the cap is cut off like in `search`.
+        let name = "a".repeat(MAX_QUERY_CHARS + 5);
+        let long = "a".repeat(MAX_QUERY_CHARS + 20);
+        assert_eq!(
+            marked(&name, &long),
+            format!("[{}]aaaaa", "a".repeat(MAX_QUERY_CHARS))
+        );
+        // Names made only of separators fold to nothing.
+        assert_eq!(marked("---", "a"), "---");
+        // Pieces always concatenate back to the name.
+        for (n, q) in [("İstanbul", "ist"), ("Zu\u{308}rich", "rich"), ("ǅ x", "x")] {
+            let joined: String = highlight_segments(n, q).iter().map(|s| s.0).collect();
+            assert_eq!(joined, n);
+        }
+    }
+
+    #[test]
+    fn highlight_agrees_with_search_on_bundled_names() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        for q in ["pari", "york", "sao", "zur", "san ", "st ", "ba"] {
+            for p in g.search(q, 8) {
+                let segs = highlight_segments(&p.name, q);
+                let joined: String = segs.iter().map(|s| s.0).collect();
+                assert_eq!(joined, p.name);
+                for &(t, m) in &segs {
+                    if m {
+                        assert_eq!(fold(t), fold(q), "{} / {q}", p.name);
+                    }
+                }
+            }
+        }
     }
 
     // --- bundled data ---
