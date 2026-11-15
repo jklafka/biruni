@@ -346,7 +346,10 @@
       @media (max-width: 520px) {
         #title p { display: none; }
         #layers { top: 64px; left: 16px; right: auto; }
-        #layers button { padding: 0 8px; }
+        /* Fit 390 px even with a wide fallback font: the menu takes what is left and clips. */
+        #layers { max-width: calc(100vw - 32px); }
+        #layers button { padding: 0 6px; flex: none; }
+        #layer-theme { flex: 1 1 0; min-width: 0; padding: 0 4px; text-overflow: ellipsis; }
         #search { top: 116px; }
         /* Above the HUD, left of the control buttons, in two columns to stay short. */
         #legend { left: 16px; right: 70px; max-width: none; bottom: calc(150px + var(--scrub, 0px)); }
@@ -447,8 +450,8 @@
       <select id="layer-theme" aria-label="Data layer: color countries by a statistic" title="Color countries by a statistic (4, 5, 6)">
         <option value="">Data</option>
         <option value="pop">Population</option>
-        <option value="gdp">GDP per capita</option>
-        <option value="income">Income group</option>
+        <option value="gdp">GDP / capita</option>
+        <option value="income">Income</option>
       </select>
       <div id="layer-status" role="status" hidden></div>
     </div>
