@@ -1354,9 +1354,18 @@ fn start() -> Result<(), JsValue> {
                     if let Err(e) = a.renderer.upload_country_ids(&ids, ids_width) {
                         web_sys::console::error_1(&e);
                     }
+                    a.renderer.set_country_colors(&countries.id_colors());
+                    a.redraw.mark_render(); // political fills switch on
                     a.ids = Some(Rc::new(ids));
                     a.countries = Some(countries);
                     a.update_hover();
+                    // Lets the visual tests wait for the political fills.
+                    let globe = web_sys::window()
+                        .and_then(|w| w.document())
+                        .and_then(|d| d.get_element_by_id("globe"));
+                    if let Some(g) = globe {
+                        let _ = g.set_attribute("data-countries", "1");
+                    }
                 }
                 Err(e) => web_sys::console::error_1(&e),
             }

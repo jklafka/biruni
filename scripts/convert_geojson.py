@@ -80,7 +80,8 @@ def encode(geojson) -> bytes:
 
 
 COUNTRY_MAGIC = b"MAPC"
-COUNTRY_VERSION = 1
+COUNTRY_VERSION = 2
+PALETTE_SIZE = 6  # political fill colors; keep in sync with PALETTE in src/shaders/globe.frag
 COUNTRY_SCALE = 1_000  # units per degree (1e-3 degree, about 110 m)
 
 
@@ -95,6 +96,50 @@ def clean_code(*values) -> str:
         if isinstance(v, str) and v and v != "-99":
             return v
     return ""
+
+
+def country_adjacency(countries):
+    """Sets of country indexes that share a border, from the converted polygons.
+
+    Two countries are neighbors if they have a boundary edge in common: the same
+    pair of vertices, after rounding to COUNTRY_SCALE as the file stores them.
+    Natural Earth draws shared borders with identical vertices, so this finds
+    land borders without treating a point contact (four corners) as adjacency.
+    """
+    owners = {}
+    for ci, (_, polys) in enumerate(countries):
+        for rings in polys:
+            for pts in rings:
+                q = [(round(x * COUNTRY_SCALE), round(y * COUNTRY_SCALE)) for x, y in pts]
+                for a, b in zip(q, q[1:] + q[:1]):
+                    if a != b:
+                        owners.setdefault((min(a, b), max(a, b)), set()).add(ci)
+    adj = [set() for _ in countries]
+    for cs in owners.values():
+        for a in cs:
+            adj[a] |= cs - {a}
+    return adj
+
+
+def color_countries(adj):
+    """DSatur graph coloring with PALETTE_SIZE colors; deterministic. Among the
+    allowed colors it takes the least used so far, which keeps the palette
+    balanced. Raises if a country cannot be colored."""
+    n = len(adj)
+    color = [-1] * n
+    used = [0] * PALETTE_SIZE
+    for _ in range(n):
+        def key(i):
+            seen = {color[j] for j in adj[i] if color[j] >= 0}
+            return (-len(seen), -len(adj[i]), i)
+        i = min((i for i in range(n) if color[i] < 0), key=key)
+        taken = {color[j] for j in adj[i] if color[j] >= 0}
+        free = [c for c in range(PALETTE_SIZE) if c not in taken]
+        if not free:
+            raise ValueError(f"country {i} needs more than {PALETTE_SIZE} colors")
+        color[i] = min(free, key=lambda c: (used[c], c))
+        used[color[i]] += 1
+    return color
 
 
 def encode_countries(geojson) -> bytes:
@@ -120,16 +165,18 @@ def encode_countries(geojson) -> bytes:
                 out_polys.append(rings)
         if out_polys:
             countries.append((f["properties"], out_polys))
+    colors = color_countries(country_adjacency(countries))
     out = bytearray(COUNTRY_MAGIC + bytes([COUNTRY_VERSION]))
     out += varint(COUNTRY_SCALE) + varint(len(countries))
     px = py = 0
-    for props, polys in countries:
+    for (props, polys), color in zip(countries, colors):
         out += string(props["NAME"])
         out += string(clean_code(props.get("ISO_A2_EH"), props.get("ISO_A2")))
         out += string(clean_code(props.get("ISO_A3_EH"), props.get("ADM0_A3")))
         out += string(props.get("CONTINENT") or "")
         out += string(props.get("SUBREGION") or "")
         out += varint(max(int(props.get("POP_EST") or 0), 0))
+        out += bytes([color])
         out += varint(len(polys))
         for rings in polys:
             out += varint(len(rings))
