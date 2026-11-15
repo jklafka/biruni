@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Check that assets/data/ is exactly what scripts/convert_geojson.py generates
+# from data-src/. Run from anywhere; CI runs it too (job "Data").
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+python3 scripts/convert_geojson.py data-src "$tmp" > /dev/null
+
+drift=()
+for f in "$tmp"/*; do
+  name="$(basename "$f")"
+  if [ ! -f "assets/data/$name" ]; then
+    drift+=("$name (generated but not committed)")
+  elif ! cmp -s "$f" "assets/data/$name"; then
+    drift+=("$name (differs)")
+  fi
+done
+for f in assets/data/*; do
+  name="$(basename "$f")"
+  [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
+done
+
+if [ ${#drift[@]} -gt 0 ]; then
+  echo "error: assets/data/ is out of date with data-src/ and scripts/convert_geojson.py:" >&2
+  printf '  - %s\n' "${drift[@]}" >&2
+  echo "Regenerate and commit with: python3 scripts/convert_geojson.py" >&2
+  exit 1
+fi
+echo "assets/data/ matches the generated output."

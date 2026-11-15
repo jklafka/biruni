@@ -62,6 +62,17 @@ jobs:
       - name: Validate GLSL ES shaders
         run: glslangValidator src/shaders/*.vert src/shaders/*.frag
 
+  data:
+    name: Data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generated data matches data-src/
+        run: scripts/check-data.sh
+
   build:
     name: Build
     runs-on: ubuntu-latest
