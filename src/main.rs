@@ -365,10 +365,42 @@ impl App {
         }
     }
 
+    /// Backspace: remove the selected point, or the last one.
     fn measure_undo(&mut self) {
         if self.measure.active && self.measure.undo() {
             self.measure_changed();
+            self.update_hover();
         }
+    }
+
+    /// Delete: remove the selected point only.
+    fn measure_delete(&mut self) {
+        if self.measure.active && self.measure.remove_selected() {
+            self.measure_changed();
+            self.update_hover();
+        }
+    }
+
+    /// Hover state of the measure points under a mouse cursor. Cheap, and a
+    /// redraw happens only when it changes.
+    fn update_point_hover(&mut self) {
+        let hit = match self.cursor {
+            Some((x, y)) if self.mouse_hover && self.measure.active => measure::hit_test(
+                &self.camera,
+                self.measure.points(),
+                x,
+                y,
+                measure::hit_radius(false),
+            ),
+            _ => None,
+        };
+        if self.measure.set_hover(hit) {
+            self.redraw.mark_render();
+        }
+        let _ = self
+            .canvas
+            .class_list()
+            .toggle_with_force("over-point", hit.is_some());
     }
 
     /// Whether a plain click or tap on the globe opens the country panel.
@@ -398,6 +430,7 @@ impl App {
     fn update_hover(&mut self) {
         // Hover highlighting is off while measuring: the cursor is placing
         // points there, and a tinted country would just be visual noise.
+        self.update_point_hover();
         let hit = match self.cursor {
             Some((x, y)) if self.mouse_hover && !self.measure.active => self.country_at(x, y),
             _ => None,
@@ -583,6 +616,18 @@ impl App {
             self.set_proj_menu(false);
         }
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
+        // A press on a measure point grabs it instead of panning the view.
+        if self.measure.active {
+            let (x, y) = (e.client_x() as f64, e.client_y() as f64);
+            let radius = measure::hit_radius(e.pointer_type() != "mouse");
+            if self
+                .measure
+                .press(&self.camera, e.pointer_id(), x, y, radius)
+            {
+                self.redraw.mark_render();
+                return;
+            }
+        }
         let t = self.now();
         self.send(Event::PointerDown {
             id: e.pointer_id(),
@@ -609,6 +654,15 @@ impl App {
         self.mouse_hover = e.pointer_type() == "mouse";
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
+        if self.measure.owns(e.pointer_id()) {
+            // Dragging a measure point: the view stays put.
+            if self.measure.drag(&self.camera, e.pointer_id(), x, y) {
+                let _ = self.canvas.class_list().add_1("dragging");
+                self.redraw.mark_render();
+            }
+            self.update_hover();
+            return;
+        }
         self.update_hover();
         let t = self.now();
         self.send(Event::PointerMove {
@@ -622,6 +676,20 @@ impl App {
 
     fn pointer_up(&mut self, e: &PointerEvent) {
         let t = self.now();
+        if self.measure.owns(e.pointer_id()) {
+            let r = self
+                .measure
+                .release(e.pointer_id(), t, e.type_() != "pointerup");
+            if r == measure::Release::Removed {
+                self.measure_changed();
+            }
+            self.redraw.mark_render();
+            if !self.controls.dragging() {
+                let _ = self.canvas.class_list().remove_1("dragging");
+            }
+            self.update_hover();
+            return;
+        }
         let r = self.send(Event::PointerUp {
             id: e.pointer_id(),
             t,
@@ -956,130 +1024,179 @@ fn start() -> Result<(), JsValue> {
     // Keyboard.
     {
         let app = app.clone();
-        listen(window.as_ref(), "keydown", true, move |e: KeyboardEvent| {
-            // Typing in a text field (the search box) is not a map shortcut.
-            if e.target().is_some_and(|t| {
-                t.is_instance_of::<web_sys::HtmlInputElement>()
-                    || t.is_instance_of::<web_sys::HtmlTextAreaElement>()
-            }) {
-                return;
-            }
-            let mut a = app.borrow_mut();
-            match e.key().as_str() {
-                "ArrowLeft" => {
-                    a.send(Event::Nudge(Direction::Left));
-                }
-                "ArrowRight" => {
-                    a.send(Event::Nudge(Direction::Right));
-                }
-                "ArrowUp" => {
-                    a.send(Event::Nudge(Direction::Up));
-                }
-                "ArrowDown" => {
-                    a.send(Event::Nudge(Direction::Down));
-                }
-                "+" | "=" => {
-                    a.send(Event::Zoom {
-                        factor: 0.6,
-                        toward: None,
-                    });
-                }
-                "-" | "_" => {
-                    a.send(Event::Zoom {
-                        factor: 1.0 / 0.6,
-                        toward: None,
-                    });
-                }
-                "r" | "R" => {
-                    a.send(Event::Reset);
-                }
-                "f" | "F" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    a.send(Event::ToggleNorthUp);
-                }
-                "q" | "Q" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    a.send(Event::Rotate(-controls::ROTATE_STEP));
-                }
-                "e" | "E" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    a.send(Event::Rotate(controls::ROTATE_STEP));
-                }
-                "i" | "I" if a.info_click_enabled() => {
-                    // Info for the country at the center of the view.
-                    let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
-                    let hit = a.countries.as_ref().and_then(|c| c.hit(lat, lon));
-                    a.select(hit);
+        // Not passive: Tab in measure mode calls preventDefault.
+        listen(
+            window.as_ref(),
+            "keydown",
+            false,
+            move |e: KeyboardEvent| {
+                // Typing in a text field (the search box) is not a map shortcut.
+                if e.target().is_some_and(|t| {
+                    t.is_instance_of::<web_sys::HtmlInputElement>()
+                        || t.is_instance_of::<web_sys::HtmlTextAreaElement>()
+                }) {
                     return;
                 }
-                // Debug aid, only with ?debug=ctxloss: lose / restore the
-                // WebGL context (see README).
-                "`" => {
-                    a.renderer.debug_toggle_context_loss();
-                    return;
-                }
-                "u" | "U" => {
-                    // Only the HUD text changes; no need to redraw the globe.
-                    a.cycle_units();
-                    return;
-                }
-                "s" | "S" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    // Sharing never changes the view, so no redraw.
-                    let (ui, url) = (a.share_ui.clone(), a.current_share_url());
-                    drop(a);
-                    share::share(&ui, url);
-                    return;
-                }
-                "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
-                "p" | "P" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    // P cycles forward through the projections, Shift+P back.
-                    let cur = a.camera.proj;
-                    a.set_projection(if e.shift_key() {
-                        cur.prev()
-                    } else {
-                        cur.next()
-                    });
-                }
-                "g" | "G" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
-                    a.set_projection(Projection::Globe)
-                }
-                "m" | "M" => a.toggle_measure(),
-                "Escape" if !a.proj_menu.hidden() => {
-                    a.set_proj_menu(false);
-                    let _ = a.proj_button.focus();
-                    return;
-                }
-                "Escape" if a.measure.active => a.toggle_measure(),
-                "Escape" => {
-                    // Not measuring: close the info panel.
-                    a.select(None);
-                    return;
-                }
-                "Backspace" if a.measure.active => a.measure_undo(),
-                "Enter" | " " if a.measure.active => {
-                    // Keyboard path: drop a point at the view center. Skip when
-                    // a button has focus, where Enter/Space activates it.
-                    let on_canvas = e.target().is_some_and(|t| {
+                let mut a = app.borrow_mut();
+                // Measure editing keys. Shift+arrows nudge the selected point;
+                // without a selection they pan as usual.
+                if a.measure.active {
+                    let on_page = e.target().is_some_and(|t| {
                         let c: &EventTarget = a.canvas.as_ref();
-                        &t == c
+                        let body: Option<EventTarget> =
+                            a.window.document().and_then(|d| d.body()).map(Into::into);
+                        &t == c || Some(&t) == body.as_ref()
                     });
-                    if !on_canvas {
+                    let plain = !(e.ctrl_key() || e.meta_key() || e.alt_key());
+                    let step = measure::NUDGE_PX;
+                    let nudge = match e.key().as_str() {
+                        "ArrowLeft" => Some((-step, 0.0)),
+                        "ArrowRight" => Some((step, 0.0)),
+                        "ArrowUp" => Some((0.0, -step)),
+                        "ArrowDown" => Some((0.0, step)),
+                        _ => None,
+                    };
+                    let consumed = match (e.key().as_str(), nudge) {
+                        (_, Some((dx, dy))) if e.shift_key() && plain => {
+                            a.measure.selected().is_some() && {
+                                let cam = a.camera;
+                                a.measure.nudge_selected(&cam, dx, dy);
+                                true
+                            }
+                        }
+                        ("[", _) if plain => a.measure.cycle_selection(false),
+                        ("]", _) if plain => a.measure.cycle_selection(true),
+                        ("Tab", _) if plain && on_page => a.measure.tab_selection(!e.shift_key()),
+                        ("Delete", _) if plain => {
+                            a.measure_delete();
+                            true
+                        }
+                        _ => false,
+                    };
+                    if consumed {
+                        e.prevent_default();
+                        a.redraw.mark_render();
                         return;
                     }
-                    let (cx, cy) = (a.camera.width * 0.5, a.camera.height * 0.5);
-                    a.measure_add_at(cx, cy);
                 }
-                "l" | "L" => {
-                    let next = a.layers_state.wanted().next();
-                    a.select_layer(next);
-                }
-                k @ ("1" | "2") => {
-                    let i = k.parse::<usize>().unwrap_or(1) - 1;
-                    if let Some(l) = Layer::ALL.get(i) {
-                        a.select_layer(*l);
+                match e.key().as_str() {
+                    "ArrowLeft" => {
+                        a.send(Event::Nudge(Direction::Left));
                     }
+                    "ArrowRight" => {
+                        a.send(Event::Nudge(Direction::Right));
+                    }
+                    "ArrowUp" => {
+                        a.send(Event::Nudge(Direction::Up));
+                    }
+                    "ArrowDown" => {
+                        a.send(Event::Nudge(Direction::Down));
+                    }
+                    "+" | "=" => {
+                        a.send(Event::Zoom {
+                            factor: 0.6,
+                            toward: None,
+                        });
+                    }
+                    "-" | "_" => {
+                        a.send(Event::Zoom {
+                            factor: 1.0 / 0.6,
+                            toward: None,
+                        });
+                    }
+                    "r" | "R" => {
+                        a.send(Event::Reset);
+                    }
+                    "f" | "F" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::ToggleNorthUp);
+                    }
+                    "q" | "Q" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::Rotate(-controls::ROTATE_STEP));
+                    }
+                    "e" | "E" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::Rotate(controls::ROTATE_STEP));
+                    }
+                    "i" | "I" if a.info_click_enabled() => {
+                        // Info for the country at the center of the view.
+                        let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
+                        let hit = a.countries.as_ref().and_then(|c| c.hit(lat, lon));
+                        a.select(hit);
+                        return;
+                    }
+                    // Debug aid, only with ?debug=ctxloss: lose / restore the
+                    // WebGL context (see README).
+                    "`" => {
+                        a.renderer.debug_toggle_context_loss();
+                        return;
+                    }
+                    "u" | "U" => {
+                        // Only the HUD text changes; no need to redraw the globe.
+                        a.cycle_units();
+                        return;
+                    }
+                    "s" | "S" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        // Sharing never changes the view, so no redraw.
+                        let (ui, url) = (a.share_ui.clone(), a.current_share_url());
+                        drop(a);
+                        share::share(&ui, url);
+                        return;
+                    }
+                    "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
+                    "p" | "P" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        // P cycles forward through the projections, Shift+P back.
+                        let cur = a.camera.proj;
+                        a.set_projection(if e.shift_key() {
+                            cur.prev()
+                        } else {
+                            cur.next()
+                        });
+                    }
+                    "g" | "G" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.set_projection(Projection::Globe)
+                    }
+                    "m" | "M" => a.toggle_measure(),
+                    "Escape" if !a.proj_menu.hidden() => {
+                        a.set_proj_menu(false);
+                        let _ = a.proj_button.focus();
+                        return;
+                    }
+                    // Esc first deselects a point, then clears and exits.
+                    "Escape" if a.measure.active && a.measure.select(None) => {}
+                    "Escape" if a.measure.active => a.toggle_measure(),
+                    "Escape" => {
+                        // Not measuring: close the info panel.
+                        a.select(None);
+                        return;
+                    }
+                    "Backspace" if a.measure.active => a.measure_undo(),
+                    "Enter" | " " if a.measure.active => {
+                        // Keyboard path: drop a point at the view center. Skip when
+                        // a button has focus, where Enter/Space activates it.
+                        let on_canvas = e.target().is_some_and(|t| {
+                            let c: &EventTarget = a.canvas.as_ref();
+                            &t == c
+                        });
+                        if !on_canvas {
+                            return;
+                        }
+                        let (cx, cy) = (a.camera.width * 0.5, a.camera.height * 0.5);
+                        a.measure_add_at(cx, cy);
+                    }
+                    "l" | "L" => {
+                        let next = a.layers_state.wanted().next();
+                        a.select_layer(next);
+                    }
+                    k @ ("1" | "2") => {
+                        let i = k.parse::<usize>().unwrap_or(1) - 1;
+                        if let Some(l) = Layer::ALL.get(i) {
+                            a.select_layer(*l);
+                        }
+                    }
+                    _ => return,
                 }
-                _ => return,
-            }
-            a.redraw.mark_render();
-        })?;
+                a.redraw.mark_render();
+            },
+        )?;
     }
 
     // Editing the URL hash by hand flies to that view.

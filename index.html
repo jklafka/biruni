@@ -135,6 +135,8 @@
         user-select: none;
       }
       #globe.measuring { cursor: crosshair; }
+      #globe.measuring.over-point { cursor: grab; }
+      #globe.measuring.over-point.dragging { cursor: grabbing; }
       #measure {
         left: 16px;
         bottom: 168px;
@@ -324,7 +326,7 @@
       <div id="measure-hint">Click or tap to add points</div>
       <ul id="measure-legs"></ul>
       <div id="measure-actions">
-        <button id="measure-undo" title="Remove last point (Backspace)">Undo</button>
+        <button id="measure-undo" title="Remove the selected point, or the last one (Backspace)">Undo</button>
         <button id="measure-exit" title="Clear and exit (Esc)">Exit</button>
       </div>
     </div>
