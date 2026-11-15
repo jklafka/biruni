@@ -93,6 +93,8 @@ struct App {
     cursor: Option<(f64, f64)>,
     /// The last pointer was a mouse, so the cursor position means hover.
     mouse_hover: bool,
+    /// The last pointer pressed or moved was touch or pen, not a mouse.
+    coarse_pointer: bool,
     countries: Option<country::Countries>,
     /// Country-ID raster, kept so a restored context can re-upload it.
     ids: Option<Rc<Vec<u8>>>,
@@ -546,11 +548,12 @@ impl App {
     }
 
     /// Country at a screen point, once the country data has loaded.
-    fn country_at(&self, x: f64, y: f64) -> Option<usize> {
-        let (lat, lon) = self.camera.pick(x, y)?;
+    /// A country whose outline is within a few pixels counts, so tiny
+    /// islands can be hovered and tapped; `coarse` widens that for touch.
+    fn country_at(&self, x: f64, y: f64, coarse: bool) -> Option<usize> {
         self.countries
             .as_ref()?
-            .hit(lat.to_degrees(), lon.to_degrees())
+            .hit_near(&self.camera, x, y, country::near_radius(coarse))
     }
 
     /// Highlight follows the hovered country, else the selected one.
@@ -567,7 +570,9 @@ impl App {
         // points there, and a tinted country would just be visual noise.
         self.update_point_hover();
         let hit = match self.cursor {
-            Some((x, y)) if self.mouse_hover && !self.measure.active => self.country_at(x, y),
+            Some((x, y)) if self.mouse_hover && !self.measure.active => {
+                self.country_at(x, y, false)
+            }
             _ => None,
         };
         if hit != self.hover {
@@ -612,7 +617,7 @@ impl App {
 
     fn click(&mut self, x: f64, y: f64) {
         if self.info_click_enabled() {
-            let hit = self.country_at(x, y);
+            let hit = self.country_at(x, y, self.coarse_pointer);
             self.select(hit);
         }
     }
@@ -788,6 +793,7 @@ impl App {
         if !self.proj_menu.hidden() {
             self.set_proj_menu(false);
         }
+        self.coarse_pointer = e.pointer_type() != "mouse";
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         // A press on a measure point grabs it instead of panning the view.
         if self.measure.active {
@@ -825,6 +831,7 @@ impl App {
         let (x, y) = (e.client_x() as f64, e.client_y() as f64);
         self.cursor = Some((x, y));
         self.mouse_hover = e.pointer_type() == "mouse";
+        self.coarse_pointer = !self.mouse_hover;
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
         if self.measure.owns(e.pointer_id()) {
@@ -1016,6 +1023,7 @@ fn start() -> Result<(), JsValue> {
         drawn_scale: 1.0,
         cursor: None,
         mouse_hover: false,
+        coarse_pointer: false,
         countries: None,
         ids: None,
         hover: None,
@@ -1378,9 +1386,11 @@ fn start() -> Result<(), JsValue> {
                         a.send(Event::Rotate(controls::ROTATE_STEP));
                     }
                     "i" | "I" if a.info_click_enabled() => {
-                        // Info for the country at the center of the view.
-                        let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
-                        let hit = a.countries.as_ref().and_then(|c| c.hit(lat, lon));
+                        // Info for the country at the center of the view,
+                        // with the same few pixels of slack as the mouse so
+                        // a tiny island under the crosshair counts.
+                        let (cx, cy) = (a.camera.width / 2.0, a.camera.height / 2.0);
+                        let hit = a.country_at(cx, cy, false);
                         a.select(hit);
                         return;
                     }
