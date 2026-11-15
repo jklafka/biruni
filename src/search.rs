@@ -134,6 +134,113 @@ fn match_tier(key: &str, query: &str) -> Option<u8> {
     }
 }
 
+/// Tier of every typo-tolerant match: below all exact/prefix/substring tiers.
+const FUZZY_TIER: u8 = 4;
+/// Longest key (bytes) the fuzzy matcher looks at; longer keys are cut off.
+const MAX_FUZZY_KEY: usize = 96;
+
+/// Most typos tolerated for a query of `chars` characters: none for 1-3,
+/// one for 4-6, two for 7 or more.
+fn max_typos(chars: usize) -> usize {
+    match chars {
+        0..=3 => 0,
+        4..=6 => 1,
+        _ => 2,
+    }
+}
+
+/// Reusable DP rows for [`typo_distances`].
+struct Scratch {
+    rows: [[u8; MAX_FUZZY_KEY + 2]; 3],
+}
+
+/// Banded optimal-string-alignment distance (insert, delete, substitute,
+/// adjacent swap, each cost 1) between `q` and a key, bounded by `k`.
+/// Returns `(whole, prefix)`: the distance to the entire key and the least
+/// distance to any prefix of it (`None` when above `k`). Only cells within
+/// `k` of the diagonal are computed, and it stops as soon as a whole row
+/// exceeds `k`, so a non-match usually costs a few cells.
+fn typo_distances(key: &[u8], q: &[u8], k: usize, sc: &mut Scratch) -> (Option<u8>, Option<u8>) {
+    let (n, m) = (key.len().min(MAX_FUZZY_KEY), q.len());
+    // A prefix of the key needs at least m-k characters.
+    if n + k < m || k > 2 {
+        return (None, None);
+    }
+    const INF: u8 = 200;
+    let kk = k as u8;
+    // Row i lives in rows[i % 3]; row i-2 is the swap source.
+    for j in 0..=(k.min(n)) {
+        sc.rows[0][j] = j as u8;
+    }
+    if k < n {
+        sc.rows[0][k + 1] = INF;
+    }
+    for i in 1..=m {
+        let (cur, p1, p2) = (i % 3, (i + 2) % 3, (i + 1) % 3);
+        let lo = i.saturating_sub(k);
+        let hi = (i + k).min(n);
+        if lo > n {
+            return (None, None);
+        }
+        let mut best = INF;
+        if lo > 0 {
+            sc.rows[cur][lo - 1] = INF;
+        }
+        for j in lo..=hi {
+            let v = if j == 0 {
+                i as u8
+            } else {
+                let cost = u8::from(q[i - 1] != key[j - 1]);
+                let mut v = (sc.rows[p1][j - 1] + cost)
+                    .min(sc.rows[p1][j] + 1)
+                    .min(sc.rows[cur][j - 1] + 1);
+                if i > 1 && j > 1 && q[i - 1] == key[j - 2] && q[i - 2] == key[j - 1] {
+                    v = v.min(sc.rows[p2][j - 2] + 1);
+                }
+                v
+            };
+            sc.rows[cur][j] = v.min(INF);
+            best = best.min(v);
+        }
+        if hi < n {
+            sc.rows[cur][hi + 1] = INF;
+        }
+        if best > kk {
+            return (None, None);
+        }
+    }
+    let last = &sc.rows[m % 3];
+    let lo = m.saturating_sub(k);
+    let hi = (m + k).min(n);
+    let prefix = (lo..=hi).map(|j| last[j]).min().filter(|&d| d <= kk);
+    let whole = (n == key.len() && n <= m + k)
+        .then(|| last[n])
+        .filter(|&d| d <= kk);
+    (whole, prefix)
+}
+
+/// Typo-tolerant score of a key against the query (lower is better): twice
+/// the edit distance, plus 1 if only a prefix of the key matched, plus 1 more
+/// if that prefix starts at a later word. `None` when out of range.
+fn fuzzy_score(key: &str, q: &[u8], k: usize, sc: &mut Scratch) -> Option<u8> {
+    let kb = key.as_bytes();
+    let mut best: Option<u8> = None;
+    let mut consider = |s: Option<u8>| {
+        if let Some(s) = s {
+            best = Some(best.map_or(s, |b| b.min(s)));
+        }
+    };
+    let (whole, prefix) = typo_distances(kb, q, k, sc);
+    consider(whole.map(|d| 2 * d));
+    consider(prefix.map(|d| 2 * d + 1));
+    for (i, _) in kb.iter().enumerate().filter(|&(_, &b)| b == b' ') {
+        if kb.len() - i - 1 + k >= q.len() {
+            consider(typo_distances(&kb[i + 1..], q, k, sc).1.map(|d| 2 * d + 2));
+        }
+    }
+    best
+}
+
 pub struct Gazetteer {
     places: Vec<Place>,
     /// Folded search keys per place: the name, then its aliases.
@@ -196,7 +303,8 @@ impl Gazetteer {
     }
 
     /// Up to `limit` best matches. Ranked exact name, then name prefix, then
-    /// word prefix, then substring; ties go to the larger population. Aliases
+    /// word prefix, then substring, then typo-tolerant matches (see `typo_distances`) by
+    /// edit distance; ties go to the larger population. Aliases
     /// ("Russian Federation") count like names. Empty or blank queries match
     /// nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&Place> {
@@ -205,7 +313,8 @@ impl Gazetteer {
         if q.is_empty() || limit == 0 {
             return Vec::new();
         }
-        let mut hits: Vec<(u8, usize)> = self
+        // (tier, typo score, place index). The score is 0 below the fuzzy tier.
+        let mut hits: Vec<(u8, u8, usize)> = self
             .keys
             .iter()
             .enumerate()
@@ -213,21 +322,46 @@ impl Gazetteer {
                 keys.iter()
                     .filter_map(|k| match_tier(k, &q))
                     .min()
-                    .map(|t| (t, i))
+                    .map(|t| (t, 0, i))
             })
             .collect();
+        // Typo-tolerant matches only matter when the exact tiers leave room.
+        let k = max_typos(q.chars().count());
+        if k > 0 && hits.len() < limit {
+            let mut matched = vec![false; self.places.len()];
+            for h in &hits {
+                matched[h.2] = true;
+            }
+            let qb = q.as_bytes();
+            let mut sc = Scratch {
+                rows: [[0; MAX_FUZZY_KEY + 2]; 3],
+            };
+            for (i, keys) in self.keys.iter().enumerate() {
+                if matched[i] {
+                    continue;
+                }
+                let s = keys
+                    .iter()
+                    .filter_map(|key| fuzzy_score(key, qb, k, &mut sc))
+                    .min();
+                if let Some(s) = s {
+                    hits.push((FUZZY_TIER, s, i));
+                }
+            }
+        }
         hits.sort_by(|a, b| {
             a.0.cmp(&b.0)
-                .then(
-                    self.places[b.1]
-                        .population
-                        .cmp(&self.places[a.1].population),
-                )
                 .then(a.1.cmp(&b.1))
+                .then(
+                    self.places[b.2]
+                        .population
+                        .cmp(&self.places[a.2].population),
+                )
+                .then(a.2.cmp(&b.2))
         });
         hits.into_iter()
             .take(limit)
-            .map(|(_, i)| &self.places[i])
+            .map(|(_, _, i)| &self.places[i])
             .collect()
     }
 }
@@ -413,10 +547,160 @@ mod tests {
     }
 
     #[test]
+    fn typo_distance_is_osa_within_band() {
+        let mut sc = Scratch {
+            rows: [[0; MAX_FUZZY_KEY + 2]; 3],
+        };
+        let mut d =
+            |key: &str, q: &str, k| typo_distances(key.as_bytes(), q.as_bytes(), k, &mut sc);
+        assert_eq!(d("paris", "pairs", 1), (Some(1), Some(1)));
+        assert_eq!(d("paris", "paris", 1).0, Some(0));
+        assert_eq!(d("zurich", "zurihc", 1).1, Some(1));
+        assert_eq!(d("zurich", "zuric", 1), (Some(1), Some(0)));
+        assert_eq!(d("paris", "pxxis", 1), (None, None));
+        assert_eq!(d("paris", "pxxis", 2).0, Some(2));
+        assert_eq!(d("ab", "abcdefg", 2), (None, None));
+        assert_eq!(d("a", "abc", 2).0, Some(2));
+    }
+
+    #[test]
+    fn fuzzy_finds_typos() {
+        let g = small();
+        assert_eq!(names(&g, "zuric", 5), ["Zürich"]);
+        assert_eq!(names(&g, "zurihc", 5), ["Zürich"]);
+        assert_eq!(names(&g, "züriich", 5), ["Zürich"]);
+        assert_eq!(names(&g, "sao paolo", 5), ["São Paulo"]);
+        assert_eq!(names(&g, "pairs", 1)[0], "Paris");
+        assert_eq!(g.search("pairs", 1)[0].country, "France");
+        assert_eq!(names(&g, "russan", 5), ["Russia"]);
+        assert_eq!(names(&g, "russian federaton", 5), ["Russia"]);
+        // A typo in a later word of a longer name.
+        assert_eq!(names(&g, "yrok", 5), ["York", "New York"]);
+        assert_eq!(names(&g, "new yrok", 5), ["New York"]);
+    }
+
+    #[test]
+    fn fuzzy_ranks_below_exact_tiers_then_by_distance() {
+        let g = Gazetteer::parse(
+            "MAPSPLACES1\n\
+             P\tBerlin\tX\t0\t0\t10\t0\t\n\
+             P\tBerliner Tiny\tX\t0\t0\t1\t0\t\n\
+             P\tBerline\tX\t0\t0\t5\t0\t\n\
+             P\tBarlin\tX\t0\t0\t99999\t0\t\n\
+             P\tBxxlin\tX\t0\t0\t99999999\t0\t\n",
+        )
+        .unwrap();
+        // "berlin": exact, then prefix match, then fuzzy by distance.
+        assert_eq!(
+            names(&g, "berlin", 9),
+            ["Berlin", "Berline", "Berliner Tiny", "Barlin"]
+        );
+        // Equal distance falls back to population.
+        let g = Gazetteer::parse(
+            "MAPSPLACES1\nP\tBarlin\tX\t0\t0\t5\t0\t\nP\tBerlon\tX\t0\t0\t50\t0\t\n",
+        )
+        .unwrap();
+        assert_eq!(names(&g, "berlin", 9), ["Berlon", "Barlin"]);
+    }
+
+    #[test]
+    fn short_queries_do_not_go_fuzzy() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        // 1-3 characters: exact tiers only, never "everything".
+        for q in ["ab", "xq", "zzz", "qqq"] {
+            let all = g.search(q, 10_000);
+            for p in all {
+                let ok = g.keys[g.places.iter().position(|x| std::ptr::eq(x, p)).unwrap()]
+                    .iter()
+                    .any(|k| match_tier(k, q).is_some());
+                assert!(ok, "{q} fuzzily matched {}", p.name);
+            }
+        }
+        // A 4-letter query tolerates one typo, not wholesale noise.
+        assert!(g.search("qxqx", 10_000).len() < 50);
+        assert!(g.search("abcdefghijkl", 10_000).is_empty());
+    }
+
+    #[test]
+    fn fuzzy_on_bundled_data() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        assert_eq!(names(&g, "zuric", 1), ["Zürich"]);
+        assert_eq!(names(&g, "zurihc", 1), ["Zürich"]);
+        assert_eq!(names(&g, "sao paolo", 1), ["São Paulo"]);
+        assert_eq!(g.search("pairs", 1)[0].name, "Paris");
+        assert_eq!(g.search("pairs", 1)[0].country, "France");
+        assert_eq!(g.search("lodnon", 1)[0].country, "United Kingdom");
+        assert_eq!(names(&g, "Ünited Stats", 1), ["United States of America"]);
+    }
+
+    #[test]
+    fn fuzzy_handles_odd_input() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        for q in [
+            "",
+            " ",
+            "\u{0}\u{0}\u{0}\u{0}",
+            "NaN",
+            "inf",
+            "-inf",
+            "¿¿¿¿¿¿¿¿",
+            "日本語東京都市",
+            "ü",
+            "üüüüüüüüü",
+            &"x".repeat(5000),
+            &"é".repeat(300),
+        ] {
+            let r = g.search(q, 8);
+            assert!(r.len() <= 8);
+        }
+        assert!(g.search("", 8).is_empty());
+        // A long key is cut off, not indexed out of range.
+        let long = format!("MAPSPLACES1\nP\t{}\tX\t0\t0\t1\t0\t\n", "a".repeat(500));
+        let g = Gazetteer::parse(&long).unwrap();
+        assert!(g.search(&"b".repeat(8), 3).is_empty());
+        assert_eq!(g.search(&"a".repeat(7), 3).len(), 1);
+    }
+
+    /// Worst-case typing cost: run with `cargo test --release -- --ignored
+    /// --nocapture fuzzy_benchmark`.
+    #[test]
+    #[ignore]
+    fn fuzzy_benchmark() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        let queries = [
+            "zurihc",
+            "pairs",
+            "sao paolo",
+            "new yrok",
+            "qwertyuiop",
+            "abcdefghijklmnop",
+            "mmmmmmmm",
+            "san francisko",
+            "united stats of amrica",
+            "saint petersburgh",
+            "xxxx",
+            "bejing",
+            "kathmandoo",
+        ];
+        let mut worst = std::time::Duration::ZERO;
+        for q in queries {
+            let start = std::time::Instant::now();
+            for _ in 0..50 {
+                std::hint::black_box(g.search(q, 6));
+            }
+            let per = start.elapsed() / 50;
+            worst = worst.max(per);
+            eprintln!("{q:>26}: {per:?}");
+        }
+        eprintln!("worst: {worst:?}");
+        assert!(worst.as_millis() < 5);
+    }
+
+    #[test]
     fn typing_is_fast() {
         let g = Gazetteer::parse(DATA).unwrap();
         let queries = [
-            "p", "pa", "par", "pari", "paris", "new yo", "san", "zzz", "é",
+            "p", "pa", "par", "pari", "paris", "new yo", "san", "zzz", "é", "pairs", "zurihc",
         ];
         let rounds = 20;
         let start = std::time::Instant::now();
