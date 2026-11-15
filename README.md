@@ -1,6 +1,6 @@
-# maps
+# Biruni
 
-A web app for exploring maps, written in Rust and compiled to WebAssembly.
+Biruni is a web app for exploring maps, written in Rust and compiled to WebAssembly. It is named after al-Bīrūnī (973–c. 1050), who measured the radius of the Earth, wrote on astronomy, and described the peoples of India.
 
 The first map is an interactive 3D globe. Drag to rotate it, and scroll or pinch to zoom from orbit down to about 400 km. It can also unroll into a flat map: equirectangular, Mercator (clipped at about 85°), Robinson or Mollweide, with an animated morph between them.
 
@@ -51,7 +51,7 @@ The site is hosted on [Cloudflare Pages](https://pages.cloudflare.com). Cloudfla
 
 One-time setup for the repository owner:
 
-1. In the Cloudflare dashboard, go to Workers & Pages, then create a **Pages** project named `maps` using **Direct Upload** (any placeholder upload). Set its production branch to `main`. A different name needs a matching change to `PAGES_PROJECT` in the workflow.
+1. In the Cloudflare dashboard, go to Workers & Pages, then create a **Pages** project named `biruni` using **Direct Upload** (any placeholder upload). Set its production branch to `main`. A different name needs a matching change to `PAGES_PROJECT` in the workflow.
 2. Create an API token (My Profile, API Tokens) with the permission **Account, Cloudflare Pages, Edit**.
 3. Copy your Account ID from the dashboard.
 4. In GitHub, under Settings, Secrets and variables, Actions, add the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
