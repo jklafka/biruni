@@ -651,6 +651,37 @@ mod tests {
     }
 
     #[test]
+    fn scrubbed_times_round_trip_through_the_hash() {
+        // Whatever the scrubber produces (slider, key step, play, the ends of
+        // its range) survives format -> parse exactly, and "Now" (no pin)
+        // writes no `t`.
+        use crate::scrub;
+        let base = 1_718_992_800.0;
+        let times = [
+            scrub::with_minute_of_day(base, 1_439),
+            scrub::with_day_of_year(base, 366),
+            scrub::shift(base, scrub::HOUR),
+            scrub::shift(base, -scrub::DAY),
+            scrub::year_days(base, 200),
+            scrub::clamp_t(0.0),
+            scrub::MAX_T,
+        ];
+        for t in times {
+            let sun = SunView {
+                on: true,
+                pin: Some(t),
+            };
+            let hash = format_view_hash(&cam(), Layer::Political, sun);
+            assert_eq!(SunView::from_hash(&hash), sun, "{hash}");
+        }
+        let live = SunView {
+            on: true,
+            pin: None,
+        };
+        assert!(!format_view_hash(&cam(), Layer::Political, live).contains("&t="));
+    }
+
+    #[test]
     fn hash_carries_pinned_time() {
         let sun = SunView {
             on: true,

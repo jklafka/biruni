@@ -14,6 +14,8 @@ mod overlay;
 mod projection;
 mod quality;
 mod render;
+mod scrub;
+mod scrub_ui;
 mod search;
 mod search_ui;
 mod share;
@@ -46,6 +48,8 @@ type FrameLoop = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 const SCALE_MAX_PX: f64 = 100.0;
 /// How often the terminator follows the clock, in milliseconds.
 const SUN_REFRESH_MS: i32 = 60_000;
+/// The URL hash waits this long after the last time-scrubber change.
+const SCRUB_HASH_DELAY_MS: f64 = 250.0;
 
 struct App {
     window: Window,
@@ -65,6 +69,12 @@ struct App {
     /// Fixed time from `&t=`; `None` follows the clock.
     sun_pin: Option<f64>,
     sun_button: HtmlElement,
+    scrub_ui: scrub_ui::ScrubUi,
+    /// Play state for the time scrubber (`playing` is the on/off switch).
+    player: scrub::Player,
+    playing: bool,
+    /// Frame time of the last scrub, so the URL hash waits until it stops.
+    last_scrub_ms: f64,
     camera: Camera,
     /// Timeline of the globe <-> flat morph; `camera.proj` is its target.
     morph: Morph,
@@ -298,21 +308,85 @@ impl App {
     /// Push the current sun direction (or none when off) to the renderer
     /// and schedule a redraw.
     fn refresh_sun(&mut self) {
+        let t = self.sun_time();
         let dir = if self.sun_on {
-            let t = self.sun_pin.unwrap_or_else(|| js_sys::Date::now() / 1000.0);
             sun::sun_direction(t)
         } else {
             None
         };
         self.renderer.set_sun(dir);
+        self.scrub_ui.show(self.sun_on);
+        if self.sun_on {
+            self.scrub_ui
+                .sync(t, self.sun_pin.is_none(), self.playing, self.player.mode);
+        }
         let _ = self
             .sun_button
             .set_attribute("aria-pressed", if self.sun_on { "true" } else { "false" });
         self.redraw.mark_render();
     }
 
+    /// The time the terminator shows: the pin, or the clock.
+    fn sun_time(&self) -> f64 {
+        self.sun_pin.unwrap_or_else(|| js_sys::Date::now() / 1000.0)
+    }
+
+    /// Pin the terminator to `t` (whole seconds, inside the scrubber's range).
+    fn pin_time(&mut self, t: f64) {
+        self.sun_pin = Some(scrub::clamp_t(t.floor()));
+        self.refresh_sun();
+        self.hash_stale = true;
+    }
+
+    /// A manual change (slider or key): stops play and pins the new time.
+    fn scrub_to(&mut self, t: f64) {
+        self.playing = false;
+        self.last_scrub_ms = self.last_frame_ms.unwrap_or(0.0);
+        self.pin_time(t);
+    }
+
+    /// Step the pinned time (or the clock, when live) by `delta` seconds.
+    fn scrub_by(&mut self, delta: f64) {
+        if self.sun_on {
+            self.scrub_to(scrub::shift(self.sun_time(), delta));
+        }
+    }
+
+    /// Back to the live clock.
+    fn go_live(&mut self) {
+        self.playing = false;
+        self.sun_pin = None;
+        self.refresh_sun();
+        self.hash_stale = true;
+    }
+
+    fn set_playing(&mut self, play: bool) {
+        let play = play && self.sun_on;
+        if play && !self.playing {
+            let reduced = self
+                .window
+                .match_media("(prefers-reduced-motion: reduce)")
+                .ok()
+                .flatten()
+                .is_some_and(|m| m.matches());
+            self.player = scrub::Player::new(self.player.mode, reduced);
+            // Playing from the live clock pins the time where it is.
+            self.sun_pin = Some(scrub::clamp_t(self.sun_time().floor()));
+        }
+        if !play && self.playing {
+            // Whole seconds, so the URL and share link stay short.
+            if let Some(t) = self.sun_pin {
+                self.sun_pin = Some(t.floor());
+            }
+            self.hash_stale = true;
+        }
+        self.playing = play;
+        self.refresh_sun();
+    }
+
     fn toggle_sun(&mut self) {
         self.sun_on = !self.sun_on;
+        self.playing = self.playing && self.sun_on;
         self.refresh_sun();
         self.hash_stale = true;
     }
@@ -480,8 +554,18 @@ impl App {
         self.camera.width = cw;
         self.camera.height = ch;
 
+        // Play moves the pinned time every frame; nothing else here runs
+        // while it is paused or live.
+        if self.playing {
+            let t = self.sun_time();
+            let next = self.player.advance(t, dt);
+            if next != t {
+                self.sun_pin = Some(next);
+                self.refresh_sun();
+            }
+        }
         let tick = self.send(Event::Tick { dt });
-        let animating = tick.render;
+        let animating = tick.render || self.playing;
         if let Some((x, y)) = tick.single_tap {
             if !self.measure.active {
                 self.click(x, y);
@@ -499,7 +583,8 @@ impl App {
         let animating = animating || self.morph.animating();
         // Dynamic resolution: draw at a lower scale while the view moves, and
         // once more at full resolution after it has settled.
-        let moving = self.controls.in_motion(&self.camera) || self.morph.animating();
+        let moving =
+            self.controls.in_motion(&self.camera) || self.morph.animating() || self.playing;
         let scale = self
             .quality
             .scale(moving, now_ms, dt, pw as f64 * ph as f64);
@@ -532,7 +617,9 @@ impl App {
         if hud {
             self.update_hud();
         }
-        if self.hash_stale && !animating && !self.controls.dragging() {
+        // A slider drag changes the pin on every input event: wait until it pauses.
+        let scrubbing = now_ms - self.last_scrub_ms < SCRUB_HASH_DELAY_MS;
+        if self.hash_stale && !animating && !self.controls.dragging() && !scrubbing {
             self.hash_stale = false;
             let hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
             if hash != self.last_hash {
@@ -826,6 +913,10 @@ fn start() -> Result<(), JsValue> {
         sun_on: sun_hash.on,
         sun_pin: sun_hash.pin,
         sun_button: element(&doc, "sun-toggle")?,
+        scrub_ui: scrub_ui::ScrubUi::new(&doc)?,
+        player: scrub::Player::default(),
+        playing: false,
+        last_scrub_ms: f64::NEG_INFINITY,
         camera,
         morph: Morph::new(initial_proj),
         proj_button: element(&doc, "proj-button")?,
@@ -921,6 +1012,59 @@ fn start() -> Result<(), JsValue> {
         listen(button.as_ref(), "click", true, move |_: MouseEvent| {
             app.borrow_mut().toggle_sun();
         })?;
+    }
+    // Time scrubber: sliders pin the time, play animates it, Now goes live.
+    {
+        let (time, date, play, mode, now) = {
+            let a = app.borrow();
+            let u = &a.scrub_ui;
+            (
+                u.time_input().clone(),
+                u.date_input().clone(),
+                u.play_button().clone(),
+                u.mode_button().clone(),
+                u.now_button().clone(),
+            )
+        };
+        {
+            let app = app.clone();
+            listen(time.as_ref(), "input", true, move |_: web_sys::Event| {
+                let mut a = app.borrow_mut();
+                let t = scrub::with_minute_of_day(a.sun_time(), a.scrub_ui.minute());
+                a.scrub_to(t);
+            })?;
+        }
+        {
+            let app = app.clone();
+            listen(date.as_ref(), "input", true, move |_: web_sys::Event| {
+                let mut a = app.borrow_mut();
+                let t = scrub::with_day_of_year(a.sun_time(), a.scrub_ui.day());
+                a.scrub_to(t);
+            })?;
+        }
+        {
+            let app = app.clone();
+            listen(play.as_ref(), "click", true, move |_: MouseEvent| {
+                let mut a = app.borrow_mut();
+                let playing = a.playing;
+                a.set_playing(!playing);
+            })?;
+        }
+        {
+            let app = app.clone();
+            listen(mode.as_ref(), "click", true, move |_: MouseEvent| {
+                let mut a = app.borrow_mut();
+                let reduced = a.player.reduced;
+                a.player = scrub::Player::new(a.player.mode.toggled(), reduced);
+                a.refresh_sun();
+            })?;
+        }
+        {
+            let app = app.clone();
+            listen(now.as_ref(), "click", true, move |_: MouseEvent| {
+                app.borrow_mut().go_live();
+            })?;
+        }
     }
     for (layer, button) in layer_buttons {
         let app = app.clone();
@@ -1142,6 +1286,27 @@ fn start() -> Result<(), JsValue> {
                         return;
                     }
                     "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
+                    // Time scrubber (terminator on): , and . step an hour back and
+                    // forward, Shift (< and >) a day; T plays and pauses.
+                    "," | "." | "<" | ">"
+                        if a.sun_on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                    {
+                        let key = e.key();
+                        let step = if e.shift_key() || key == "<" || key == ">" {
+                            scrub::DAY
+                        } else {
+                            scrub::HOUR
+                        };
+                        a.scrub_by(if key == "," || key == "<" {
+                            -step
+                        } else {
+                            step
+                        });
+                    }
+                    "t" | "T" if a.sun_on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let playing = a.playing;
+                        a.set_playing(!playing);
+                    }
                     "p" | "P" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         // P cycles forward through the projections, Shift+P back.
                         let cur = a.camera.proj;
@@ -1215,6 +1380,7 @@ fn start() -> Result<(), JsValue> {
                 let sun = SunView::from_hash(&hash);
                 a.sun_on = sun.on;
                 a.sun_pin = sun.pin;
+                a.playing = false;
                 a.refresh_sun();
                 if let Some(c) = parse_view_hash(&hash) {
                     a.send(Event::FlyTo {
