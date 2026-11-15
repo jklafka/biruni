@@ -5,6 +5,7 @@ mod controls;
 mod country;
 mod country_cycle;
 mod geo;
+mod geodesic;
 mod imagery;
 mod info_panel;
 mod label_layer;
@@ -1376,6 +1377,12 @@ fn start() -> Result<(), JsValue> {
                             factor: 1.0 / 0.6,
                             toward: None,
                         });
+                    }
+                    "Home" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::FlyToPole { north: true });
+                    }
+                    "End" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::FlyToPole { north: false });
                     }
                     "r" | "R" => {
                         a.send(Event::Reset);
