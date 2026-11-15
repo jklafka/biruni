@@ -11,12 +11,12 @@ use web_sys::{
     WebGlShader, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
-const VERT_SRC: &str = include_str!("shaders/globe.vert");
-const FRAG_SRC: &str = include_str!("shaders/globe.frag");
-const SPACE_FRAG_SRC: &str = include_str!("shaders/space.frag");
-const BLIT_FRAG_SRC: &str = include_str!("shaders/blit.frag");
-const LINE_VERT_SRC: &str = include_str!("shaders/line.vert");
-const LINE_FRAG_SRC: &str = include_str!("shaders/line.frag");
+const VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.vert"));
+const FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.frag"));
+const SPACE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/space.frag"));
+const BLIT_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/blit.frag"));
+const LINE_VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line.vert"));
+const LINE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line.frag"));
 
 /// Line widths in CSS pixels (multiplied by the device pixel ratio).
 const COAST_WIDTH: f32 = 1.0;
@@ -996,6 +996,79 @@ fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The tests below read the shader sources as written (with comments), so
+    // they shadow the minified build-time constants imported above.
+    const VERT_SRC: &str = include_str!("shaders/globe.vert");
+    const FRAG_SRC: &str = include_str!("shaders/globe.frag");
+    const SPACE_FRAG_SRC: &str = include_str!("shaders/space.frag");
+    const BLIT_FRAG_SRC: &str = include_str!("shaders/blit.frag");
+    const LINE_VERT_SRC: &str = include_str!("shaders/line.vert");
+    const LINE_FRAG_SRC: &str = include_str!("shaders/line.frag");
+
+    include!("../shader_minify.rs");
+
+    /// The minified shaders that are embedded in the wasm.
+    const MINIFIED: [(&str, &str); 6] = [
+        ("globe.vert", super::VERT_SRC),
+        ("globe.frag", super::FRAG_SRC),
+        ("space.frag", super::SPACE_FRAG_SRC),
+        ("blit.frag", super::BLIT_FRAG_SRC),
+        ("line.vert", super::LINE_VERT_SRC),
+        ("line.frag", super::LINE_FRAG_SRC),
+    ];
+    const SOURCES: [&str; 6] = [
+        VERT_SRC,
+        FRAG_SRC,
+        SPACE_FRAG_SRC,
+        BLIT_FRAG_SRC,
+        LINE_VERT_SRC,
+        LINE_FRAG_SRC,
+    ];
+
+    #[test]
+    fn minified_shaders_keep_structure_and_line_numbers() {
+        for ((name, built), src) in MINIFIED.iter().zip(SOURCES) {
+            // What is embedded is what minify() produces from the source.
+            assert_eq!(*built, minify(src), "{name}: stale build output");
+            assert!(
+                built.starts_with("#version 300 es\n"),
+                "{name}: #version not first"
+            );
+            assert_eq!(built.lines().count(), src.lines().count(), "{name}");
+            assert!(!built.contains("//"), "{name}: comment left");
+            for (n, (m, s)) in built.lines().zip(src.lines()).enumerate() {
+                let code = s.split("//").next().unwrap().trim();
+                assert_eq!(m, code, "{name}:{}", n + 1);
+                // Preprocessor lines stay directives.
+                if s.trim_start().starts_with('#') {
+                    assert!(m.starts_with('#'), "{name}:{} lost directive", n + 1);
+                }
+            }
+            // Dropping comments and indentation must not change the tokens.
+            let toks = |t: &str| -> Vec<String> {
+                t.lines()
+                    .map(|l| {
+                        let code = l.split("//").next().unwrap();
+                        code.split_whitespace().collect::<Vec<_>>().join(" ")
+                    })
+                    .collect()
+            };
+            assert_eq!(toks(built), toks(src), "{name}: tokens changed");
+        }
+    }
+
+    #[test]
+    fn shader_sources_have_no_string_literals_or_block_comments() {
+        // minify() splits on "//" and so assumes these never appear.
+        for src in SOURCES {
+            for line in src.lines() {
+                let code = line.split("//").next().unwrap();
+                assert!(!code.contains('"'), "string literal in shader");
+                assert!(!line.contains("/*"), "block comment in shader");
+            }
+        }
+    }
 
     fn dev(max: u32, mem: Option<f64>, coarse: bool) -> DeviceInfo {
         DeviceInfo {

@@ -21,6 +21,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. `line.vert`/`line.frag` draw coastlines and borders as screen-space-width lines into an offscreen target that `globe.frag` reads. |
 | `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
+| `build.rs`, `shader_minify.rs` | Strip comments and indentation from `src/shaders/*` into `OUT_DIR` before `include_str!` embeds them (the minify function is unit tested in `render.rs`) |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin`, `places.tsv` and `labels.tsv`; `marine_label_points.py` derives ocean label points from the Natural Earth marine shapefile |
 | `.github/workflows/deploy.yml` | Builds the release site and deploys it to Cloudflare Pages (production on `main`, previews on PRs) |
 | `assets/_headers` | Cloudflare Pages headers (wasm MIME type, caching), copied to `dist/` by Trunk |
@@ -85,7 +86,7 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 
 ### Rust
 
-- Target stable Rust, edition 2021. Keep the dependency list small. Before adding a crate, make sure it compiles to `wasm32-unknown-unknown` and is worth the added wasm size. The release wasm is currently about 116 KB.
+- Target stable Rust, edition 2021. Keep the dependency list small. Before adding a crate, make sure it compiles to `wasm32-unknown-unknown` and is worth the added wasm size. The release wasm is currently about 245 KB (about 117 KB gzipped). The earlier "about 116 KB" figure was stale: the wasm had already grown to about 250 KB with place search, labels and the other features, and the build was already size-optimized. Release size comes from `opt-level = "z"`, `lto`, `codegen-units = 1` and Trunk's `wasm-opt -Oz --converge`, which are already the smallest settings (`"s"` is about 8% larger, `"3"` about 28% larger; `panic = "abort"` and `strip` change nothing on this target). `build.rs` (via `shader_minify.rs`, which the `render.rs` tests also check) strips comments and indentation from the GLSL before it is embedded, keeping line numbers so shader errors still point at the right line. Together with `--converge --strip-producers` this saves only about 2.6 KB gzipped. Measure with `twiggy` on a wasm built with names, not on the optimized file.
 - Add new `web-sys` APIs by enabling the matching feature in `Cargo.toml`.
 - Don't use `unwrap()` on anything that can fail at runtime in the browser (DOM lookups, fetches, WebGL calls). Return `Result<_, JsValue>` and surface errors to the user, as `start()` does with the `#loading` panel.
 - Keep pure math, such as camera and projection code, free of `web-sys`, so it can be unit tested natively. New math gets tests.
