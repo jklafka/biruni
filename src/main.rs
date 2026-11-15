@@ -3,6 +3,7 @@
 mod camera;
 mod controls;
 mod country;
+mod country_cycle;
 mod geo;
 mod info_panel;
 mod label_layer;
@@ -86,6 +87,8 @@ struct App {
     /// Country under the mouse cursor, and the one shown in the info panel.
     hover: Option<usize>,
     selected: Option<usize>,
+    /// Anchor points for country cycling, built on first use.
+    country_anchors: Vec<country_cycle::Anchor>,
     info: info_panel::InfoPanel,
     hud_country: HtmlElement,
     redraw: RedrawFlags,
@@ -448,6 +451,31 @@ impl App {
         let c = country.and_then(|i| self.countries.as_ref()?.get(i));
         self.info.show(c);
         self.sync_highlight();
+    }
+
+    /// Tab, Shift+Tab, `[` and `]`: select the next or previous visible
+    /// country (reading order). The view does not move: only countries whose
+    /// anchor is on screen take part, so the target is always in view. Without
+    /// `wrap`, stepping past either end closes the panel and returns false so
+    /// the key is left alone and focus moves on.
+    fn cycle_country(&mut self, forward: bool, wrap: bool) -> bool {
+        let Some(countries) = self.countries.as_ref() else {
+            return false;
+        };
+        if self.country_anchors.is_empty() {
+            self.country_anchors = countries.anchors();
+        }
+        let order = country_cycle::visible_order(&self.country_anchors, &self.camera);
+        match country_cycle::step(&order, self.selected, forward, wrap) {
+            country_cycle::Step::To(i) => {
+                self.select(Some(i));
+                true
+            }
+            country_cycle::Step::Release => {
+                self.select(None);
+                false
+            }
+        }
     }
 
     fn click(&mut self, x: f64, y: f64) {
@@ -843,6 +871,7 @@ fn start() -> Result<(), JsValue> {
         ids: None,
         hover: None,
         selected: None,
+        country_anchors: Vec::new(),
         info: info_panel::InfoPanel::new(&doc)?,
         hud_country: element(&doc, "hud-country")?,
         redraw: RedrawFlags::new(),
@@ -1077,6 +1106,36 @@ fn start() -> Result<(), JsValue> {
                         e.prevent_default();
                         a.redraw.mark_render();
                         return;
+                    }
+                }
+                // Country cycling. Tab only counts when focus is on the page
+                // itself (never steals it from a button) and is released at
+                // the ends so it cannot trap focus; `[` and `]` wrap.
+                if !a.measure.active
+                    && !(e.ctrl_key() || e.meta_key() || e.alt_key())
+                    && a.info_click_enabled()
+                {
+                    let key = e.key();
+                    let on_page = e.target().is_some_and(|t| {
+                        let c: &EventTarget = a.canvas.as_ref();
+                        let body: Option<EventTarget> =
+                            a.window.document().and_then(|d| d.body()).map(Into::into);
+                        &t == c || Some(&t) == body.as_ref()
+                    });
+                    let moved = match key.as_str() {
+                        "Tab" if on_page => Some(a.cycle_country(!e.shift_key(), false)),
+                        "]" => Some(a.cycle_country(true, true)),
+                        "[" => Some(a.cycle_country(false, true)),
+                        _ => None,
+                    };
+                    match moved {
+                        Some(true) => {
+                            e.prevent_default();
+                            a.redraw.mark_render();
+                            return;
+                        }
+                        Some(false) => return,
+                        None => {}
                     }
                 }
                 match e.key().as_str() {

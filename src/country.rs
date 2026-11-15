@@ -275,6 +275,44 @@ impl Countries {
             .map(|(_, ci, _)| *ci)
     }
 
+    /// One interior point per country, `(index, lat, lon)` in degrees, used
+    /// to find the countries on screen and to order them. It is taken from the
+    /// polygon with the largest bounding box (the mainland, not an overseas
+    /// territory): the box center if that lies inside the country, otherwise
+    /// the inside point of a 16x16 grid over the box nearest to the center.
+    pub fn anchors(&self) -> Vec<(usize, f64, f64)> {
+        const GRID: usize = 16;
+        let area = |b: &BBox| (b[2] - b[0]) * (b[3] - b[1]);
+        self.list
+            .iter()
+            .enumerate()
+            .filter_map(|(ci, c)| {
+                let poly = c
+                    .polygons
+                    .iter()
+                    .max_by(|a, b| area(&a.bbox).total_cmp(&area(&b.bbox)))?;
+                let b = poly.bbox;
+                let (cx, cy) = ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0);
+                let mut best = (cx, cy);
+                if !polygon_contains(poly, cx, cy) {
+                    let mut best_d = f64::INFINITY;
+                    for gy in 0..GRID {
+                        for gx in 0..GRID {
+                            let x = b[0] + (gx as f64 + 0.5) / GRID as f64 * (b[2] - b[0]);
+                            let y = b[1] + (gy as f64 + 0.5) / GRID as f64 * (b[3] - b[1]);
+                            let d = (x - cx).powi(2) + (y - cy).powi(2);
+                            if d < best_d && polygon_contains(poly, x, y) {
+                                best_d = d;
+                                best = (x, y);
+                            }
+                        }
+                    }
+                }
+                Some((ci, best.1, best.0))
+            })
+            .collect()
+    }
+
     /// Rasterize country IDs (`index + 1`, 0 for none) into a `width × width/2`
     /// equirectangular grid, row 0 at the north. Each texel takes the country
     /// that contains its center. Uses an even-odd scanline fill per polygon, so
@@ -434,6 +472,27 @@ mod tests {
 
     fn world() -> Countries {
         decode_countries(BIN).unwrap()
+    }
+
+    #[test]
+    fn anchors_lie_in_their_country() {
+        let w = world();
+        let a = w.anchors();
+        assert_eq!(a.len(), w.len());
+        let mut inside = 0;
+        for &(i, lat, lon) in &a {
+            assert!(lat.abs() <= 90.0 && lon.abs() <= 180.0);
+            if w.hit(lat, lon) == Some(i) {
+                inside += 1;
+            }
+        }
+        // Overlapping tiny polygons may resolve to a neighbour; nearly all hit.
+        assert!(inside * 100 >= a.len() * 95, "{inside}/{}", a.len());
+        let fr = a.iter().find(|x| w.list[x.0].name == "France").unwrap();
+        assert!(
+            fr.1 > 41.0 && fr.1 < 51.5 && fr.2 > -5.5 && fr.2 < 9.6,
+            "{fr:?}"
+        );
     }
 
     fn name_at(w: &Countries, lat: f64, lon: f64) -> Option<&str> {
