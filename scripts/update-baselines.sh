@@ -2,28 +2,31 @@
 # Copy the Linux screenshots from a PR's latest CI run into
 # visual-tests/baselines/ and commit them as you.
 #
-#   scripts/update-baselines.sh <PR number> [--push]
-#   scripts/update-baselines.sh --run <CI run id>    # copy only: no PR checks, no commit
+#   scripts/update-baselines.sh <PR number> [--push] [--all]
+#   scripts/update-baselines.sh --run <CI run id> [--all]   # copy only: no PR checks, no commit
 #
-# Only PNGs whose decoded pixels differ from the committed baseline (or that
-# are new) are copied. CI often re-encodes identical pixels to different bytes,
-# and those files are skipped so they don't make noisy commits.
+# Only PNGs that differ from the committed baseline (any pixel over the visual
+# test's per-pixel threshold, or a size change) or are new are copied. CI
+# renders unchanged views with different bytes and tiny pixel noise, and those
+# files are skipped so they don't make noisy commits. --all copies every PNG.
 #
 # Run it from a clean checkout of the PR's branch, after CI has finished on the
 # commit you want to promote. Needs the GitHub CLI (`gh`), logged in, and Node.
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <PR number> [--push] | $0 --run <CI run id>" >&2
+  echo "usage: $0 <PR number> [--push] [--all] | $0 --run <CI run id> [--all]" >&2
   exit 2
 }
 
 pr=""
 push=false
 run=""
+all=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --push) push=true ;;
+    --all) all=true ;;
     --run)
       [ $# -ge 2 ] || usage
       run="$2"
@@ -115,13 +118,18 @@ for png in "${pngs[@]}"; do
     echo "  new: $name"
     continue
   fi
+  if $all; then
+    cp "$png" "$dest"
+    echo "  copied (--all): $name"
+    continue
+  fi
   rc=0
-  node visual-tests/same-pixels.mjs "$png" "$dest" || rc=$?
+  detail=$(node visual-tests/same-pixels.mjs "$png" "$dest") || rc=$?
   case "$rc" in
     0) echo "  unchanged pixels, skipped: $name" ;;
     1)
       cp "$png" "$dest"
-      echo "  changed: $name"
+      echo "  changed ($detail): $name"
       ;;
     *)
       echo "error: could not compare $name" >&2

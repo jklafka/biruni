@@ -9,6 +9,7 @@
 import { chromium } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
+import { PIXEL_THRESHOLD, MAX_DIFF_FRACTION } from "./thresholds.mjs";
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -19,11 +20,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, "..", "dist");
 const update = process.argv.includes("--update");
 
-// Per-pixel colour threshold (0..1) and the share of pixels allowed to differ.
-// Loose enough for rasterizer/driver differences, tight enough to catch a
-// flipped land mask, a black globe or a shifted camera.
-const PIXEL_THRESHOLD = 0.15;
-const MAX_DIFF_FRACTION = 0.005;
+// PIXEL_THRESHOLD and MAX_DIFF_FRACTION live in thresholds.mjs.
 
 const VIEWPORT = { width: 800, height: 600 };
 const VIEWS = [
