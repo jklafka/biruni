@@ -901,7 +901,7 @@ fn element<T: JsCast>(doc: &Document, id: &str) -> Result<T, JsValue> {
         .map_err(|_| JsValue::from_str(&format!("#{id} has the wrong element type")))
 }
 
-const UNITS_KEY: &str = "maps.units";
+const UNITS_KEY: &str = "biruni.units";
 
 /// Saved unit, or km when nothing usable is stored. `localStorage` can be
 /// missing or throw (private mode, blocked site data), so every step falls

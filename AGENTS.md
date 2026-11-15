@@ -4,7 +4,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 ## Project
 
-`maps` is a web app for exploring maps. It is written in Rust, compiled to WebAssembly, and rendered with WebGL2. There is no JavaScript framework and no backend. The build output is a static site.
+`biruni` (Biruni) is a web app for exploring maps. It is written in Rust, compiled to WebAssembly, and rendered with WebGL2. There is no JavaScript framework and no backend. The build output is a static site.
 
 | Path | Purpose |
 | --- | --- |
@@ -149,7 +149,7 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 
 ## GitHub issues and beads
 
-GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/maps`. The token is not stored. Pass it from `gh` on each call.
+GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/biruni`. The token is not stored. Pass it from `gh` on each call.
 
 ```sh
 # Start of a session: bring new and updated GitHub issues into beads (local only)
