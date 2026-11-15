@@ -5,6 +5,7 @@ mod controls;
 mod country;
 mod country_cycle;
 mod geo;
+mod geodesic;
 mod imagery;
 mod info_panel;
 mod label_layer;
