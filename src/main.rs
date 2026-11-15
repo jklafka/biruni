@@ -1378,6 +1378,12 @@ fn start() -> Result<(), JsValue> {
                             toward: None,
                         });
                     }
+                    "Home" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::FlyToPole { north: true });
+                    }
+                    "End" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        a.send(Event::FlyToPole { north: false });
+                    }
                     "r" | "R" => {
                         a.send(Event::Reset);
                     }
