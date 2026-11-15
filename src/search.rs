@@ -169,8 +169,8 @@ fn typo_distances(key: &[u8], q: &[u8], k: usize, sc: &mut Scratch) -> (Option<u
     const INF: u8 = 200;
     let kk = k as u8;
     // Row i lives in rows[i % 3]; row i-2 is the swap source.
-    for j in 0..=(k.min(n)) {
-        sc.rows[0][j] = j as u8;
+    for (j, cell) in sc.rows[0].iter_mut().enumerate().take(k.min(n) + 1) {
+        *cell = j as u8;
     }
     if k < n {
         sc.rows[0][k + 1] = INF;
