@@ -12,6 +12,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
 | `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
 | `src/projection.rs` | Flat map projections (forward/inverse math), the `Projection` enum and the globe <-> flat morph timeline |
+| `src/geodesic.rs` | WGS84 inverse geodesic distance (Vincenty, with Karney-style bisection near the antipode). Measure lengths use it; the drawn path and the scale bar stay spherical |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km[,bearing]&layer=&proj=` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
 | `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile` and the binary decoder. Copied to `dist/` by Trunk |
