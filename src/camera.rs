@@ -310,6 +310,15 @@ impl Camera {
         Some((w[1].clamp(-1.0, 1.0).asin(), w[0].atan2(w[2])))
     }
 
+    /// How far a surface point is in front of the horizon on the globe: the
+    /// view-space depth of its normal minus the horizon's. Positive means
+    /// visible, zero is exactly on the limb. Meaningless on flat maps.
+    pub fn horizon_margin(&self, lat: f64, lon: f64) -> f64 {
+        let w = spherical(lat, lon);
+        let b = self.basis();
+        dot(b[2], w) - 1.0 / self.dist()
+    }
+
     /// Screen position (CSS pixels) of a surface point, if it faces the camera.
     pub fn project(&self, lat: f64, lon: f64) -> Option<(f64, f64)> {
         if self.is_flat() {

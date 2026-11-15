@@ -796,7 +796,9 @@ impl App {
         self.coarse_pointer = e.pointer_type() != "mouse";
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         // A press on a measure point grabs it instead of panning the view.
-        if self.measure.active {
+        // Shift+click skips this and places a point even next to an
+        // existing one.
+        if self.measure.active && !e.shift_key() {
             let (x, y) = (e.client_x() as f64, e.client_y() as f64);
             let radius = measure::hit_radius(e.pointer_type() != "mouse");
             if self
@@ -860,8 +862,10 @@ impl App {
             let r = self
                 .measure
                 .release(e.pointer_id(), t, e.type_() != "pointerup");
-            if r == measure::Release::Removed {
-                self.measure_changed();
+            match r {
+                measure::Release::Removed => self.measure_changed(),
+                measure::Release::Add(x, y) => self.measure_add_at(x, y),
+                _ => {}
             }
             self.redraw.mark_render();
             if !self.controls.dragging() {

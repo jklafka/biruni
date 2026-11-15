@@ -180,7 +180,7 @@ impl Panel {
         let hint = match measure.points().len() {
             0 => "Click or tap the globe to start",
             1 => "Add a second point",
-            _ => "Drag a point to move it, double-click to remove",
+            _ => "Drag a point to move it, double-click to remove. Click beside a selected point, or Shift+click, to add one",
         };
         self.hint.set_text_content(Some(hint));
         let _ = self

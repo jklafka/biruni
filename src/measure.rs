@@ -161,10 +161,15 @@ struct Grab {
     /// so the point does not jump under the cursor.
     offset: (f64, f64),
     moved: bool,
+    /// The point was already selected when this press began.
+    was_selected: bool,
+    /// The press landed in the outer ring of the hit area, away from the
+    /// point's center (see `ADD_RING_FRACTION`).
+    in_ring: bool,
 }
 
 /// What a release did.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Release {
     /// Not our pointer.
     Ignored,
@@ -172,7 +177,17 @@ pub enum Release {
     Done,
     /// A second click on the same point removed it.
     Removed,
+    /// A click in the hit ring of an already-selected point: the caller
+    /// should add a new point at this screen position instead.
+    Add(f64, f64),
 }
+
+/// A press farther than this fraction of the hit radius from a point's
+/// center is in its "ring". Clicking in the ring of a point that is already
+/// selected adds a new point there, so points can be placed close together.
+/// Pressing near the center never adds, so a double-click on the point
+/// itself still removes it.
+pub const ADD_RING_FRACTION: f64 = 0.5;
 
 /// A path of points on the globe being measured.
 #[derive(Clone, Debug, Default)]
@@ -344,6 +359,7 @@ impl Measure {
         };
         let p = self.points[idx];
         let (px, py) = cam.project(p.0, p.1).unwrap_or((x, y));
+        let was_selected = self.selected == Some(idx);
         self.selected = Some(idx);
         self.grab = Some(Grab {
             id,
@@ -351,6 +367,8 @@ impl Measure {
             start: (x, y),
             offset: (px - x, py - y),
             moved: false,
+            was_selected,
+            in_ring: (px - x).hypot(py - y) > ADD_RING_FRACTION * radius,
         });
         true
     }
@@ -382,7 +400,8 @@ impl Measure {
 
     /// A pointer was released at time `t` (ms). A click without a drag
     /// selects the point; a second click on the same point within the
-    /// double-click interval removes it.
+    /// double-click interval removes it. A slower click in the ring around
+    /// an already-selected point asks the caller to add a point there.
     pub fn release(&mut self, id: i32, t: f64, cancel: bool) -> Release {
         let Some(g) = self.grab.filter(|g| g.id == id) else {
             return Release::Ignored;
@@ -396,6 +415,10 @@ impl Measure {
             Some((i, t0)) if i == g.idx && t >= t0 && t - t0 <= DOUBLE_CLICK_MS => {
                 self.remove(g.idx);
                 Release::Removed
+            }
+            _ if g.was_selected && g.in_ring => {
+                self.last_click = None;
+                Release::Add(g.start.0, g.start.1)
             }
             _ => {
                 self.last_click = Some((g.idx, t));
@@ -442,6 +465,28 @@ pub fn format_distance(km: f64, units: Units) -> String {
     format!("{} {unit}", group_thousands(v.round() as u64))
 }
 
+/// The point on the great-circle arc from `vis` (in front of the horizon) to
+/// `hid` (behind it) where it crosses the limb, found by bisection. The
+/// result is on the visible side, within about 1e-12 of the limb. None if
+/// the endpoints are not one visible and one hidden, or on a flat map.
+pub fn horizon_crossing(cam: &Camera, vis: (f64, f64), hid: (f64, f64)) -> Option<(f64, f64)> {
+    if cam.is_flat()
+        || cam.horizon_margin(vis.0, vis.1) <= 0.0
+        || cam.horizon_margin(hid.0, hid.1) > 0.0
+    {
+        return None;
+    }
+    let (mut lo, mut hi) = (0.0f64, 1.0f64); // fraction along vis -> hid
+    for _ in 0..40 {
+        let mid = 0.5 * (lo + hi);
+        match interpolate(vis, hid, mid) {
+            Some(p) if cam.horizon_margin(p.0, p.1) > 0.0 => lo = mid,
+            _ => hi = mid,
+        }
+    }
+    interpolate(vis, hid, lo)
+}
+
 /// Screen-space polylines (CSS pixels) for the path. Each is a run of
 /// consecutive samples that face the camera, so segments hidden behind the
 /// globe are not drawn.
@@ -457,14 +502,28 @@ pub fn screen_path(cam: &Camera, points: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> 
     } else {
         f64::INFINITY
     };
+    let mut prev: Option<((f64, f64), bool)> = None; // last sample, visible?
     for w in points.windows(2) {
         for (i, p) in sample_arc(w[0], w[1]).into_iter().enumerate() {
             if i == 0 && joined {
                 continue; // repeats the previous segment's last sample
             }
             let s = cam.project(p.0, p.1);
-            if let (Some(s), Some(prev)) = (s, cur.last()) {
-                if (s.0 - prev.0).abs() > seam_jump {
+            // On the globe the limb falls between two samples: end or start
+            // the run exactly on it instead of at the nearest sample.
+            if let Some((q, was_visible)) = prev {
+                let edge = match (was_visible, s.is_some()) {
+                    (true, false) => horizon_crossing(cam, q, p),
+                    (false, true) => horizon_crossing(cam, p, q),
+                    _ => None,
+                };
+                if let Some(x) = edge.and_then(|c| cam.project(c.0, c.1)) {
+                    cur.push(x);
+                }
+            }
+            prev = Some((p, s.is_some()));
+            if let (Some(s), Some(last)) = (s, cur.last()) {
+                if (s.0 - last.0).abs() > seam_jump {
                     if cur.len() > 1 {
                         runs.push(std::mem::take(&mut cur));
                     }
@@ -695,6 +754,78 @@ mod tests {
     }
 
     #[test]
+    fn horizon_crossing_lies_on_the_limb() {
+        // Camera positions including both poles and the seam; the arc runs
+        // from the center of view to a point well behind the globe.
+        for (clat, clon, alt) in [
+            (0.0, 0.0, 2.0),
+            (46.8, 8.2, 0.5),
+            (90.0, 0.0, 3.0),
+            (-90.0, 0.0, 1.0),
+            (10.0, 179.0, 6.0),
+        ] {
+            let c = cam(clat, clon, alt);
+            let vis = deg(clat, clon);
+            for hid in [
+                deg(-clat * 0.9, clon + 170.0),
+                deg(-clat * 0.5, clon + 150.0),
+                deg(0.0, clon - 120.0),
+            ] {
+                assert!(c.project(hid.0, hid.1).is_none(), "{clat},{clon} {hid:?}");
+                let x = horizon_crossing(&c, vis, hid).expect("crossing");
+                let m = c.horizon_margin(x.0, x.1);
+                assert!(
+                    (0.0..1e-9).contains(&m),
+                    "margin {m} for {clat},{clon} hid {hid:?}"
+                );
+                assert!(c.project(x.0, x.1).is_some());
+                // It lies on the arc.
+                let d = central_angle(vis, x).unwrap() + central_angle(x, hid).unwrap();
+                assert!((d - central_angle(vis, hid).unwrap()).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn horizon_crossing_rejects_bad_endpoints() {
+        let c = cam(0.0, 0.0, 2.0);
+        let (v, h) = (deg(0.0, 0.0), deg(0.0, 170.0));
+        assert!(horizon_crossing(&c, h, v).is_none(), "swapped");
+        assert!(
+            horizon_crossing(&c, v, deg(0.0, 10.0)).is_none(),
+            "both visible"
+        );
+        assert!(horizon_crossing(&c, h, h).is_none(), "both hidden");
+        let mut flat = c;
+        flat.set_projection(Projection::Equirectangular);
+        assert!(horizon_crossing(&flat, v, h).is_none());
+    }
+
+    #[test]
+    fn path_ends_exactly_on_the_limb() {
+        let c = cam(0.0, 0.0, 2.0);
+        let runs = screen_path(&c, &[deg(0.0, 0.0), deg(0.0, 170.0)]);
+        assert_eq!(runs.len(), 1);
+        let end = *runs[0].last().unwrap();
+        let x = horizon_crossing(&c, deg(0.0, 0.0), deg(0.0, 170.0)).unwrap();
+        let want = c.project(x.0, x.1).unwrap();
+        assert!((end.0 - want.0).abs() < 1e-6 && (end.1 - want.1).abs() < 1e-6);
+        // Starting behind the globe: the run begins on the limb too.
+        let back = screen_path(&c, &[deg(0.0, 170.0), deg(0.0, 0.0)]);
+        let start = back[0][0];
+        assert!((start.0 - want.0).abs() < 1e-6 && (start.1 - want.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flat_maps_are_unaffected_by_limb_clipping() {
+        let mut c = cam(0.0, 0.0, 2.0);
+        c.set_projection(Projection::Equirectangular);
+        let runs = screen_path(&c, &[deg(0.0, -170.0), deg(0.0, 170.0)]);
+        // Short way across the seam: two runs, one per side.
+        assert_eq!(runs.len(), 2);
+    }
+
+    #[test]
     fn path_follows_the_ground() {
         let a = deg(10.0, 10.0);
         let b = deg(10.0, 30.0);
@@ -904,6 +1035,59 @@ mod tests {
         m.press(&c, 1, x0, y0, 11.0);
         assert_eq!(m.release(1, 6100.0, false), Release::Done);
         assert_eq!(m.points().len(), 2);
+    }
+
+    #[test]
+    fn click_in_the_ring_of_a_selected_point_adds() {
+        let c = cam(0.0, 0.0, 2.0);
+        let mut m = three();
+        let (x, y) = c.project(m.points()[1].0, m.points()[1].1).unwrap();
+        // First click in the ring only selects (the point was not selected).
+        assert!(m.press(&c, 1, x + 8.0, y, 11.0));
+        assert_eq!(m.release(1, 1000.0, false), Release::Done);
+        assert_eq!(m.selected(), Some(1));
+        // A quick second click is a double-click: removal wins.
+        let mut quick = m.clone();
+        quick.press(&c, 1, x + 8.0, y, 11.0);
+        assert_eq!(quick.release(1, 1200.0, false), Release::Removed);
+        // A slower click in the ring asks for a new point at the press.
+        assert!(m.press(&c, 1, x + 8.0, y, 11.0));
+        assert_eq!(
+            m.release(1, 1000.0 + DOUBLE_CLICK_MS + 50.0, false),
+            Release::Add(x + 8.0, y)
+        );
+        // And it does not leave a stale click that could remove a point.
+        m.select(Some(1));
+        m.press(&c, 1, x, y, 11.0);
+        assert_eq!(m.release(1, 5000.0, false), Release::Done);
+    }
+
+    #[test]
+    fn click_near_the_center_never_adds() {
+        let c = cam(0.0, 0.0, 2.0);
+        let mut m = three();
+        let (x, y) = c.project(m.points()[1].0, m.points()[1].1).unwrap();
+        m.select(Some(1));
+        assert!(m.press(&c, 1, x + 2.0, y, 11.0));
+        assert_eq!(m.release(1, 100.0, false), Release::Done);
+        // Double-click at the center still removes.
+        assert!(m.press(&c, 1, x + 2.0, y, 11.0));
+        assert_eq!(m.release(1, 250.0, false), Release::Removed);
+        // Touch uses a bigger ring: 8 px is the center for a finger.
+        let mut t = three();
+        t.select(Some(1));
+        assert!(t.press(&c, 1, x + 8.0, y, 22.0));
+        assert_eq!(t.release(1, 100.0, false), Release::Done);
+        // A drag or a cancel never adds.
+        let mut d = three();
+        d.select(Some(1));
+        d.press(&c, 1, x + 9.0, y, 11.0);
+        d.drag(&c, 1, x + 9.0, y + 40.0);
+        assert_eq!(d.release(1, 100.0, false), Release::Done);
+        d.select(Some(1));
+        let (x, y) = c.project(d.points()[1].0, d.points()[1].1).unwrap();
+        d.press(&c, 1, x + 9.0, y, 11.0);
+        assert_eq!(d.release(1, 200.0, true), Release::Done);
     }
 
     #[test]
