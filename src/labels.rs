@@ -12,7 +12,9 @@
 //!    own name.
 //! 2. **Horizon test.** `facing` is 0 on and beyond the horizon and ramps up
 //!    to 1 a little way in, so labels never show on the far side and fade out
-//!    near the limb instead of being squeezed against it.
+//!    near the limb instead of being squeezed against it. On a flat map the
+//!    whole label box must lie inside the projected map (`box_in_map`), so
+//!    nothing spills over the outline or the top and bottom edge.
 //! 3. **Priority.** Candidates are ordered by `priority_class` (oceans, then
 //!    countries, then cities by population tier), then labels that were
 //!    already visible, then population.
@@ -257,6 +259,24 @@ fn px_per_rad(cam: &Camera) -> f64 {
     0.5 * cam.width.min(cam.height).max(1.0) / (cam.alt * TAN_HALF_FOV)
 }
 
+/// Whether a screen box lies wholly on a flat map: its corners and edge
+/// midpoints are all inside the projected map domain (the outline of
+/// Robinson and Mollweide, the top and bottom edge of the cylindrical maps,
+/// which repeat sideways and so have no left or right edge). A label that
+/// fails this would spill over empty space.
+pub fn box_in_map(cam: &Camera, r: &Rect) -> bool {
+    let s = cam.flat_px();
+    let (cx, cy) = (cam.width * 0.5, cam.height * 0.5);
+    let ym = cam.flat_center_y();
+    let xm = 0.5 * (r.x0 + r.x1);
+    let ym_ = 0.5 * (r.y0 + r.y1);
+    [r.x0, xm, r.x1].iter().all(|&sx| {
+        [r.y0, ym_, r.y1].iter().all(|&sy| {
+            crate::projection::inverse(cam.proj, (sx - cx) / s, ym - (sy - cy) / s).is_some()
+        })
+    })
+}
+
 /// (priority class, not shown before, population descending, index).
 type SortKey = (u8, bool, std::cmp::Reverse<u64>, usize);
 
@@ -297,6 +317,9 @@ pub fn select(
         };
         let r = label_rect(l, x, y);
         if r.x0 < 0.0 || r.y0 < 0.0 || r.x1 > cam.width || r.y1 > cam.height {
+            continue;
+        }
+        if cam.is_flat() && !box_in_map(cam, &r) {
             continue;
         }
         if blocked.iter().any(|b| r.overlaps(b, KEEP_OUT_PAD)) {
@@ -774,5 +797,67 @@ mod tests {
         c.set_projection(Projection::Mercator);
         assert_eq!(facing(&c, 88f64.to_radians(), 0.0), 0.0);
         assert_eq!(facing(&c, f64::NAN, 0.0), 0.0);
+    }
+
+    /// A cam with a roomy viewport so the whole world fits.
+    fn flat_cam(p: crate::projection::Projection) -> Camera {
+        let mut c = cam(0.0, 0.0, 3.0);
+        c.set_projection(p);
+        c
+    }
+
+    fn ocean(lat: f64, lon: f64, width: f64) -> Label {
+        Label {
+            kind: Kind::Ocean,
+            text: "X".into(),
+            lat: lat.to_radians(),
+            lon: lon.to_radians(),
+            tier: 0,
+            population: 0,
+            extent: 3.0,
+            width,
+        }
+    }
+
+    #[test]
+    fn flat_label_straddling_the_outline_is_dropped() {
+        use crate::projection::Projection;
+        for p in [Projection::Mollweide, Projection::Robinson] {
+            let c = flat_cam(p);
+            // Anchor inside the map, 20 px from the left edge at lat 40,
+            // with a 200 px wide label: it sticks out over space.
+            let (lat, lon): (f64, f64) = (40.0, -150.0);
+            let (x, _) = c.project(lat.to_radians(), lon.to_radians()).unwrap();
+            let edge = c
+                .project(lat.to_radians(), -std::f64::consts::PI + 1e-9)
+                .unwrap()
+                .0;
+            assert!(x > edge, "anchor inside");
+            let wide = ocean(lat, lon, 2.0 * (x - edge) + 80.0);
+            assert!(select(&c, &[wide], &[], none).is_empty(), "{p:?} wide");
+            // The same place with a short label fits and shows.
+            let short = ocean(lat, lon, (x - edge).min(40.0));
+            assert_eq!(select(&c, &[short], &[], none).len(), 1, "{p:?} short");
+        }
+    }
+
+    #[test]
+    fn mercator_label_over_the_top_or_bottom_edge_is_dropped() {
+        use crate::projection::Projection;
+        let c = flat_cam(Projection::Mercator);
+        let top = c
+            .project(crate::projection::MERCATOR_MAX_LAT - 1e-9, 0.0)
+            .unwrap()
+            .1;
+        // Anchor 3 px below the top edge: the 16 px box pokes out above.
+        let lat_of = |y: f64| c.pick(500.0, y).unwrap().0.to_degrees();
+        let near = ocean(lat_of(top + 3.0), 0.0, 40.0);
+        assert!(select(&c, &[near], &[], none).is_empty());
+        let ok = ocean(lat_of(top + 30.0), 0.0, 40.0);
+        assert_eq!(select(&c, &[ok], &[], none).len(), 1);
+        // Sideways there is no edge: the map repeats (this box is wider than one world).
+        let mut side = ocean(0.0, 0.0, 900.0);
+        side.extent = 6.0;
+        assert_eq!(select(&c, &[side], &[], none).len(), 1);
     }
 }
