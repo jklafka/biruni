@@ -19,10 +19,30 @@ uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, n
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
 uniform float u_sunOn;        // 1 = shade the night side
+uniform int u_mode;           // 0 = ray-traced globe, 1 = flat map per pixel, 2 = morph mesh, 3 = space only
+uniform int u_proj;           // mode 1: flat projection id (see src/projection.rs)
+uniform float u_flatPx;       // flat maps: framebuffer pixels per plane unit
+uniform float u_cy;           // mode 1: plane y of the screen-center row
+uniform float u_lon0;         // flat maps: central meridian, radians
+uniform float u_globe;        // mode 2: weight of the globe in the blend, 0..1
+
+in vec2 v_ll;                 // mode 2: latitude, longitude relative to the central meridian
+in float v_front;             // mode 2: > 0 where the surface is visible
 
 out vec4 outColor;
 
 const float PI = 3.141592653589793;
+const float MERC_MAX = 1.4844222297453324;   // Mercator stops at 85.0511 degrees
+const float ROB_XS = 0.8487;
+const float ROB_YS = 1.3523;
+const float MOLL_X = 0.9003163161571061;     // 2 sqrt(2) / pi
+// Robinson table every 5 degrees of latitude, equator to pole.
+const float ROB_X[19] = float[19](
+    1.0000, 0.9986, 0.9954, 0.9900, 0.9822, 0.9730, 0.9600, 0.9427, 0.9216, 0.8962,
+    0.8679, 0.8350, 0.7986, 0.7597, 0.7186, 0.6732, 0.6213, 0.5722, 0.5322);
+const float ROB_Y[19] = float[19](
+    0.0000, 0.0620, 0.1240, 0.1860, 0.2480, 0.3100, 0.3720, 0.4340, 0.4958, 0.5571,
+    0.6176, 0.6769, 0.7346, 0.7903, 0.8435, 0.8936, 0.9394, 0.9761, 1.0000);
 
 const vec3 OCEAN_DEEP = vec3(0.035, 0.115, 0.250);
 const vec3 OCEAN_LIGHT = vec3(0.070, 0.200, 0.340);
@@ -53,42 +73,121 @@ vec3 space(vec2 frag) {
     return col;
 }
 
+// Inverse of the flat projections (see src/projection.rs; the forward
+// functions are in morph.vert and line.vert). q is the plane position, x from
+// the central meridian. Returns latitude and longitude relative to the
+// central meridian, and the coverage of the map at this pixel: 1 on the map,
+// 0 outside its outline, antialiased across the edge.
+float flatInverse(int id, vec2 q, out float lat, out float lon) {
+    float px = 1.0 / u_flatPx;  // plane units per pixel
+    float cov = 1.0;
+    if (id == 1) {
+        lat = clamp(q.y, -0.5 * PI, 0.5 * PI);
+        lon = q.x;
+        cov = clamp((0.5 * PI - abs(q.y)) / px + 0.5, 0.0, 1.0);
+    } else if (id == 2) {
+        lat = 2.0 * atan(exp(clamp(q.y, -PI, PI))) - 0.5 * PI;
+        lon = q.x;
+        cov = clamp((PI - abs(q.y)) / px + 0.5, 0.0, 1.0);
+    } else if (id == 3) {
+        float v = clamp(abs(q.y) / ROB_YS, 0.0, 1.0);
+        int i = 0;
+        for (int k = 0; k < 17; k++) {
+            if (v > ROB_Y[k + 1]) i = k + 1;
+        }
+        float f = (v - ROB_Y[i]) / (ROB_Y[i + 1] - ROB_Y[i]);
+        lat = sign(q.y) * (float(i) + f) * (0.5 * PI / 18.0);
+        lon = q.x / (ROB_XS * mix(ROB_X[i], ROB_X[i + 1], f));
+        cov = clamp((ROB_YS - abs(q.y)) / px + 0.5, 0.0, 1.0);
+    } else {
+        float th = asin(clamp(q.y / 1.4142135623730951, -1.0, 1.0));
+        lat = asin(clamp((2.0 * th + sin(2.0 * th)) / PI, -1.0, 1.0));
+        lon = q.x / (MOLL_X * max(cos(th), 1e-4));
+        cov = clamp((1.4142135623730951 - abs(q.y)) / px + 0.5, 0.0, 1.0);
+    }
+    if (id >= 3) {
+        // One world only: the side edge is where |lon| reaches 180 degrees.
+        cov *= clamp((PI - abs(lon)) / max(fwidth(lon), 1e-6) + 0.5, 0.0, 1.0);
+    }
+    return cov;
+}
+
 void main() {
+    if (u_mode == 3) {
+        // Uniform across the draw, so every pixel quad takes the same path.
+        outColor = vec4(space(gl_FragCoord.xy / u_scale), 1.0);
+        return;
+    }
     vec2 p = (gl_FragCoord.xy - 0.5 * u_res) / (0.5 * min(u_res.x, u_res.y));
     vec3 rd = normalize(vec3(p * u_tanHalfFov, -1.0));
     vec3 ro = vec3(0.0, 0.0, u_dist);
 
-    // Closest approach of the ray to the globe center.
-    float b = dot(ro, rd);
-    float dmin2 = max(u_dist * u_dist - b * b, 0.0);
-    float dmin = sqrt(dmin2);
-    float aa = max(fwidth(dmin), 1e-6);
-    float coverage = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, dmin);
-
     vec3 bg = space(gl_FragCoord.xy / u_scale);
-    bg += ATMOSPHERE * 0.55 * exp(-max(dmin - 1.0, 0.0) * 22.0);
+    float coverage = 1.0;
+    vec3 n = vec3(0.0, 0.0, 1.0);   // camera-space normal (lighting, globe and morph only)
+    vec3 w;                         // world-space normal (the sun)
+    float lat;
+    float lon;
+    float u;                        // longitude as a texture coordinate; not wrapped on flat maps
+    float globeW = 1.0;             // how much globe lighting to apply
+    float uScale = 1.0;
+    float dmin = 0.0;
 
     // No early-out for background pixels: derivatives (fwidth, implicit mip
     // selection) need every pixel in a 2×2 quad on the same control path.
-    float t = -b - sqrt(max(1.0 - dmin2, 0.0));
-    vec3 n = normalize(ro + t * rd);
-    vec3 w = u_rot * n;
-    float lat = asin(clamp(w.y, -1.0, 1.0));
-    float lon = atan(w.x, w.z);
+    if (u_mode == 0) {
+        // Closest approach of the ray to the globe center.
+        float b = dot(ro, rd);
+        float dmin2 = max(u_dist * u_dist - b * b, 0.0);
+        dmin = sqrt(dmin2);
+        float aa = max(fwidth(dmin), 1e-6);
+        coverage = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, dmin);
 
-    // Pick whichever of two longitude parameterizations is continuous across
-    // this pixel quad, so mipmapping doesn't draw a seam at the antimeridian.
-    float u1 = lon / (2.0 * PI) + 0.5;
-    float u2 = fract(u1 + 0.5) - 0.5;
-    float u = fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2;
+        bg += ATMOSPHERE * 0.55 * exp(-max(dmin - 1.0, 0.0) * 22.0);
+
+        float t = -b - sqrt(max(1.0 - dmin2, 0.0));
+        n = normalize(ro + t * rd);
+        w = u_rot * n;
+        lat = asin(clamp(w.y, -1.0, 1.0));
+        lon = atan(w.x, w.z);
+
+        // Pick whichever of two longitude parameterizations is continuous across
+        // this pixel quad, so mipmapping doesn't draw a seam at the antimeridian.
+        float u1 = lon / (2.0 * PI) + 0.5;
+        float u2 = fract(u1 + 0.5) - 0.5;
+        u = fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2;
+        // The texture is equirectangular, so a screen pixel spans 1/cos(lat) times
+        // more u than v near a pole. Implicit LOD would take the longer axis and
+        // pick a far-too-coarse mip (blurred coasts). Scale the u gradient by
+        // cos(lat) so the footprint matches the real surface area. Keep in sync
+        // with `polar_u_scale` in src/camera.rs.
+        uScale = max(cos(lat), 0.02);
+    } else if (u_mode == 1) {
+        // Flat map: invert the projection for this pixel. Longitude is
+        // continuous across the screen (the map texture repeats), so there is
+        // no seam to work around and the footprint is the true one.
+        vec2 q = (gl_FragCoord.xy - 0.5 * u_res) / u_flatPx;
+        q.y += u_cy;
+        float rel;
+        coverage = flatInverse(u_proj, q, lat, rel);
+        lon = u_lon0 + rel;
+        w = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
+        u = lon / (2.0 * PI) + 0.5;
+        globeW = 0.0;
+    } else {
+        // Morph mesh: lat/lon come from the vertices. The surface faces the
+        // camera as far as the globe is blended in.
+        lat = v_ll.x;
+        lon = u_lon0 + v_ll.y;
+        w = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
+        n = w * u_rot;
+        u = lon / (2.0 * PI) + 0.5;
+        coverage = clamp(v_front / max(fwidth(v_front), 1e-6) + 0.5, 0.0, 1.0);
+        globeW = u_globe;
+        uScale = mix(1.0, max(cos(lat), 0.02), u_globe);
+    }
     vec2 uv = vec2(u, 0.5 - lat / PI);
 
-    // The texture is equirectangular, so a screen pixel spans 1/cos(lat) times
-    // more u than v near a pole. Implicit LOD would take the longer axis and
-    // pick a far-too-coarse mip (blurred coasts). Scale the u gradient by
-    // cos(lat) so the footprint matches the real surface area. Keep in sync
-    // with `polar_u_scale` in src/camera.rs.
-    float uScale = max(cos(lat), 0.02);
     vec2 duvdx = vec2(dFdx(u) * uScale, dFdx(uv.y));
     vec2 duvdy = vec2(dFdy(u) * uScale, dFdy(uv.y));
 
@@ -156,16 +255,22 @@ void main() {
     vec2 g = vec2(u * 360.0, latDeg + 90.0) / u_gridStep;
     vec2 gw = max(fwidth(g), vec2(1e-5));
     vec2 gd = abs(fract(g - 0.5) - 0.5) / (gw * 0.9);
-    float meridian = (1.0 - min(gd.x, 1.0)) * (1.0 - smoothstep(70.0, 86.0, alat));
+    float meridianFade = 1.0 - smoothstep(70.0, 86.0, alat);
+    if (u_mode == 1 && u_proj < 3) meridianFade = 1.0;  // parallel meridians run to the edge
+    float meridian = (1.0 - min(gd.x, 1.0)) * meridianFade;
     float parallel = 1.0 - min(gd.y, 1.0);
     col = mix(col, vec3(0.85, 0.90, 1.0), max(meridian, parallel) * 0.14);
 
     // Soft key light from the upper left of the camera plus ocean glint.
-    vec3 L = normalize(vec3(-0.45, 0.55, 0.85));
-    float diffuse = max(dot(n, L), 0.0);
-    col *= 0.38 + 0.72 * diffuse;
-    vec3 refl = reflect(-L, n);
-    col += vec3(0.55, 0.65, 0.80) * pow(max(dot(refl, -rd), 0.0), 36.0) * 0.22 * (1.0 - land);
+    // A flat map is lit evenly (globeW = 0); the morph fades the lighting out.
+    if (globeW > 0.0) {
+        vec3 rdv = u_mode == 0 ? rd : normalize(n - ro);
+        vec3 L = normalize(vec3(-0.45, 0.55, 0.85));
+        float diffuse = max(dot(n, L), 0.0);
+        col *= mix(1.0, 0.38 + 0.72 * diffuse, globeW);
+        vec3 refl = reflect(-L, n);
+        col += vec3(0.55, 0.65, 0.80) * pow(max(dot(refl, -rdv), 0.0), 36.0) * 0.22 * (1.0 - land) * globeW;
+    }
 
     // Day/night terminator. sunElev is the sine of the sun's elevation at
     // this point; the smooth band spans roughly civil to nautical twilight
@@ -176,8 +281,16 @@ void main() {
     col *= mix(vec3(1.0), nightTint, night);
 
     // Atmospheric scattering toward the limb.
-    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
-    col = mix(col, ATMOSPHERE, fres * 0.55);
+    if (globeW > 0.0) {
+        vec3 rdv = u_mode == 0 ? rd : normalize(n - ro);
+        float fres = pow(1.0 - max(dot(n, -rdv), 0.0), 3.0);
+        col = mix(col, ATMOSPHERE, fres * 0.55 * globeW);
+    }
 
-    outColor = vec4(mix(bg, col, coverage), 1.0);
+    if (u_mode == 2) {
+        // Over the space pass drawn first; coverage is the visible fraction.
+        outColor = vec4(col, coverage);
+    } else {
+        outColor = vec4(mix(bg, col, coverage), 1.0);
+    }
 }

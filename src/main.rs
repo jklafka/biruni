@@ -11,6 +11,7 @@ mod layer_loader;
 mod lines;
 mod measure;
 mod overlay;
+mod projection;
 mod quality;
 mod render;
 mod search;
@@ -23,12 +24,13 @@ use camera::Camera;
 use controls::{Controls, Direction, Event, Response};
 use layer_loader::{Effect, LayerLoader};
 use measure::Measure;
+use projection::{Morph, Projection};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use view::{
-    format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_view_hash,
-    scale_bar, share_url, Layer, RedrawFlags, SunView, Units, HOME,
+    format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_hash_proj,
+    parse_view_hash, scale_bar, share_url, Layer, RedrawFlags, SunView, Units, HOME,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -64,6 +66,11 @@ struct App {
     sun_pin: Option<f64>,
     sun_button: HtmlElement,
     camera: Camera,
+    /// Timeline of the globe <-> flat morph; `camera.proj` is its target.
+    morph: Morph,
+    proj_button: HtmlElement,
+    proj_menu: HtmlElement,
+    proj_items: Vec<(Projection, HtmlElement)>,
     /// Drag, pinch, inertia, zoom and flight state; mutates `camera`.
     controls: Controls,
     last_frame_ms: Option<f64>,
@@ -164,6 +171,58 @@ impl App {
             self.redraw.mark_render();
         }
         r
+    }
+
+    /// The user picked a projection (picker, key, URL). The camera switches
+    /// at once (picking and panning follow the new map) while the picture
+    /// morphs, or jumps when the user prefers reduced motion.
+    fn set_projection(&mut self, proj: Projection) {
+        for (p, b) in &self.proj_items {
+            let _ = b.set_attribute("aria-pressed", if *p == proj { "true" } else { "false" });
+        }
+        let _ = self.proj_button.set_attribute(
+            "title",
+            &format!("Projection: {} (P cycles, G globe)", proj.label()),
+        );
+        let _ = self
+            .proj_button
+            .set_attribute("aria-label", &format!("Map projection: {}", proj.label()));
+        let _ = self.canvas.set_attribute(
+            "aria-label",
+            &format!(
+                "Interactive map, {} projection. Drag to pan, scroll to zoom.",
+                proj.label()
+            ),
+        );
+        if proj == self.camera.proj {
+            return;
+        }
+        let reduced = self
+            .window
+            .match_media("(prefers-reduced-motion: reduce)")
+            .ok()
+            .flatten()
+            .is_some_and(|m| m.matches());
+        self.camera.set_projection(proj);
+        self.morph.start(proj, reduced);
+        self.update_hover();
+        self.redraw.mark_render();
+        self.hash_stale = true;
+    }
+
+    /// Open or close the projection menu.
+    fn set_proj_menu(&mut self, open: bool) {
+        self.proj_menu.set_hidden(!open);
+        let _ = self
+            .proj_button
+            .set_attribute("aria-expanded", if open { "true" } else { "false" });
+        if open {
+            // Keyboard users land on the current choice.
+            let current = self.camera.proj;
+            if let Some((_, b)) = self.proj_items.iter().find(|(p, _)| *p == current) {
+                let _ = b.focus();
+            }
+        }
     }
 
     /// The user picked a layer (button, key, URL). Layers with data fetch it
@@ -398,9 +457,16 @@ impl App {
         if animating {
             self.update_hover(); // the globe moved under a still cursor
         }
+        // The morph counts as motion: it draws at the reduced scale and, like
+        // a flight, holds back the URL hash until it ends.
+        let morphing = self.morph.tick(dt);
+        if morphing {
+            self.redraw.mark_render();
+        }
+        let animating = animating || self.morph.animating();
         // Dynamic resolution: draw at a lower scale while the view moves, and
         // once more at full resolution after it has settled.
-        let moving = self.controls.in_motion(&self.camera);
+        let moving = self.controls.in_motion(&self.camera) || self.morph.animating();
         let scale = self
             .quality
             .scale(moving, now_ms, dt, pw as f64 * ph as f64);
@@ -412,13 +478,22 @@ impl App {
             .keepout
             .take(cw, ch)
             .is_some_and(|r| self.labels.set_blocked(r));
-        if draw || relayout || self.labels.animating() {
+        // Labels and the measure path sit at fixed screen positions, which are
+        // wrong while the map is between projections: hide them until it lands.
+        let morphing = self.morph.animating();
+        if morphing {
+            self.labels.clear();
+            self.overlay.clear();
+        } else if draw || relayout || self.labels.animating() {
             self.labels.update(&self.camera, dt, pw, ph, dpr);
         }
         if draw {
-            self.renderer.draw(&self.camera, pw, ph, dpr, scale);
+            self.renderer
+                .draw(&self.camera, self.morph.blend(), pw, ph, dpr, scale);
             self.drawn_scale = scale;
-            self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
+            if !morphing {
+                self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
+            }
             self.hash_stale = true;
         }
         if hud {
@@ -495,6 +570,9 @@ impl App {
     fn pointer_down(&mut self, e: &PointerEvent) {
         if e.pointer_type() == "mouse" && e.button() != 0 {
             return;
+        }
+        if !self.proj_menu.hidden() {
+            self.set_proj_menu(false);
         }
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         let t = self.now();
@@ -607,6 +685,15 @@ fn start() -> Result<(), JsValue> {
         .and_then(|h| parse_view_hash(&h))
         .unwrap_or_else(|| Camera::new(HOME.0, HOME.1, HOME.2));
 
+    let initial_proj = camera.proj;
+    let mut proj_items = Vec::new();
+    for p in Projection::ALL {
+        let b: HtmlElement = doc
+            .query_selector(&format!("#proj-menu button[data-proj=\"{}\"]", p.id()))?
+            .ok_or_else(|| JsValue::from_str("missing projection menu item"))?
+            .dyn_into()?;
+        proj_items.push((p, b));
+    }
     let initial_layer = window
         .location()
         .hash()
@@ -643,6 +730,10 @@ fn start() -> Result<(), JsValue> {
         sun_pin: sun_hash.pin,
         sun_button: element(&doc, "sun-toggle")?,
         camera,
+        morph: Morph::new(initial_proj),
+        proj_button: element(&doc, "proj-button")?,
+        proj_menu: element(&doc, "proj-menu")?,
+        proj_items: proj_items.clone(),
         controls: Controls::new(&camera),
         last_frame_ms: None,
         quality: quality::Quality::new(quality::parse_setting(
@@ -686,6 +777,30 @@ fn start() -> Result<(), JsValue> {
         a.select_layer(initial_layer);
     }
     app.borrow_mut().refresh_sun();
+    {
+        // Show the projection from the URL in the picker, and wire it.
+        let mut a = app.borrow_mut();
+        a.set_projection(initial_proj); // already current: only labels the picker and canvas
+        let button: EventTarget = a.proj_button.clone().into();
+        drop(a);
+        {
+            let app = app.clone();
+            listen(&button, "click", true, move |_: MouseEvent| {
+                let mut a = app.borrow_mut();
+                let open = a.proj_menu.hidden();
+                a.set_proj_menu(open);
+            })?;
+        }
+        for (p, b) in proj_items {
+            let app = app.clone();
+            listen(b.as_ref(), "click", true, move |_: MouseEvent| {
+                let mut a = app.borrow_mut();
+                a.set_projection(p);
+                a.set_proj_menu(false);
+                let _ = a.proj_button.focus();
+            })?;
+        }
+    }
 
     // The one piece of idle work: once a minute, move the terminator. It
     // only marks a render while the terminator is on and follows the clock.
@@ -886,7 +1001,24 @@ fn start() -> Result<(), JsValue> {
                     return;
                 }
                 "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
+                "p" | "P" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    // P cycles forward through the projections, Shift+P back.
+                    let cur = a.camera.proj;
+                    a.set_projection(if e.shift_key() {
+                        cur.prev()
+                    } else {
+                        cur.next()
+                    });
+                }
+                "g" | "G" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    a.set_projection(Projection::Globe)
+                }
                 "m" | "M" => a.toggle_measure(),
+                "Escape" if !a.proj_menu.hidden() => {
+                    a.set_proj_menu(false);
+                    let _ = a.proj_button.focus();
+                    return;
+                }
                 "Escape" if a.measure.active => a.toggle_measure(),
                 "Escape" => {
                     // Not measuring: close the info panel.
@@ -935,6 +1067,7 @@ fn start() -> Result<(), JsValue> {
                 let hash = window2.location().hash().unwrap_or_default();
                 let mut a = app.borrow_mut();
                 a.select_layer(parse_hash_layer(&hash).unwrap_or_default());
+                a.set_projection(parse_hash_proj(&hash));
                 let sun = SunView::from_hash(&hash);
                 a.sun_on = sun.on;
                 a.sun_pin = sun.pin;

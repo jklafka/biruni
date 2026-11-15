@@ -323,7 +323,7 @@ impl Controls {
                 alt,
                 bearing,
             } => {
-                if let Some(b) = bearing {
+                if let Some(b) = bearing.filter(|_| !cam.is_flat()) {
                     cam.north_up = wrap_angle(b) == 0.0;
                 }
                 self.fly_to(cam, lat, lon, alt, bearing);
@@ -334,13 +334,16 @@ impl Controls {
                 out.render = true;
             }
             Event::ToggleNorthUp => {
-                if cam.north_up {
+                if cam.is_flat() {
+                    // A flat map is always north-up.
+                } else if cam.north_up {
                     cam.north_up = false;
                 } else {
                     self.north_up(cam);
                 }
                 out.render = true;
             }
+            Event::Rotate(_) if cam.is_flat() => {}
             Event::Rotate(angle) => {
                 cam.north_up = false;
                 // Stack on a rotation already under way so repeated key
@@ -393,7 +396,15 @@ impl Controls {
     /// north in north-up mode.
     fn fly_to(&mut self, cam: &Camera, lat: f64, lon: f64, alt: f64, bearing: Option<f64>) {
         self.stop_motion(cam);
+        let (lat, lon) = if cam.is_flat() {
+            // Aim at a spot the map shows (Mercator ends near 85 degrees).
+            let m = cam.proj.max_lat();
+            (lat.clamp(-m, m), lon)
+        } else {
+            (lat, lon)
+        };
         let bearing = match bearing {
+            _ if cam.is_flat() => 0.0,
             Some(b) => wrap_angle(b),
             None if cam.north_up => 0.0,
             None => cam.bearing,
@@ -446,7 +457,7 @@ impl Controls {
         };
         let (px, py) = (self.pointers[idx].x, self.pointers[idx].y);
 
-        if self.pointers.len() == 1 && alt {
+        if self.pointers.len() == 1 && alt && !cam.is_flat() {
             // Alt-drag: turn the view by the angle the pointer sweeps around
             // the screen center.
             let (cx, cy) = (cam.width * 0.5, cam.height * 0.5);
@@ -487,7 +498,7 @@ impl Controls {
                 cam.alt = (cam.alt * old_dist / new_dist).clamp(MIN_ALT, MAX_ALT);
                 self.target_alt = cam.alt;
             }
-            if old_dist > 1.0 && new_dist > 1.0 {
+            if old_dist > 1.0 && new_dist > 1.0 && !cam.is_flat() {
                 // Fingers turning clockwise on screen turn the globe with them.
                 let twist = wrap_angle(new_angle - old_angle);
                 self.twist_acc += twist;
@@ -580,6 +591,12 @@ impl Controls {
                 self.velocity = (0.0, 0.0);
             }
         }
+        if cam.is_flat() {
+            // A flight started on the globe may still carry a bearing.
+            cam.bearing = 0.0;
+            cam.north_up = true;
+        }
+        cam.constrain();
         moved
     }
 }
@@ -1713,5 +1730,113 @@ mod tests {
             assert!(!k.dragging());
             assert!(!k.animating(), "seed {seed}: never came to rest");
         }
+    }
+
+    fn flat_setup(p: crate::projection::Projection) -> (Camera, Controls) {
+        let (mut c, _) = setup();
+        c.alt = 2.0;
+        c.set_projection(p);
+        let k = Controls::new(&c);
+        (c, k)
+    }
+
+    #[test]
+    fn flat_drag_pans_in_2d_and_keeps_the_point_under_the_pointer() {
+        let (mut c, mut k) = flat_setup(crate::projection::Projection::Mercator);
+        let grabbed = c.pick(500.0, 300.0).unwrap();
+        down(&mut k, &mut c, 1, 500.0, 300.0, 0.0);
+        assert!(mv(&mut k, &mut c, 1, 560.0, 340.0, 16.0).render);
+        let (px, py) = c.project(grabbed.0, grabbed.1).unwrap();
+        assert!((px - 560.0).abs() < 1e-6 && (py - 340.0).abs() < 1e-6);
+        assert_eq!(c.bearing, 0.0);
+        up(&mut k, &mut c, 1, 17.0);
+        settle(&mut k, &mut c);
+        assert!(sane(&c));
+    }
+
+    #[test]
+    fn flat_maps_cannot_be_rotated() {
+        for p in [
+            crate::projection::Projection::Equirectangular,
+            crate::projection::Projection::Mollweide,
+        ] {
+            let (mut c, mut k) = flat_setup(p);
+            let center = (c.lat, c.lon);
+            k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+            k.handle(&mut c, Event::ToggleNorthUp);
+            settle(&mut k, &mut c);
+            assert_eq!((c.bearing, c.north_up), (0.0, true), "{p:?}");
+            // Alt-drag falls back to a plain pan instead of turning the view.
+            down(&mut k, &mut c, 1, 700.0, 350.0, 0.0);
+            k.handle(
+                &mut c,
+                Event::PointerMove {
+                    id: 1,
+                    x: 700.0,
+                    y: 450.0,
+                    t: 16.0,
+                    alt: true,
+                },
+            );
+            up(&mut k, &mut c, 1, 17.0);
+            assert_eq!((c.bearing, c.north_up), (0.0, true));
+            assert!(c.lat != center.0, "it panned");
+        }
+    }
+
+    #[test]
+    fn flat_zoom_anchors_at_the_cursor() {
+        let (mut c, mut k) = flat_setup(crate::projection::Projection::Robinson);
+        let (sx, sy) = (700.0, 250.0);
+        let (lat, lon) = c.pick(sx, sy).unwrap();
+        wheel(&mut k, &mut c, -300.0, sx, sy);
+        settle(&mut k, &mut c);
+        assert!(c.alt < 2.0);
+        let (px, py) = c.project(lat, lon).unwrap();
+        assert!((px - sx).abs() < 0.2 && (py - sy).abs() < 0.2, "{px},{py}");
+    }
+
+    #[test]
+    fn flat_flights_land_even_when_the_target_is_off_the_map() {
+        let (mut c, mut k) = flat_setup(crate::projection::Projection::Mercator);
+        // Mercator ends near 85 degrees; the flight is aimed at what it shows.
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 90f64.to_radians(),
+                lon: 3.0,
+                alt: 0.5,
+                bearing: Some(1.0),
+            },
+        );
+        settle(&mut k, &mut c);
+        assert!(!k.animating(), "the flight ended");
+        assert!((c.lat - crate::projection::MERCATOR_MAX_LAT).abs() < 1e-3);
+        assert_eq!((c.bearing, c.north_up), (0.0, true));
+        // A flight across the seam takes the short way.
+        c.lon = 179f64.to_radians();
+        k.handle(
+            &mut c,
+            Event::FlyTo {
+                lat: 0.0,
+                lon: -179f64.to_radians(),
+                alt: 0.5,
+                bearing: None,
+            },
+        );
+        tick(&mut k, &mut c, 16.0);
+        assert!(c.lon > 179f64.to_radians() || c.lon < -170f64.to_radians());
+        settle(&mut k, &mut c);
+        assert!(sane(&c));
+    }
+
+    #[test]
+    fn switching_to_a_flat_map_mid_flight_drops_the_bearing() {
+        let (mut c, mut k) = setup();
+        k.handle(&mut c, Event::Rotate(ROTATE_STEP));
+        tick(&mut k, &mut c, 16.0);
+        c.set_projection(crate::projection::Projection::Robinson);
+        settle(&mut k, &mut c);
+        assert_eq!((c.bearing, c.north_up), (0.0, true));
     }
 }

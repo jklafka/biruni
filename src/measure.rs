@@ -189,12 +189,29 @@ pub fn screen_path(cam: &Camera, points: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> 
     let mut runs: Vec<Vec<(f64, f64)>> = Vec::new();
     let mut cur: Vec<(f64, f64)> = Vec::new();
     let mut joined = false; // `cur` ends at the previous segment's last sample
+                            // On a flat map a path that crosses the side edge jumps by about a world
+                            // width between two samples; break the line there instead of drawing a
+                            // stroke across the map.
+    let seam_jump = if cam.is_flat() {
+        0.5 * cam.flat_world_width_px()
+    } else {
+        f64::INFINITY
+    };
     for w in points.windows(2) {
         for (i, p) in sample_arc(w[0], w[1]).into_iter().enumerate() {
             if i == 0 && joined {
                 continue; // repeats the previous segment's last sample
             }
-            match cam.project(p.0, p.1) {
+            let s = cam.project(p.0, p.1);
+            if let (Some(s), Some(prev)) = (s, cur.last()) {
+                if (s.0 - prev.0).abs() > seam_jump {
+                    if cur.len() > 1 {
+                        runs.push(std::mem::take(&mut cur));
+                    }
+                    cur.clear();
+                }
+            }
+            match s {
                 Some(s) => cur.push(s),
                 None => {
                     if cur.len() > 1 {
@@ -452,5 +469,41 @@ mod tests {
         assert!(screen_path(&c, &[]).is_empty());
         assert!(screen_path(&c, &[deg(0.0, 0.0)]).is_empty());
         assert!(screen_path(&c, &[deg(0.0, 0.0), (f64::NAN, 0.0)]).is_empty());
+    }
+
+    #[test]
+    fn flat_path_follows_the_ground_and_breaks_at_the_seam() {
+        use crate::projection::Projection;
+        let mut c = cam(0.0, 0.0, 6.0);
+        c.set_projection(Projection::Equirectangular);
+        // An ordinary leg is one run whose ends sit on the projected points.
+        let a = deg(10.0, -20.0);
+        let b = deg(30.0, 40.0);
+        let runs = screen_path(&c, &[a, b]);
+        assert_eq!(runs.len(), 1);
+        let sa = c.project(a.0, a.1).unwrap();
+        assert!((runs[0][0].0 - sa.0).abs() < 1e-9 && (runs[0][0].1 - sa.1).abs() < 1e-9);
+        // A leg over the antimeridian, with the view centered on it, would
+        // otherwise be drawn as a stroke across the whole map.
+        let (w, e) = (deg(10.0, 170.0), deg(20.0, -170.0));
+        let runs = screen_path(&c, &[w, e]);
+        let world = c.flat_world_width_px();
+        for run in &runs {
+            for pair in run.windows(2) {
+                assert!(
+                    (pair[1].0 - pair[0].0).abs() < 0.5 * world,
+                    "no seam-crossing stroke"
+                );
+            }
+        }
+        // Centered on the seam it stays one continuous run.
+        let mut c2 = cam(0.0, 180.0, 6.0);
+        c2.set_projection(Projection::Mercator);
+        let runs = screen_path(&c2, &[w, e]);
+        assert_eq!(runs.len(), 1);
+        // Mercator drops the part of a polar path it cannot show.
+        let runs = screen_path(&c2, &[deg(80.0, 170.0), deg(89.0, 180.0)]);
+        assert!(runs.iter().all(|r| r.len() > 1));
+        assert!(screen_path(&c2, &[deg(89.0, 0.0), deg(88.0, 10.0)]).is_empty());
     }
 }

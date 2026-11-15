@@ -11,14 +11,15 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/main.rs` | Entry point: DOM wiring, translating DOM input into `controls::Event`s, the animation loop, URL-hash view state |
 | `src/controls.rs` | Browser-free input state machine: drag, pinch, fling, wheel/button zoom, fly-to, reset. Mutates a `Camera` |
 | `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
-| `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km` URL hash |
+| `src/projection.rs` | Flat map projections (forward/inverse math), the `Projection` enum and the globe <-> flat morph timeline |
+| `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km[,bearing]&layer=&proj=` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
 | `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile` and the binary decoder. Copied to `dist/` by Trunk |
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
 | `src/labels.rs` | Browser-free label selection: altitude gate, horizon test, priority, greedy collision, fade steps |
 | `src/label_layer.rs` | Draws labels on the `#labels` canvas (no pointer events), fade state, loads `labels.tsv` |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, line pass and globe draw call |
-| `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel. `line.vert`/`line.frag` draw coastlines and borders as screen-space-width lines into an offscreen target that `globe.frag` reads. |
+| `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel, or inverts a flat projection (`u_mode`). `morph.vert` draws the globe <-> flat morph mesh. `line.vert`/`line.frag` draw coastlines and borders (in every projection) as screen-space-width lines into an offscreen target that `globe.frag` reads. |
 | `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `build.rs`, `shader_minify.rs` | Strip comments and indentation from `src/shaders/*` into `OUT_DIR` before `include_str!` embeds them (the minify function is unit tested in `render.rs`) |
@@ -103,6 +104,12 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 
 If you change one side, change the other in the same PR, and extend the round-trip tests in `camera.rs`.
 
+Flat projections follow the same discipline, in `src/projection.rs` (forward and inverse) and the GLSL in `globe.frag` (inverse), `morph.vert` and `line.vert` (forward):
+
+- Plane units: the sphere has radius 1, `x` is measured from the central meridian (`Camera::lon`) and `y` from the equator, north up. A flat camera has `lat` (the row at the screen center), `lon` (the central meridian) and `alt` (the zoom; a flat map is drawn `FLAT_ZOOM` times the globe's size at the same altitude). Its bearing is always 0.
+- The projection constants and tables (Robinson, Mercator's limit, Mollweide's scale) appear in Rust and in the shaders, and tests compare them. `flatForward` and `place` must stay textually identical in `morph.vert` and `line.vert`. To add a projection, add it to `Projection`, `shader_index`, all three shaders (the ids must match) and the picker in `index.html`, and extend the tests (round trip, the seam, poles, NaN and infinity).
+- Anything that needs a position on screen goes through `Camera::project` / `Camera::pick`, never through its own projection math.
+
 ### Shaders
 
 - Write GLSL ES 3.00 for WebGL2. Don't rely on extensions without a fallback.
@@ -112,6 +119,7 @@ If you change one side, change the other in the same PR, and extend the round-tr
 
 ### Rendering and performance
 
+- The projection morph counts as motion for the dynamic resolution (`quality.rs`), and `prefers-reduced-motion` switches projections at once instead of animating.
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
 - Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB), 13 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
 - Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask is drawn in the worker, and `assets/raster-worker.js` and `geo::draw_tile` must stay pixel-identical (the main-thread fallback is the reference).

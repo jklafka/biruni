@@ -3,6 +3,7 @@
 use crate::camera::{Camera, TAN_HALF_FOV};
 use crate::geo::Layers;
 use crate::lines::{lod_for, LineLevels, LineSet};
+use crate::projection::{self, Blend, Projection, FLAT_ZOOM};
 use crate::quality::scaled_size;
 use crate::view::Layer;
 use wasm_bindgen::{JsCast, JsValue};
@@ -15,6 +16,7 @@ const VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.ver
 const FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.frag"));
 const SPACE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/space.frag"));
 const BLIT_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/blit.frag"));
+const MORPH_VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/morph.vert"));
 const LINE_VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line.vert"));
 const LINE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line.frag"));
 
@@ -141,6 +143,60 @@ struct Uniforms {
     sun_on: Option<WebGlUniformLocation>,
     bounds: Option<WebGlUniformLocation>,
     scale: Option<WebGlUniformLocation>,
+    mode: Option<WebGlUniformLocation>,
+    proj: Option<WebGlUniformLocation>,
+    flat_px: Option<WebGlUniformLocation>,
+    cy: Option<WebGlUniformLocation>,
+    lon0: Option<WebGlUniformLocation>,
+    globe: Option<WebGlUniformLocation>,
+    // Only in morph.vert.
+    proj_a: Option<WebGlUniformLocation>,
+    proj_b: Option<WebGlUniformLocation>,
+    blend_mix: Option<WebGlUniformLocation>,
+    cy_ab: Option<WebGlUniformLocation>,
+}
+
+impl Uniforms {
+    /// Locations in `program`; those it does not declare are `None`.
+    fn lookup(gl: &GL, program: &WebGlProgram) -> Self {
+        let u = |name: &str| gl.get_uniform_location(program, name);
+        Uniforms {
+            res: u("u_res"),
+            dist: u("u_dist"),
+            tan_half_fov: u("u_tanHalfFov"),
+            rot: u("u_rot"),
+            map: u("u_map"),
+            lines: u("u_lines"),
+            has_map: u("u_hasMap"),
+            grid_step: u("u_gridStep"),
+            dpr: u("u_dpr"),
+            layer: u("u_layer"),
+            ids: u("u_ids"),
+            highlight: u("u_highlight"),
+            sun: u("u_sun"),
+            sun_on: u("u_sunOn"),
+            bounds: u("u_bounds"),
+            scale: u("u_scale"),
+            mode: u("u_mode"),
+            proj: u("u_proj"),
+            flat_px: u("u_flatPx"),
+            cy: u("u_cy"),
+            lon0: u("u_lon0"),
+            globe: u("u_globe"),
+            proj_a: u("u_projA"),
+            proj_b: u("u_projB"),
+            blend_mix: u("u_mix"),
+            cy_ab: u("u_cyAB"),
+        }
+    }
+}
+
+/// The globe <-> flat morph mesh: a 1 degree lat/lon grid.
+struct MorphMesh {
+    vao: WebGlVertexArrayObject,
+    indices: i32,
+    program: WebGlProgram,
+    uniforms: Uniforms,
 }
 
 /// Fills the screen with space and stars; the globe quad is drawn over it.
@@ -179,6 +235,14 @@ struct LineUniforms {
     rot: Option<WebGlUniformLocation>,
     width: Option<WebGlUniformLocation>,
     strength: Option<WebGlUniformLocation>,
+    lon0: Option<WebGlUniformLocation>,
+    proj_a: Option<WebGlUniformLocation>,
+    proj_b: Option<WebGlUniformLocation>,
+    blend_mix: Option<WebGlUniformLocation>,
+    cy_ab: Option<WebGlUniformLocation>,
+    flat_px: Option<WebGlUniformLocation>,
+    shift: Option<WebGlUniformLocation>,
+    clip: Option<WebGlUniformLocation>,
 }
 
 /// Program and shared quad corners for the line pass.
@@ -202,6 +266,14 @@ impl LinePass {
             rot: lu("u_rot"),
             width: lu("u_width"),
             strength: lu("u_strength"),
+            lon0: lu("u_lon0"),
+            proj_a: lu("u_projA"),
+            proj_b: lu("u_projB"),
+            blend_mix: lu("u_mix"),
+            cy_ab: lu("u_cyAB"),
+            flat_px: lu("u_flatPx"),
+            shift: lu("u_shift"),
+            clip: lu("u_clip"),
         };
         let corners = gl.create_buffer().ok_or("failed to create buffer")?;
         gl.bind_buffer(GL::ARRAY_BUFFER, Some(&corners));
@@ -269,6 +341,7 @@ struct Resources {
     space: SpacePass,
     blit: BlitPass,
     program: WebGlProgram,
+    frag: WebGlShader,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
     map: WebGlTexture,
@@ -281,25 +354,7 @@ impl Resources {
         let vs = compile(gl, GL::VERTEX_SHADER, VERT_SRC)?;
         let fs = compile(gl, GL::FRAGMENT_SHADER, FRAG_SRC)?;
         let program = link(gl, &vs, &fs)?;
-        let u = |name: &str| gl.get_uniform_location(&program, name);
-        let uniforms = Uniforms {
-            res: u("u_res"),
-            dist: u("u_dist"),
-            tan_half_fov: u("u_tanHalfFov"),
-            rot: u("u_rot"),
-            map: u("u_map"),
-            lines: u("u_lines"),
-            has_map: u("u_hasMap"),
-            grid_step: u("u_gridStep"),
-            dpr: u("u_dpr"),
-            layer: u("u_layer"),
-            ids: u("u_ids"),
-            highlight: u("u_highlight"),
-            sun: u("u_sun"),
-            sun_on: u("u_sunOn"),
-            bounds: u("u_bounds"),
-            scale: u("u_scale"),
-        };
+        let uniforms = Uniforms::lookup(gl, &program);
         let space = {
             let fs = compile(gl, GL::FRAGMENT_SHADER, SPACE_FRAG_SRC)?;
             let program = link(gl, &vs, &fs)?;
@@ -364,6 +419,7 @@ impl Resources {
             space,
             blit,
             program,
+            frag: fs,
             vao,
             uniforms,
             map,
@@ -421,6 +477,143 @@ impl ContextState {
     }
 }
 
+/// Values of the `u_mode` uniform in `globe.frag`.
+const MODE_GLOBE: i32 = 0;
+const MODE_FLAT: i32 = 1;
+const MODE_MORPH: i32 = 2;
+const MODE_SPACE: i32 = 3;
+
+/// Which shader path draws this blend: exact per-pixel globe or flat map
+/// when settled, the mesh while morphing.
+fn blend_mode(blend: &Blend) -> i32 {
+    if !blend.is_settled() {
+        MODE_MORPH
+    } else if blend.shown().is_flat() {
+        MODE_FLAT
+    } else {
+        MODE_GLOBE
+    }
+}
+
+/// Per-frame projection state shared by the quad, mesh and line passes.
+struct FlatFrame {
+    /// Central meridian, radians.
+    lon0: f32,
+    proj_a: i32,
+    proj_b: i32,
+    /// 0 = all A, 1 = all B.
+    mix: f32,
+    /// Plane y of the screen-center row, for A and B.
+    cy: [f32; 2],
+    /// Framebuffer pixels per plane unit.
+    flat_px: f32,
+}
+
+impl FlatFrame {
+    fn new(camera: &Camera, blend: &Blend, w: u32, h: u32) -> Self {
+        let (a, b, mix) = if blend.is_settled() {
+            let p = blend.shown();
+            (p, p, 0.0)
+        } else {
+            (blend.a, blend.b, blend.t)
+        };
+        let cy = |p: Projection| {
+            if p.is_flat() {
+                projection::y_of_lat(p, camera.lat) as f32
+            } else {
+                0.0
+            }
+        };
+        FlatFrame {
+            lon0: camera.lon as f32,
+            proj_a: a.shader_index(),
+            proj_b: b.shader_index(),
+            mix: mix as f32,
+            cy: [cy(a), cy(b)],
+            flat_px: camera.flat_scale(0.5 * w.min(h) as f64) as f32,
+        }
+    }
+
+    /// Longitude offsets (radians) of the copies of the world the line pass
+    /// draws, and whether to clip each to one world.
+    fn line_copies(&self, blend: &Blend, w: u32) -> (Vec<f32>, bool) {
+        if blend_mode(blend) != MODE_FLAT {
+            return (vec![0.0], false);
+        }
+        let half_w = 0.5 * w as f64 / (self.flat_px as f64).max(1e-6);
+        let (k, clip) = projection::line_wraps(blend.shown(), half_w);
+        let shifts = (-k..=k).map(|i| i as f32 * std::f32::consts::TAU).collect();
+        (shifts, clip)
+    }
+
+    /// Altitude to pick the line level of detail by: a flat map is drawn
+    /// smaller than the globe at the same altitude, so it needs the finer
+    /// levels sooner (and Mercator more so, as it stretches away from the
+    /// equator).
+    fn lod_alt(&self, camera: &Camera, blend: &Blend) -> f64 {
+        let flat = 1.0 - blend.globe_weight();
+        let mut alt = camera.alt / (1.0 - (1.0 - FLAT_ZOOM) * flat);
+        if blend.is_settled() && blend.shown() == Projection::Mercator {
+            alt *= 0.6;
+        }
+        alt
+    }
+}
+
+impl MorphMesh {
+    /// Build the mesh and its program (sharing the fragment shader `fs`).
+    fn create(gl: &GL, fs: &WebGlShader) -> Result<Self, JsValue> {
+        let vs = compile(gl, GL::VERTEX_SHADER, MORPH_VERT_SRC)?;
+        let program = link(gl, &vs, fs)?;
+        let uniforms = Uniforms::lookup(gl, &program);
+        let (verts, indices) = morph_grid();
+        let vao = gl.create_vertex_array().ok_or("failed to create VAO")?;
+        let vbo = gl.create_buffer().ok_or("failed to create buffer")?;
+        let ibo = gl.create_buffer().ok_or("failed to create buffer")?;
+        gl.bind_vertex_array(Some(&vao));
+        gl.bind_buffer(GL::ARRAY_BUFFER, Some(&vbo));
+        let v = js_sys::Float32Array::from(verts.as_slice());
+        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &v, GL::STATIC_DRAW);
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_with_i32(0, 2, GL::FLOAT, false, 0, 0);
+        gl.bind_buffer(GL::ELEMENT_ARRAY_BUFFER, Some(&ibo));
+        let i = js_sys::Uint16Array::from(indices.as_slice());
+        gl.buffer_data_with_array_buffer_view(GL::ELEMENT_ARRAY_BUFFER, &i, GL::STATIC_DRAW);
+        gl.bind_vertex_array(None);
+        Ok(MorphMesh {
+            vao,
+            indices: indices.len() as i32,
+            program,
+            uniforms,
+        })
+    }
+}
+
+/// Vertices (latitude, longitude relative to the central meridian, radians)
+/// and triangle indices of a 1 degree grid from pole to pole and -180 to 180.
+/// 361 x 181 = 65 341 vertices, which still fits 16-bit indices.
+fn morph_grid() -> (Vec<f32>, Vec<u16>) {
+    const COLS: usize = 361;
+    const ROWS: usize = 181;
+    let mut verts = Vec::with_capacity(COLS * ROWS * 2);
+    for r in 0..ROWS {
+        let lat = (r as f64 - 90.0).to_radians();
+        for c in 0..COLS {
+            verts.push(lat as f32);
+            verts.push((c as f64 - 180.0).to_radians() as f32);
+        }
+    }
+    let mut indices = Vec::with_capacity((COLS - 1) * (ROWS - 1) * 6);
+    for r in 0..ROWS - 1 {
+        for c in 0..COLS - 1 {
+            let i = (r * COLS + c) as u16;
+            let (a, b, d, e) = (i, i + 1, i + COLS as u16, i + COLS as u16 + 1);
+            indices.extend_from_slice(&[a, b, d, b, e, d]);
+        }
+    }
+    (verts, indices)
+}
+
 pub struct Renderer {
     gl: GL,
     line_pass: LinePass,
@@ -436,6 +629,10 @@ pub struct Renderer {
     space: SpacePass,
     blit: BlitPass,
     program: WebGlProgram,
+    /// The shared fragment shader, kept to link the morph program on demand.
+    frag: WebGlShader,
+    /// Morph mesh, built the first time a morph is drawn.
+    morph: Option<MorphMesh>,
     vao: WebGlVertexArrayObject,
     uniforms: Uniforms,
     map: WebGlTexture,
@@ -491,6 +688,8 @@ impl Renderer {
             space: r.space,
             blit: r.blit,
             program: r.program,
+            frag: r.frag,
+            morph: None,
             vao: r.vao,
             uniforms: r.uniforms,
             map: r.map,
@@ -555,6 +754,8 @@ impl Renderer {
         self.line_pass = r.line_pass;
         self.space = r.space;
         self.blit = r.blit;
+        self.frag = r.frag;
+        self.morph = None; // rebuilt on demand
         self.vao = r.vao;
         self.uniforms = r.uniforms;
         self.map = r.map;
@@ -716,12 +917,21 @@ impl Renderer {
     }
 
     /// Render coastlines (R) and borders (G) into the line target.
-    fn draw_lines(&self, target: &LineTarget, camera: &Camera, w: u32, h: u32, dpr: f64) {
+    fn draw_lines(
+        &self,
+        target: &LineTarget,
+        camera: &Camera,
+        blend: &Blend,
+        w: u32,
+        h: u32,
+        dpr: f64,
+    ) {
         let Some(gpu) = &self.lines else {
             return;
         };
         let gl = &self.gl;
         let u = &self.line_pass.uniforms;
+        let frame = FlatFrame::new(camera, blend, w, h);
         gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&target.fbo));
         gl.viewport(0, 0, w as i32, h as i32);
         gl.clear_color(0.0, 0.0, 0.0, 0.0);
@@ -731,9 +941,18 @@ impl Renderer {
         gl.uniform1f(u.dist.as_ref(), camera.dist() as f32);
         gl.uniform1f(u.tan_half_fov.as_ref(), TAN_HALF_FOV as f32);
         gl.uniform_matrix3fv_with_f32_array(u.rot.as_ref(), false, &camera.rotation());
+        gl.uniform1f(u.lon0.as_ref(), frame.lon0);
+        gl.uniform1i(u.proj_a.as_ref(), frame.proj_a);
+        gl.uniform1i(u.proj_b.as_ref(), frame.proj_b);
+        gl.uniform1f(u.blend_mix.as_ref(), frame.mix);
+        gl.uniform2f(u.cy_ab.as_ref(), frame.cy[0], frame.cy[1]);
+        gl.uniform1f(u.flat_px.as_ref(), frame.flat_px);
+        // Copies of the world to draw on a flat map: see `line_wraps`.
+        let (shifts, clip) = frame.line_copies(blend, w);
+        gl.uniform1f(u.clip.as_ref(), if clip { 1.0 } else { 0.0 });
         gl.enable(GL::BLEND);
         gl.blend_equation(GL::MAX);
-        let level = lod_for(camera.alt, w.min(h) as f64, TAN_HALF_FOV);
+        let level = lod_for(frame.lod_alt(camera, blend), w.min(h) as f64, TAN_HALF_FOV);
         let dpr = dpr as f32;
         for (mask, width, bufs) in [
             ([true, false, false, false], COAST_WIDTH, &gpu.coast),
@@ -746,7 +965,10 @@ impl Renderer {
             gl.uniform1f(u.width.as_ref(), width * dpr);
             gl.uniform1f(u.strength.as_ref(), 1.0);
             gl.bind_vertex_array(Some(&b.vao));
-            gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, b.segments);
+            for shift in &shifts {
+                gl.uniform1f(u.shift.as_ref(), *shift);
+                gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, b.segments);
+            }
         }
         gl.color_mask(true, true, true, true);
         gl.disable(GL::BLEND);
@@ -802,11 +1024,20 @@ impl Renderer {
         self.sun = sun;
     }
 
-    /// Draw the globe. `scale` below 1 shades it at that fraction of the
+    /// Draw the map: the globe, a flat projection or a morph between them,
+    /// as `blend` says. `scale` below 1 shades it at that fraction of the
     /// canvas resolution into an offscreen target and upscales it; the line
     /// target is scaled the same way so `globe.frag` still reads it
     /// one-to-one with `texelFetch`.
-    pub fn draw(&mut self, camera: &Camera, width_px: u32, height_px: u32, dpr: f64, scale: f64) {
+    pub fn draw(
+        &mut self,
+        camera: &Camera,
+        blend: Blend,
+        width_px: u32,
+        height_px: u32,
+        dpr: f64,
+        scale: f64,
+    ) {
         if self.ctx.is_lost() {
             return;
         }
@@ -821,12 +1052,19 @@ impl Renderer {
             (width_px, height_px)
         };
         let s = rw as f64 / width_px.max(1) as f64;
+        let mode = blend_mode(&blend);
+        if mode == MODE_MORPH && self.morph.is_none() {
+            match MorphMesh::create(&self.gl, &self.frag) {
+                Ok(m) => self.morph = Some(m),
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        }
         let mut have_lines = false;
         if self.lines.is_some() {
             if scaled {
                 have_lines = true;
                 if let Some(t) = &self.target_lo {
-                    self.draw_lines(t, camera, rw, rh, dpr * s);
+                    self.draw_lines(t, camera, &blend, rw, rh, dpr * s);
                 }
             } else if self
                 .ensure_target(width_px as i32, height_px as i32)
@@ -834,13 +1072,21 @@ impl Renderer {
             {
                 have_lines = true;
                 if let Some(t) = &self.target {
-                    self.draw_lines(t, camera, rw, rh, dpr);
+                    self.draw_lines(t, camera, &blend, rw, rh, dpr);
                 }
             }
         }
         let gl = &self.gl;
         gl.bind_vertex_array(Some(&self.vao));
-        let b = camera.globe_bounds(rw as f64, rh as f64).map(|v| v as f32);
+        // Only the ray-traced globe leaves most of the screen empty.
+        let bounds = |w: f64, h: f64| {
+            if mode == MODE_GLOBE {
+                camera.globe_bounds(w, h).map(|v| v as f32)
+            } else {
+                FULL_SCREEN
+            }
+        };
+        let b = bounds(rw as f64, rh as f64);
         match (&self.color_lo, scaled) {
             (Some(c), true) => {
                 gl.bind_framebuffer(GL::FRAMEBUFFER, Some(&c.fbo));
@@ -855,9 +1101,85 @@ impl Renderer {
                 self.draw_space(b, dpr);
             }
         }
+        let frame = FlatFrame::new(camera, &blend, rw, rh);
+        let line_target = if scaled {
+            &self.target_lo
+        } else {
+            &self.target
+        };
+        let lines_tex = line_target.as_ref().filter(|_| have_lines).map(|t| &t.tex);
+        // The quad program: the globe, a flat map, or (morph) the space
+        // behind the mesh.
         let u = &self.uniforms;
         gl.use_program(Some(&self.program));
+        self.set_frame_uniforms(
+            u,
+            camera,
+            &frame,
+            (rw, rh),
+            dpr,
+            s,
+            lines_tex,
+            if mode == MODE_MORPH { MODE_SPACE } else { mode },
+        );
         gl.uniform4f(u.bounds.as_ref(), b[0], b[1], b[2], b[3]);
+        gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
+
+        if let (MODE_MORPH, Some(m)) = (mode, &self.morph) {
+            gl.use_program(Some(&m.program));
+            self.set_frame_uniforms(
+                &m.uniforms,
+                camera,
+                &frame,
+                (rw, rh),
+                dpr,
+                s,
+                lines_tex,
+                MODE_MORPH,
+            );
+            gl.uniform1i(m.uniforms.proj_a.as_ref(), frame.proj_a);
+            gl.uniform1i(m.uniforms.proj_b.as_ref(), frame.proj_b);
+            gl.uniform1f(m.uniforms.blend_mix.as_ref(), frame.mix);
+            gl.uniform2f(m.uniforms.cy_ab.as_ref(), frame.cy[0], frame.cy[1]);
+            gl.uniform1f(m.uniforms.globe.as_ref(), blend.globe_weight() as f32);
+            gl.enable(GL::BLEND);
+            gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
+            gl.bind_vertex_array(Some(&m.vao));
+            gl.draw_elements_with_i32(GL::TRIANGLES, m.indices, GL::UNSIGNED_SHORT, 0);
+            gl.disable(GL::BLEND);
+            gl.bind_vertex_array(Some(&self.vao));
+        }
+
+        if let (Some(c), true) = (&self.color_lo, scaled) {
+            gl.bind_framebuffer(GL::FRAMEBUFFER, None);
+            gl.viewport(0, 0, width_px as i32, height_px as i32);
+            let full = bounds(width_px as f64, height_px as f64);
+            self.draw_space(full, dpr);
+            let bl = &self.blit;
+            gl.use_program(Some(&bl.program));
+            gl.uniform4f(bl.bounds.as_ref(), full[0], full[1], full[2], full[3]);
+            gl.uniform2f(bl.res.as_ref(), width_px as f32, height_px as f32);
+            gl.active_texture(GL::TEXTURE0);
+            gl.bind_texture(GL::TEXTURE_2D, Some(&c.tex));
+            gl.uniform1i(bl.src.as_ref(), 0);
+            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
+        }
+    }
+
+    /// Uniforms shared by the quad and mesh programs, plus the textures.
+    #[allow(clippy::too_many_arguments)]
+    fn set_frame_uniforms(
+        &self,
+        u: &Uniforms,
+        camera: &Camera,
+        frame: &FlatFrame,
+        (rw, rh): (u32, u32),
+        dpr: f64,
+        s: f64,
+        lines_tex: Option<&WebGlTexture>,
+        mode: i32,
+    ) {
+        let gl = &self.gl;
         gl.uniform1f(u.scale.as_ref(), s as f32);
         gl.uniform2f(u.res.as_ref(), rw as f32, rh as f32);
         gl.uniform1f(u.dist.as_ref(), camera.dist() as f32);
@@ -873,6 +1195,11 @@ impl Renderer {
             u.sun_on.as_ref(),
             if self.sun.is_some() { 1.0 } else { 0.0 },
         );
+        gl.uniform1i(u.mode.as_ref(), mode);
+        gl.uniform1i(u.proj.as_ref(), frame.proj_a);
+        gl.uniform1f(u.flat_px.as_ref(), frame.flat_px);
+        gl.uniform1f(u.cy.as_ref(), frame.cy[0]);
+        gl.uniform1f(u.lon0.as_ref(), frame.lon0);
         gl.active_texture(GL::TEXTURE0);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.map));
         gl.uniform1i(u.map.as_ref(), 0);
@@ -881,34 +1208,10 @@ impl Renderer {
         gl.uniform1i(u.ids.as_ref(), 1);
         // The line target; unbound (reads as zero) until lines are uploaded.
         gl.active_texture(GL::TEXTURE2);
-        let line_target = if scaled {
-            &self.target_lo
-        } else {
-            &self.target
-        };
-        let lines_tex = line_target.as_ref().filter(|_| have_lines);
-        gl.bind_texture(GL::TEXTURE_2D, lines_tex.map(|t| &t.tex));
+        gl.bind_texture(GL::TEXTURE_2D, lines_tex);
         gl.uniform1i(u.lines.as_ref(), 2);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         gl.active_texture(GL::TEXTURE0);
-        gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
-
-        if let (Some(c), true) = (&self.color_lo, scaled) {
-            gl.bind_framebuffer(GL::FRAMEBUFFER, None);
-            gl.viewport(0, 0, width_px as i32, height_px as i32);
-            let full = camera
-                .globe_bounds(width_px as f64, height_px as f64)
-                .map(|v| v as f32);
-            self.draw_space(full, dpr);
-            let bl = &self.blit;
-            gl.use_program(Some(&bl.program));
-            gl.uniform4f(bl.bounds.as_ref(), full[0], full[1], full[2], full[3]);
-            gl.uniform2f(bl.res.as_ref(), width_px as f32, height_px as f32);
-            gl.active_texture(GL::TEXTURE0);
-            gl.bind_texture(GL::TEXTURE_2D, Some(&c.tex));
-            gl.uniform1i(bl.src.as_ref(), 0);
-            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
-        }
     }
 
     /// Fill the canvas with space and stars, unless the globe quad `bounds`
@@ -1171,6 +1474,7 @@ mod tests {
         let declared: Vec<&str> = FRAG_SRC
             .lines()
             .chain(VERT_SRC.lines())
+            .chain(MORPH_VERT_SRC.lines())
             .filter_map(|l| l.trim().strip_prefix("uniform "))
             .filter_map(|l| l.split(';').next()?.split_whitespace().last())
             .collect();
@@ -1191,6 +1495,16 @@ mod tests {
             "u_sunOn",
             "u_bounds",
             "u_scale",
+            "u_mode",
+            "u_proj",
+            "u_flatPx",
+            "u_cy",
+            "u_lon0",
+            "u_globe",
+            "u_projA",
+            "u_projB",
+            "u_mix",
+            "u_cyAB",
         ] {
             assert!(declared.contains(&name), "{name} missing from globe.frag");
             let lookup = format!("u(\"{name}\")");
@@ -1257,6 +1571,14 @@ mod tests {
             "u_rot",
             "u_width",
             "u_strength",
+            "u_lon0",
+            "u_projA",
+            "u_projB",
+            "u_mix",
+            "u_cyAB",
+            "u_flatPx",
+            "u_shift",
+            "u_clip",
         ] {
             assert!(declared.contains(&name), "{name} missing from line shaders");
             let lookup = format!("lu(\"{name}\")");
@@ -1264,6 +1586,51 @@ mod tests {
                 include_str!("render.rs").contains(&lookup),
                 "{name} not looked up"
             );
+        }
+    }
+
+    #[test]
+    fn morph_grid_covers_the_sphere_and_fits_16_bit_indices() {
+        let (verts, indices) = morph_grid();
+        assert_eq!(verts.len() / 2, 361 * 181);
+        assert!(verts.len() / 2 <= u16::MAX as usize + 1);
+        assert_eq!(indices.len(), 360 * 180 * 6);
+        assert!(indices.iter().all(|&i| (i as usize) < verts.len() / 2));
+        let lats: Vec<f32> = verts.chunks(2).map(|v| v[0]).collect();
+        let lons: Vec<f32> = verts.chunks(2).map(|v| v[1]).collect();
+        let max = |v: &[f32]| v.iter().cloned().fold(f32::MIN, f32::max);
+        let min = |v: &[f32]| v.iter().cloned().fold(f32::MAX, f32::min);
+        assert!((max(&lats) - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!((min(&lats) + std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!((max(&lons) - std::f32::consts::PI).abs() < 1e-6);
+        assert!((min(&lons) + std::f32::consts::PI).abs() < 1e-6);
+    }
+
+    #[test]
+    fn blend_picks_the_shader_path() {
+        assert_eq!(blend_mode(&Blend::settled(Projection::Globe)), MODE_GLOBE);
+        assert_eq!(blend_mode(&Blend::settled(Projection::Robinson)), MODE_FLAT);
+        let mid = Blend {
+            a: Projection::Globe,
+            b: Projection::Mercator,
+            t: 0.4,
+        };
+        assert_eq!(blend_mode(&mid), MODE_MORPH);
+        // The ends of a morph are the exact paths.
+        assert_eq!(blend_mode(&Blend { t: 0.0, ..mid }), MODE_GLOBE);
+        assert_eq!(blend_mode(&Blend { t: 1.0, ..mid }), MODE_FLAT);
+        // The mode numbers are the ones globe.frag branches on.
+        for (name, v) in [
+            ("0", MODE_GLOBE),
+            ("1", MODE_FLAT),
+            ("2", MODE_MORPH),
+            ("3", MODE_SPACE),
+        ] {
+            assert!(
+                FRAG_SRC.contains(&format!("u_mode == {name}")) || name == "2",
+                "{name}"
+            );
+            assert_eq!(v.to_string(), name);
         }
     }
 
@@ -1339,6 +1706,7 @@ mod tests {
     fn shaders_target_glsl_es_300() {
         assert!(VERT_SRC.starts_with("#version 300 es"));
         assert!(FRAG_SRC.starts_with("#version 300 es"));
+        assert!(MORPH_VERT_SRC.starts_with("#version 300 es"));
         assert!(LINE_VERT_SRC.starts_with("#version 300 es"));
         assert!(LINE_FRAG_SRC.starts_with("#version 300 es"));
     }
