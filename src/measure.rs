@@ -1,10 +1,15 @@
 //! Great-circle measurement: pure, browser-free math and state.
 //!
-//! Distances use the haversine formula on a sphere of radius
-//! `EARTH_RADIUS_KM`, which is within about 0.5% of the WGS84 geodesic.
+//! The drawn path is a great circle on the unit sphere, but the reported
+//! distances are WGS84 geodesic lengths (`geodesic::distance_m`), which differ
+//! from the spherical great circle by up to about 0.5%. `central_angle` stays
+//! spherical and is used only for the drawn arc.
 
-use crate::camera::{spherical, Camera, EARTH_RADIUS_KM};
+#[cfg(test)]
+use crate::camera::EARTH_RADIUS_KM;
+use crate::camera::{spherical, Camera};
 use crate::controls::{DOUBLE_CLICK_MS, TAP_SLOP_PX};
+use crate::geodesic;
 use crate::view::{group_thousands, Units};
 use std::f64::consts::PI;
 
@@ -40,8 +45,16 @@ pub fn central_angle(a: (f64, f64), b: (f64, f64)) -> Option<f64> {
     Some(2.0 * h.sqrt().atan2((1.0 - h).sqrt()))
 }
 
-/// Great-circle distance in km. `None` for non-finite input.
+/// WGS84 geodesic distance in km. `None` for non-finite input.
 pub fn distance_km(a: (f64, f64), b: (f64, f64)) -> Option<f64> {
+    geodesic::distance_m(a, b).map(|m| m / 1000.0)
+}
+
+/// Distance in km along a great circle on the sphere of radius
+/// `EARTH_RADIUS_KM`. Used where the sphere is the model (tests of the drawn
+/// arc), not for reported lengths.
+#[cfg(test)]
+fn sphere_distance_km(a: (f64, f64), b: (f64, f64)) -> Option<f64> {
     central_angle(a, b).map(|c| c * EARTH_RADIUS_KM)
 }
 
@@ -574,11 +587,26 @@ mod tests {
     }
 
     #[test]
+    fn reported_distances_are_wgs84() {
+        // GeographicLib: JFK to Heathrow, and a quarter of the meridian.
+        let d = distance_km(deg(40.6413, -73.7781), deg(51.47, -0.4543)).unwrap();
+        assert!((d - 5554.9087905).abs() < 1e-6, "{d}");
+        let q = distance_km(deg(0.0, 0.0), deg(90.0, 0.0)).unwrap();
+        assert!((q - 10001.965729).abs() < 1e-6, "{q}");
+        // The sphere is a little shorter there (10007.5 km).
+        assert!(sphere_distance_km(deg(0.0, 0.0), deg(90.0, 0.0)).unwrap() > q);
+        let mut m = Measure::default();
+        m.add(0.0, 0.0);
+        m.add(0.0, 90f64.to_radians());
+        assert!((m.total_km() - 10018.754171).abs() < 1e-6);
+    }
+
+    #[test]
     fn identical_and_symmetric() {
         let p = deg(12.0, 34.0);
         assert_eq!(distance_km(p, p), Some(0.0));
         let q = deg(-45.0, 100.0);
-        assert_eq!(distance_km(p, q), distance_km(q, p));
+        assert!((distance_km(p, q).unwrap() - distance_km(q, p).unwrap()).abs() < 1e-9);
     }
 
     #[test]
@@ -589,24 +617,24 @@ mod tests {
             (deg(90.0, 0.0), deg(-90.0, 0.0)),
             (deg(37.0, -122.0), deg(-37.0, 58.0)),
         ] {
-            assert!(within(distance_km(a, b).unwrap(), half, 1e-9));
+            assert!(within(sphere_distance_km(a, b).unwrap(), half, 1e-9));
         }
     }
 
     #[test]
     fn seam_crossing_takes_short_way() {
-        let d = distance_km(deg(0.0, 179.0), deg(0.0, -179.0)).unwrap();
+        let d = sphere_distance_km(deg(0.0, 179.0), deg(0.0, -179.0)).unwrap();
         assert!(within(d, 2.0 * EARTH_RADIUS_KM * PI / 180.0, 1e-9));
         // Lon outside [-180, 180] is equivalent.
-        let e = distance_km(deg(0.0, 179.0), deg(0.0, 181.0)).unwrap();
+        let e = sphere_distance_km(deg(0.0, 179.0), deg(0.0, 181.0)).unwrap();
         assert!(within(e, d, 1e-9));
     }
 
     #[test]
     fn poles() {
-        let d = distance_km(deg(90.0, 0.0), deg(90.0, 123.0)).unwrap();
+        let d = sphere_distance_km(deg(90.0, 0.0), deg(90.0, 123.0)).unwrap();
         assert!(d.abs() < 1e-6);
-        let q = distance_km(deg(90.0, 0.0), deg(0.0, 77.0)).unwrap();
+        let q = sphere_distance_km(deg(90.0, 0.0), deg(0.0, 77.0)).unwrap();
         assert!(within(q, PI / 2.0 * EARTH_RADIUS_KM, 1e-9));
     }
 
@@ -614,12 +642,12 @@ mod tests {
     fn non_finite_rejected() {
         let p = deg(0.0, 0.0);
         for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert_eq!(distance_km((bad, 0.0), p), None);
-            assert_eq!(distance_km(p, (0.0, bad)), None);
+            assert_eq!(sphere_distance_km((bad, 0.0), p), None);
+            assert_eq!(sphere_distance_km(p, (0.0, bad)), None);
             assert_eq!(interpolate(p, p, bad), None);
             assert!(sample_arc((bad, bad), p).is_empty());
         }
-        assert_eq!(distance_km((2.0, 0.0), p), None); // latitude beyond a pole
+        assert_eq!(sphere_distance_km((2.0, 0.0), p), None); // latitude beyond a pole
     }
 
     #[test]
@@ -628,12 +656,12 @@ mod tests {
         let b = deg(50.0, 80.0);
         let s = interpolate(a, b, 0.0).unwrap();
         let e = interpolate(a, b, 1.0).unwrap();
-        assert!(distance_km(s, a).unwrap() < 1e-6);
-        assert!(distance_km(e, b).unwrap() < 1e-6);
+        assert!(sphere_distance_km(s, a).unwrap() < 1e-6);
+        assert!(sphere_distance_km(e, b).unwrap() < 1e-6);
         let m = interpolate(a, b, 0.5).unwrap();
-        let total = distance_km(a, b).unwrap();
-        assert!(within(distance_km(a, m).unwrap(), total / 2.0, 1e-9));
-        assert!(within(distance_km(m, b).unwrap(), total / 2.0, 1e-9));
+        let total = sphere_distance_km(a, b).unwrap();
+        assert!(within(sphere_distance_km(a, m).unwrap(), total / 2.0, 1e-9));
+        assert!(within(sphere_distance_km(m, b).unwrap(), total / 2.0, 1e-9));
     }
 
     #[test]
@@ -655,18 +683,18 @@ mod tests {
             for i in 1..=100 {
                 let p = interpolate(a, b, i as f64 / 100.0).unwrap();
                 assert!(p.0.is_finite() && p.1.is_finite());
-                sum += distance_km(prev, p).unwrap();
+                sum += sphere_distance_km(prev, p).unwrap();
                 prev = p;
             }
             assert!(within(sum, PI * EARTH_RADIUS_KM, 1e-6));
-            assert!(distance_km(prev, b).unwrap() < 1e-3);
+            assert!(sphere_distance_km(prev, b).unwrap() < 1e-3);
         }
     }
 
     #[test]
     fn interpolation_over_the_seam_and_pole() {
         let m = interpolate(deg(0.0, 170.0), deg(0.0, -170.0), 0.5).unwrap();
-        assert!(distance_km(m, deg(0.0, 180.0)).unwrap() < 1e-6);
+        assert!(sphere_distance_km(m, deg(0.0, 180.0)).unwrap() < 1e-6);
         // Between two points on opposite meridians at the same latitude the
         // path goes over the pole.
         let m = interpolate(deg(80.0, 0.0), deg(80.0, 180.0), 0.5).unwrap();
@@ -693,7 +721,8 @@ mod tests {
         m.add(0.0, 1f64.to_radians());
         m.add(0.0, 2f64.to_radians());
         assert_eq!(m.legs_km().len(), 2);
-        assert!(within(m.total_km(), 2.0 * 111.195, 0.001));
+        // Two degrees along the equator: 2 * 111.31949 km on WGS84.
+        assert!(within(m.total_km(), 2.0 * 111.319_491, 1e-6));
         assert!(m.undo());
         assert_eq!(m.points().len(), 2);
         m.active = true;

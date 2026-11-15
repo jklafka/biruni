@@ -699,11 +699,38 @@ mod tests {
         assert_eq!(names(&g, "zurich", 1), ["Zürich"]);
         assert_eq!(names(&g, "sao paulo", 1), ["São Paulo"]);
         assert_eq!(g.search("london", 1)[0].country, "United Kingdom");
-        // Frames use the mainland box, not one spanning the antimeridian.
+        // Frames cover a country's nearby polygons, never one spanning the
+        // antimeridian the long way round.
         let us = g.search("united states", 1)[0];
         assert!(us.extent_deg > 20.0 && us.extent_deg < 90.0);
         let ru = g.search("russia", 1)[0];
         assert!((ru.lon - 100.0).abs() < 30.0);
+    }
+
+    #[test]
+    fn country_frames_cover_archipelagos_and_the_seam() {
+        let g = Gazetteer::parse(DATA).unwrap();
+        let get = |n: &str| g.search(n, 1)[0].clone();
+        // Fiji straddles 180: a narrow frame on the seam, not ~360 degrees.
+        let fiji = get("fiji");
+        assert!(fiji.lon.abs() > 170.0, "{fiji:?}");
+        assert!(fiji.extent_deg > 4.0 && fiji.extent_deg < 12.0, "{fiji:?}");
+        // Archipelagos are framed whole, not just their biggest island.
+        let indonesia = get("indonesia");
+        assert!(indonesia.extent_deg > 35.0, "{indonesia:?}");
+        assert!((indonesia.lon - 118.0).abs() < 10.0, "{indonesia:?}");
+        let ph = get("philippines");
+        assert!(ph.extent_deg > 12.0 && ph.extent_deg < 20.0, "{ph:?}");
+        // Far-flung overseas parts are left out of France's frame.
+        let fr = get("france");
+        assert!(fr.extent_deg < 15.0 && fr.lon.abs() < 10.0, "{fr:?}");
+        let ki = get("kiribati");
+        assert!(ki.extent_deg > 10.0, "{ki:?}");
+        // Every country frame is a valid, finite view.
+        for p in g.places.iter().filter(|p| p.kind == Kind::Country) {
+            assert!(p.extent_deg.is_finite() && p.extent_deg <= 180.0, "{p:?}");
+            assert!(p.lon.abs() <= 180.0 && p.lat.abs() <= 90.0, "{p:?}");
+        }
     }
 
     #[test]
