@@ -29,6 +29,7 @@ features = [
   "WebGl2RenderingContext",
   "WebGlBuffer",
   "WebGlFramebuffer",
+  "WebglLoseContext",
   "WebGlProgram",
   "WebGlShader",
   "WebGlTexture",

@@ -23,7 +23,7 @@ Every pull request runs CI (format, clippy, tests, shader validation, a release 
 
 ## Visual regression tests
 
-`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at seven fixed views set by the URL hash: the whole globe, mid zoom, closest zoom, the antimeridian, the monochrome layer, and the day/night terminator in both layers (with the sun pinned by `&t=`). It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
+`visual-tests/` screenshots the globe in headless Chromium (software WebGL2 through SwiftShader) at fixed views set by the URL hash: the whole globe, mid zoom, closest zoom, the antimeridian, the monochrome layer, and the day/night terminator in both layers (with the sun pinned by `&t=`). It waits for the map data to load, then compares each screenshot with a committed baseline in `visual-tests/baselines/` using pixelmatch. A view fails if more than 0.5% of its pixels differ noticeably. This tolerates small rasterizer differences but catches a flipped land mask, a black globe or a shifted camera.
 
 ```sh
 trunk build --release
@@ -33,6 +33,8 @@ npm test                                    # compare with baselines
 ```
 
 New screenshots go to `visual-tests/actual/` and diff images to `visual-tests/diff/` (both git-ignored). CI uploads them as the `visual-screenshots` artifact.
+
+**Context-loss test.** The `ctxloss-restored` view loads mid-zoom with `?debug=ctxloss`, loses the WebGL context, restores it, waits for the re-render and screenshots. It must match the no-loss `mid-zoom` view (the run compares the two directly) and recovery must not start a Worker or request anything again.
 
 **Updating baselines.** Rendering differs slightly between macOS and Linux, so baselines are generated on Linux, the same as CI. After an intentional rendering change, push the branch and open the PR. Wait for CI to finish (the Visual regression job fails, which is expected), then run this from a clean checkout of the PR branch:
 
@@ -83,6 +85,10 @@ Rotation has two modes. **North-up** (the default) keeps north at the top and pa
 The current view is saved in the URL hash as `#lat,lon,altitude_km`, so you can link straight to a place, e.g. `#46.8,8.2,600`. A fourth field adds the bearing, the compass direction at the top of the screen in degrees, e.g. `#46.8,8.2,600,135`; it is written only when the view is not facing north, so older links keep working. A nonzero bearing opens in free mode. You can center on a pole exactly, e.g. `#90,0,6000` (longitude then picks which meridian runs down the screen in north-up). A non-default layer is added as `&layer=<id>`, e.g. `#46.8,8.2,600&layer=mono`. Switching layers never moves the camera.
 
 The day/night terminator is off by default. `&sun=on` turns it on at load, and `&t=<unix seconds>` pins the sun to a fixed time instead of the clock (the visual tests use this so screenshots are deterministic). Both are read at load and again when you edit the hash by hand (a missing `sun` means off). The app writes them back: while the terminator is on, the hash and the share link include `&sun=on`, and `&t=` only if the time is pinned. In live-clock mode `t` is never written, so the hash does not change every minute. Turning the terminator off removes both from the hash, but a pinned time is remembered in the page and returns if you turn it back on. While on, the sun follows the clock and is refreshed once a minute by a timer. That timer is the only work the app does while idle, and it only redraws when the terminator is on.
+
+## Debug aids
+
+These are for testing, not controls, and have no UI. `?debug=ctxloss` (before the `#` hash) makes the backquote key (`` ` ``) lose the WebGL context through the `WEBGL_lose_context` extension; press it again to restore it. This exercises context recovery (everything is rebuilt from data kept in memory, with no refetch) without the browser console. Without the flag the key does nothing. `?tex=low|high` forces a texture tier.
 
 ## How it works
 
