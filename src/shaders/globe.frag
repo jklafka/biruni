@@ -14,7 +14,9 @@ uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
 uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
-uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
+uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = satellite imagery (see view::Layer)
+uniform sampler2D u_imagery;  // RGBA8 satellite image, equirectangular like u_map
+uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform vec4 u_idColor[64];   // political color index of country ID i: u_idColor[i / 4][i % 4]
 uniform float u_political;    // 1 once the country data has loaded (fills on), else plain land
@@ -65,6 +67,7 @@ const vec3 PALETTE[6] = vec3[6](
 const vec3 ICE = vec3(0.900, 0.925, 0.950);
 const vec3 BORDER = vec3(0.150, 0.170, 0.130);
 const vec3 COAST = vec3(0.780, 0.860, 0.900);
+const vec3 BORDER_SAT = vec3(0.960, 0.930, 0.800);
 const vec3 MONO_OCEAN = vec3(0.015, 0.020, 0.030);
 const vec3 MONO_LAND = vec3(0.180, 0.190, 0.210);
 const vec3 MONO_BORDER = vec3(0.700, 0.730, 0.780);
@@ -218,6 +221,11 @@ void main() {
     vec2 duvdy = vec2(dFdy(u) * uScale, dFdy(uv.y));
 
     float m = textureGrad(u_map, uv, duvdx, duvdy).r * u_hasMap;
+    // Satellite image: the same uv, gradients (polar LOD scale included) and
+    // seam handling as the land mask. Sampled for every pixel, whatever the
+    // layer, so the quad stays on one control path.
+    vec3 imagery = textureGrad(u_imagery, uv, duvdx, duvdy).rgb;
+    bool satellite = u_layer == 2 && u_hasImagery > 0.5;
     // Vector coastlines (R) and borders (G), drawn at constant pixel width.
     vec2 ln = texelFetch(u_lines, ivec2(gl_FragCoord.xy), 0).rg;
 
@@ -351,7 +359,20 @@ void main() {
     }
 
     vec3 col = mix(ocean, ground, land);
-    col = mix(col, COAST, ln.r * 0.35);
+    if (satellite) {
+        // The photo carries its own land, water and ice. Vector lines stay on
+        // top, lighter than on the other layers so they do not hide detail.
+        col = imagery;
+        col = mix(col, BORDER_SAT, ln.g * land * 0.55);
+        col = mix(col, COAST, ln.r * 0.22);
+        if (u_highlight > 0) {
+            // Lighten and warm the country; the photo has no flat color to tint.
+            float hl = smoothstep(0.35, 0.65, hlMask) * land * u_hasMap;
+            col = mix(col, vec3(1.0, 0.95, 0.80), 0.30 * hl);
+        }
+    } else {
+        col = mix(col, COAST, ln.r * 0.35);
+    }
 
     // Graticule with constant on-screen width; meridians fade near the poles
     // where they converge.
@@ -381,6 +402,7 @@ void main() {
     float sunElev = dot(w, u_sun);
     float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn;
     vec3 nightTint = u_layer == 1 ? vec3(0.24, 0.28, 0.42) : vec3(0.22, 0.26, 0.42);
+    if (satellite) nightTint = vec3(0.12, 0.15, 0.27);  // no city lights: just dark
     col *= mix(vec3(1.0), nightTint, night);
 
     // Atmospheric scattering toward the limb.

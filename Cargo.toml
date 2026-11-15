@@ -57,6 +57,11 @@ features = [
   "ResizeObserver",
   "Worker",
   "MessageEvent",
+  "Blob",
+  "BlobPropertyBag",
+  "ImageBitmap",
+  "ImageBitmapOptions",
+  "ResizeQuality",
 ]
 
 [dev-dependencies]

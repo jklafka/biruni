@@ -15,16 +15,28 @@ pub enum Layer {
     Political,
     /// Dark, low-color style that makes borders stand out.
     Monochrome,
+    /// NASA Blue Marble satellite imagery (fetched on first use).
+    Imagery,
 }
 
 impl Layer {
-    pub const ALL: [Layer; 2] = [Layer::Political, Layer::Monochrome];
+    pub const ALL: [Layer; 3] = [Layer::Political, Layer::Monochrome, Layer::Imagery];
 
     /// Short identifier used in the URL hash and in element ids.
     pub fn id(self) -> &'static str {
         match self {
             Layer::Political => "political",
             Layer::Monochrome => "mono",
+            Layer::Imagery => "imagery",
+        }
+    }
+
+    /// Name shown to the user (status line and messages).
+    pub fn label(self) -> &'static str {
+        match self {
+            Layer::Political => "Political",
+            Layer::Monochrome => "Monochrome",
+            Layer::Imagery => "Satellite",
         }
     }
 
@@ -33,11 +45,12 @@ impl Layer {
     }
 
     /// Data file (relative to the page) this layer needs before it can be
-    /// shown, fetched the first time it is selected. Today's layers are
-    /// palettes over the base map and need none.
+    /// shown, fetched the first time it is selected. Political and
+    /// Monochrome are palettes over the base map and need none.
     pub fn data_url(self) -> Option<&'static str> {
         match self {
             Layer::Political | Layer::Monochrome => None,
+            Layer::Imagery => Some("data/blue_marble.webp"),
         }
     }
 
@@ -46,6 +59,7 @@ impl Layer {
         match self {
             Layer::Political => 0,
             Layer::Monochrome => 1,
+            Layer::Imagery => 2,
         }
     }
 
@@ -1147,5 +1161,74 @@ mod tests {
         assert!(!is_phantom_mouse_move(true, 0, 0.0, 0.0));
         // A drag in progress is never phantom.
         assert!(!is_phantom_mouse_move(false, 1, 0.0, 0.0));
+    }
+
+    #[test]
+    fn imagery_layer_round_trips_through_the_hash_and_share_link() {
+        assert_eq!(Layer::from_id("imagery"), Some(Layer::Imagery));
+        let c = Camera::new(46.8, 8.2, 600.0 / EARTH_RADIUS_KM);
+        let hash = format_view_hash(&c, Layer::Imagery, SunView::default());
+        assert_eq!(hash, "#46.8000,8.2000,600&layer=imagery");
+        assert_eq!(parse_hash_layer(&hash), Some(Layer::Imagery));
+        let url = share_url(
+            "https://example.com/maps/",
+            &c,
+            Layer::Imagery,
+            SunView::default(),
+        );
+        assert_eq!(
+            url,
+            "https://example.com/maps/#46.8000,8.2000,600&layer=imagery"
+        );
+        assert_eq!(Layer::Monochrome.next(), Layer::Imagery);
+        assert_eq!(Layer::Imagery.next(), Layer::Political);
+    }
+
+    #[test]
+    fn only_the_imagery_layer_needs_data_and_the_file_ships() {
+        for l in Layer::ALL {
+            assert_eq!(l.data_url().is_some(), l == Layer::Imagery, "{l:?}");
+            assert_eq!(
+                crate::layer_loader::Loadable::needs_data(l),
+                l.data_url().is_some()
+            );
+        }
+        let url = Layer::Imagery.data_url().unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(url);
+        let len = std::fs::metadata(&path)
+            .expect("imagery asset is committed")
+            .len();
+        assert!(len > 100_000 && len < 2_000_000, "{len} bytes");
+    }
+
+    #[test]
+    fn imagery_goes_through_the_loader_like_a_real_data_layer() {
+        use crate::layer_loader::{DataState, Effect, LayerLoader};
+        let mut l = LayerLoader::new(Layer::Political);
+        // A URL naming the layer: nothing shows until the data arrives.
+        assert_eq!(
+            l.select(Layer::Imagery),
+            vec![Effect::Fetch(Layer::Imagery)]
+        );
+        assert_eq!(l.shown(), Layer::Political);
+        assert_eq!(l.pending(), Some(Layer::Imagery));
+        // A failed fetch falls back, then retries on the next selection.
+        let fail = l.finished(Layer::Imagery, Err("HTTP 404".into()));
+        assert!(matches!(fail[0], Effect::Failed(Layer::Imagery, _)));
+        assert_eq!(l.shown(), Layer::Political);
+        assert_eq!(l.state(Layer::Imagery), DataState::Failed);
+        assert_eq!(
+            l.select(Layer::Imagery),
+            vec![Effect::Fetch(Layer::Imagery)]
+        );
+        assert_eq!(
+            l.finished(Layer::Imagery, Ok(())),
+            vec![Effect::Show(Layer::Imagery)]
+        );
+        // Once loaded it switches at once and never fetches again.
+        l.select(Layer::Monochrome);
+        assert_eq!(l.select(Layer::Imagery), vec![Effect::Show(Layer::Imagery)]);
     }
 }

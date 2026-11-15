@@ -5,6 +5,7 @@ mod controls;
 mod country;
 mod country_cycle;
 mod geo;
+mod imagery;
 mod info_panel;
 mod label_layer;
 mod labels;
@@ -58,7 +59,8 @@ struct App {
     renderer: render::Renderer,
     /// Which layer is shown, wanted and loading. See `layer_loader`.
     layers_state: LayerLoader<Layer>,
-    /// Fetched data of layers that need it (none do yet).
+    /// Fetched (still encoded) data of layers that need it. Kept so a lost
+    /// WebGL context can rebuild the layer's texture without a download.
     layer_data: HashMap<Layer, Rc<Vec<u8>>>,
     /// Handle to this app, for spawning layer fetches.
     me: Weak<RefCell<App>>,
@@ -91,6 +93,8 @@ struct App {
     cursor: Option<(f64, f64)>,
     /// The last pointer was a mouse, so the cursor position means hover.
     mouse_hover: bool,
+    /// The last pointer pressed or moved was touch or pen, not a mouse.
+    coarse_pointer: bool,
     countries: Option<country::Countries>,
     /// Country-ID raster, kept so a restored context can re-upload it.
     ids: Option<Rc<Vec<u8>>>,
@@ -130,6 +134,7 @@ struct App {
 impl App {
     fn context_lost(&mut self) {
         self.renderer.context_lost();
+        self.sync_imagery_attr();
         self.send(Event::CancelInertia);
         self.status.set_text_content(Some("Restoring map…"));
         let _ = self.status.class_list().remove_2("hidden", "error");
@@ -142,6 +147,8 @@ impl App {
             .context_restored(layers.as_deref(), self.ids.as_ref().map(|v| v.as_slice()))
         {
             Ok(()) => {
+                self.sync_imagery_attr();
+                self.restore_imagery();
                 if layers.is_some() {
                     let _ = self.status.class_list().add_1("hidden");
                 } else {
@@ -253,12 +260,14 @@ impl App {
                     debug_assert!(self.layers_state.shown() == l);
                     self.renderer.set_layer(l);
                     self.redraw.mark_render();
+                    // Lets the visual tests wait for the layer to be on screen.
+                    self.set_globe_attr("data-layer", l.id());
                 }
                 Effect::Fetch(l) => self.fetch_layer(l),
                 Effect::Failed(l, msg) => {
                     web_sys::console::error_1(&JsValue::from_str(&msg));
                     self.layer_error =
-                        Some(format!("Could not load {}. Select it to retry.", l.id()));
+                        Some(format!("Could not load {}. Select it to retry.", l.label()));
                 }
             }
         }
@@ -276,16 +285,67 @@ impl App {
             return;
         };
         wasm_bindgen_futures::spawn_local(async move {
-            let result = geo::fetch_bytes(url)
-                .await
-                .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")));
+            let result = Self::load_layer_data(&app, layer, url).await;
             let mut a = app.borrow_mut();
-            let result = result.map(|bytes| {
-                a.layer_data.insert(layer, Rc::new(bytes));
-            });
             let effects = a.layers_state.finished(layer, result);
             a.apply_layer_effects(effects);
         });
+    }
+
+    /// Fetch, decode and upload one layer's data. No borrow of the app is
+    /// held across an await.
+    async fn load_layer_data(
+        app: &Rc<RefCell<App>>,
+        layer: Layer,
+        url: &str,
+    ) -> Result<(), String> {
+        let js_msg = |e: JsValue| e.as_string().unwrap_or_else(|| format!("{e:?}"));
+        let bytes = geo::fetch_bytes(url).await.map_err(js_msg)?;
+        // Today the only layer with data is the satellite imagery.
+        debug_assert_eq!(layer, Layer::Imagery);
+        let width = app.borrow().renderer.imagery_width();
+        let bitmap = imagery::decode(&bytes, width).await.map_err(js_msg)?;
+        let mut a = app.borrow_mut();
+        a.layer_data.insert(layer, Rc::new(bytes));
+        // A no-op while the context is lost; `context_restored` redoes it.
+        let uploaded = a.renderer.upload_imagery(&bitmap);
+        bitmap.close();
+        uploaded.map_err(js_msg)?;
+        a.sync_imagery_attr();
+        Ok(())
+    }
+
+    /// After a context restore: decode the kept bytes again and upload them.
+    fn restore_imagery(&mut self) {
+        let Some(bytes) = self.layer_data.get(&Layer::Imagery).cloned() else {
+            return;
+        };
+        let Some(app) = self.me.upgrade() else { return };
+        let width = self.renderer.imagery_width();
+        wasm_bindgen_futures::spawn_local(async move {
+            let bitmap = match imagery::decode(&bytes, width).await {
+                Ok(b) => b,
+                Err(e) => return web_sys::console::error_1(&e),
+            };
+            let mut a = app.borrow_mut();
+            if let Err(e) = a.renderer.upload_imagery(&bitmap) {
+                web_sys::console::error_1(&e);
+            }
+            bitmap.close();
+            a.sync_imagery_attr();
+            a.redraw.mark_render();
+        });
+    }
+
+    fn set_globe_attr(&self, name: &str, value: &str) {
+        let _ = self.canvas.set_attribute(name, value);
+    }
+
+    /// `data-imagery` on the canvas tells the tests whether the satellite
+    /// texture is in GPU memory.
+    fn sync_imagery_attr(&self) {
+        let on = self.renderer.has_imagery();
+        self.set_globe_attr("data-imagery", if on { "1" } else { "0" });
     }
 
     /// Picker buttons show the wanted layer as pressed and the one being
@@ -300,7 +360,7 @@ impl App {
             );
         }
         let text = match (pending, &self.layer_error) {
-            (Some(l), _) => format!("Loading {}…", l.id()),
+            (Some(l), _) => format!("Loading {}…", l.label()),
             (None, Some(e)) => e.clone(),
             _ => String::new(),
         };
@@ -488,11 +548,12 @@ impl App {
     }
 
     /// Country at a screen point, once the country data has loaded.
-    fn country_at(&self, x: f64, y: f64) -> Option<usize> {
-        let (lat, lon) = self.camera.pick(x, y)?;
+    /// A country whose outline is within a few pixels counts, so tiny
+    /// islands can be hovered and tapped; `coarse` widens that for touch.
+    fn country_at(&self, x: f64, y: f64, coarse: bool) -> Option<usize> {
         self.countries
             .as_ref()?
-            .hit(lat.to_degrees(), lon.to_degrees())
+            .hit_near(&self.camera, x, y, country::near_radius(coarse))
     }
 
     /// Highlight follows the hovered country, else the selected one.
@@ -509,7 +570,9 @@ impl App {
         // points there, and a tinted country would just be visual noise.
         self.update_point_hover();
         let hit = match self.cursor {
-            Some((x, y)) if self.mouse_hover && !self.measure.active => self.country_at(x, y),
+            Some((x, y)) if self.mouse_hover && !self.measure.active => {
+                self.country_at(x, y, false)
+            }
             _ => None,
         };
         if hit != self.hover {
@@ -554,7 +617,7 @@ impl App {
 
     fn click(&mut self, x: f64, y: f64) {
         if self.info_click_enabled() {
-            let hit = self.country_at(x, y);
+            let hit = self.country_at(x, y, self.coarse_pointer);
             self.select(hit);
         }
     }
@@ -730,6 +793,7 @@ impl App {
         if !self.proj_menu.hidden() {
             self.set_proj_menu(false);
         }
+        self.coarse_pointer = e.pointer_type() != "mouse";
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         // A press on a measure point grabs it instead of panning the view.
         // Shift+click skips this and places a point even next to an
@@ -769,6 +833,7 @@ impl App {
         let (x, y) = (e.client_x() as f64, e.client_y() as f64);
         self.cursor = Some((x, y));
         self.mouse_hover = e.pointer_type() == "mouse";
+        self.coarse_pointer = !self.mouse_hover;
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
         if self.measure.owns(e.pointer_id()) {
@@ -962,6 +1027,7 @@ fn start() -> Result<(), JsValue> {
         drawn_scale: 1.0,
         cursor: None,
         mouse_hover: false,
+        coarse_pointer: false,
         countries: None,
         ids: None,
         hover: None,
@@ -1324,9 +1390,11 @@ fn start() -> Result<(), JsValue> {
                         a.send(Event::Rotate(controls::ROTATE_STEP));
                     }
                     "i" | "I" if a.info_click_enabled() => {
-                        // Info for the country at the center of the view.
-                        let (lat, lon) = (a.camera.lat.to_degrees(), a.camera.lon.to_degrees());
-                        let hit = a.countries.as_ref().and_then(|c| c.hit(lat, lon));
+                        // Info for the country at the center of the view,
+                        // with the same few pixels of slack as the mouse so
+                        // a tiny island under the crosshair counts.
+                        let (cx, cy) = (a.camera.width / 2.0, a.camera.height / 2.0);
+                        let hit = a.country_at(cx, cy, false);
                         a.select(hit);
                         return;
                     }
@@ -1414,7 +1482,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2") => {
+                    k @ ("1" | "2" | "3") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);
