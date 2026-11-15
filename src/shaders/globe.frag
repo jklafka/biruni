@@ -19,7 +19,7 @@ uniform sampler2D u_imagery;  // RGBA8 satellite image, equirectangular like u_m
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform vec4 u_idColor[64];   // political color index of country ID i: u_idColor[i / 4][i % 4]
-uniform float u_political;    // 1 once the country data has loaded (fills on), else plain land
+uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads, fades out at close zoom
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
 uniform float u_sunOn;        // 1 = shade the night side
@@ -250,7 +250,9 @@ void main() {
     // The raster is fetched, not filtered, so smooth its edges ourselves. Both
     // paths below only call texelFetch and depend on uniforms and on the
     // derivatives computed above, so derivatives elsewhere are unaffected.
-    bool political = u_layer == 0 && u_political > 0.5;
+    // At 0 (data not loaded, or zoomed in so far that the coarse raster
+    // would sit visibly off the vector borders) the fill lookups are skipped.
+    bool political = u_layer == 0 && u_political > 0.0;
     float fillW = 0.0;
     vec3 fill = vec3(0.0);
     float hlMask = 0.0;
@@ -327,7 +329,7 @@ void main() {
             }
         }
         if (fillW > 0.0) {
-            ground = fill / fillW;
+            ground = mix(ground, fill / fillW, u_political);
         }
     }
 
@@ -335,7 +337,8 @@ void main() {
     // (80% ice) in political mode, so Antarctica and northern Greenland read as
     // ice, not as a country color.
     float iceLat = latDeg < 0.0 ? 62.0 : 72.0;
-    ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat) * (fillW > 0.0 ? 0.8 : 1.0));
+    float filled = fillW > 0.0 ? u_political : 0.0;
+    ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat) * (1.0 - 0.2 * filled));
     vec3 borderCol = BORDER;
     float borderMix = 0.5;
     if (u_layer == 1) {
@@ -354,8 +357,8 @@ void main() {
         float hl = smoothstep(0.35, 0.65, hlMask) * land * u_hasMap;
         // On a fill, amber would pass for the straw country color, so lighten
         // toward a bright cream instead; no fill is that light.
-        ground = fillW > 0.0 ? mix(ground, vec3(1.0, 0.97, 0.84), 0.7 * hl)
-                             : mix(ground, HIGHLIGHT, 0.42 * hl);
+        ground = mix(mix(ground, HIGHLIGHT, 0.42 * hl),
+                     mix(ground, vec3(1.0, 0.97, 0.84), 0.7 * hl), filled);
     }
 
     vec3 col = mix(ocean, ground, land);

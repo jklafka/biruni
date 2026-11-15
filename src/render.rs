@@ -62,6 +62,45 @@ pub struct TextureBudget {
 /// Devices with at most this much RAM take the small tier.
 const LOW_MEMORY_GB: f64 = 4.0;
 
+/// Screen pixels (CSS) per country-ID texel at which political fills start
+/// to fade, and at which they are gone. The ID raster is coarse (about 10 km
+/// per texel on the high tier, 20 km on the low one) and its edges can sit up
+/// to half a texel off the vector borders, so at close zoom the fills fade out
+/// and the borders carry the map.
+pub const FILL_FADE_START_PX: f64 = 6.0;
+pub const FILL_FADE_END_PX: f64 = 12.0;
+
+/// How strongly to draw the political fills, 0..1, for this view and an ID
+/// raster `ids_width` texels around the equator. Measured at the screen
+/// center through `Camera::pick`, so it holds for the globe, every flat
+/// projection and any bearing. 1 when the center is off the map or anything
+/// is not finite. At 0 the shader skips the fill lookups entirely.
+pub fn political_fill_amount(cam: &Camera, ids_width: usize) -> f64 {
+    const STEP: f64 = 4.0; // pixels between the two picks
+    let (cx, cy) = (cam.width / 2.0, cam.height / 2.0);
+    let (Some(a), Some(b)) = (cam.pick(cx, cy - STEP / 2.0), cam.pick(cx, cy + STEP / 2.0)) else {
+        return 1.0;
+    };
+    let (va, vb) = (
+        crate::camera::spherical(a.0, a.1),
+        crate::camera::spherical(b.0, b.1),
+    );
+    let d = (va[0] - vb[0]).hypot(va[1] - vb[1]).hypot(va[2] - vb[2]);
+    let angle_per_px = 2.0 * (d / 2.0).clamp(0.0, 1.0).asin() / STEP;
+    let texel = 2.0 * std::f64::consts::PI / ids_width.max(1) as f64;
+    let px_per_texel = texel / angle_per_px;
+    if !px_per_texel.is_finite() {
+        return if px_per_texel == f64::INFINITY {
+            0.0
+        } else {
+            1.0
+        };
+    }
+    let t = ((px_per_texel - FILL_FADE_START_PX) / (FILL_FADE_END_PX - FILL_FADE_START_PX))
+        .clamp(0.0, 1.0);
+    1.0 - t * t * (3.0 - 2.0 * t)
+}
+
 /// Pick texture sizes. Capable desktops keep 8192 (crisp coastlines at the
 /// closest zoom). Touch devices, low-memory devices and GPUs limited to 4096
 /// get a 4096 map (about 11 MB with mips) and a 2048 ID raster (2 MB): at
@@ -1376,11 +1415,14 @@ impl Renderer {
         gl.uniform1i(u.imagery.as_ref(), 3);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
+        // Fills fade out as the view zooms in (see `political_fill_amount`).
         let colors = self.country_colors.as_ref();
-        gl.uniform1f(
-            u.political.as_ref(),
-            if colors.is_some() { 1.0 } else { 0.0 },
-        );
+        let fill = if colors.is_some() {
+            political_fill_amount(camera, self.budget.ids_width)
+        } else {
+            0.0
+        };
+        gl.uniform1f(u.political.as_ref(), fill as f32);
         if let Some(c) = colors {
             gl.uniform4fv_with_f32_array(u.id_color.as_ref(), c);
         }
@@ -1471,6 +1513,115 @@ fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsV
 
 #[cfg(test)]
 mod tests {
+
+    fn fill_cam(proj: Projection, lat: f64, lon: f64, km: f64, w: f64, h: f64) -> Camera {
+        let mut c = Camera::new(lat, lon, km / crate::camera::EARTH_RADIUS_KM);
+        c.width = w;
+        c.height = h;
+        c.set_projection(proj);
+        c
+    }
+
+    #[test]
+    fn political_fills_fade_out_at_close_zoom() {
+        // The visual-test views: whole globe and mid zoom keep full fills,
+        // the closest zoom (400 km) has none, on the high-tier raster.
+        let at = |km, w, h, ids| {
+            political_fill_amount(&fill_cam(Projection::Globe, 47.0, 8.5, km, w, h), ids)
+        };
+        assert_eq!(at(15_000.0, 800.0, 600.0, 4096), 1.0);
+        assert_eq!(at(1_500.0, 800.0, 600.0, 4096), 1.0);
+        assert_eq!(at(400.0, 800.0, 600.0, 4096), 0.0);
+        // Monotonic: never stronger when closer.
+        let mut prev = 1.0;
+        for km in (400..=3000).rev().step_by(50) {
+            let a = at(km as f64, 800.0, 600.0, 4096);
+            assert!(
+                (0.0..=1.0).contains(&a) && a <= prev + 1e-12,
+                "{km} km: {a}"
+            );
+            prev = a;
+        }
+        // The coarser low-tier raster fades out at a higher altitude.
+        assert!(at(900.0, 800.0, 600.0, 2048) < at(900.0, 800.0, 600.0, 4096));
+    }
+
+    #[test]
+    fn fill_fade_tracks_texel_size_on_screen() {
+        // Below the start threshold the fills are full, past the end they are
+        // gone, in between they are partial.
+        let texel_km = 2.0 * std::f64::consts::PI * crate::camera::EARTH_RADIUS_KM / 4096.0;
+        for km in [3000.0, 2000.0, 1000.0, 800.0, 600.0, 500.0] {
+            let c = fill_cam(Projection::Globe, 0.0, 0.0, km, 800.0, 600.0);
+            let px = texel_km / c.km_per_pixel();
+            let a = political_fill_amount(&c, 4096);
+            if px < FILL_FADE_START_PX - 0.01 {
+                assert!((a - 1.0).abs() < 1e-9, "{km} km: {px} px/texel gives {a}");
+            } else if px > FILL_FADE_END_PX + 0.01 {
+                assert!(a.abs() < 1e-9, "{km} km: {px} px/texel gives {a}");
+            } else if px > FILL_FADE_START_PX + 0.01 && px < FILL_FADE_END_PX - 0.01 {
+                assert!(a > 0.0 && a < 1.0, "{km} km: {px} px/texel gives {a}");
+            }
+        }
+    }
+
+    #[test]
+    fn fill_fade_works_in_every_projection_pole_seam_and_bearing() {
+        for proj in [
+            Projection::Globe,
+            Projection::Equirectangular,
+            Projection::Mercator,
+            Projection::Robinson,
+            Projection::Mollweide,
+        ] {
+            for (lat, lon) in [
+                (0.0, 0.0),
+                (0.0, 180.0),
+                (0.0, -180.0),
+                (80.0, 179.9),
+                (-60.0, -179.9),
+            ] {
+                let far = fill_cam(proj, lat, lon, 15_000.0, 800.0, 600.0);
+                assert_eq!(
+                    political_fill_amount(&far, 4096),
+                    1.0,
+                    "{proj:?} {lat},{lon}"
+                );
+                let near = fill_cam(proj, lat, lon, 100.0, 800.0, 600.0);
+                assert_eq!(
+                    political_fill_amount(&near, 4096),
+                    0.0,
+                    "{proj:?} {lat},{lon}"
+                );
+            }
+        }
+        // Poles centered on the globe, and a rotated view.
+        for lat in [90.0, -90.0] {
+            let c = fill_cam(Projection::Globe, lat, 0.0, 400.0, 800.0, 600.0);
+            assert_eq!(political_fill_amount(&c, 4096), 0.0, "{lat}");
+        }
+        let mut c = fill_cam(Projection::Globe, 47.0, 8.5, 400.0, 800.0, 600.0);
+        c.bearing = 2.3;
+        assert_eq!(political_fill_amount(&c, 4096), 0.0);
+    }
+
+    #[test]
+    fn fill_fade_is_safe_on_bad_input() {
+        let mut c = fill_cam(Projection::Globe, 0.0, 0.0, 400.0, 800.0, 600.0);
+        assert_eq!(political_fill_amount(&c, 0), 0.0, "zero-width raster");
+        c.lat = f64::NAN;
+        let a = political_fill_amount(&c, 4096);
+        assert!((0.0..=1.0).contains(&a));
+        let mut c = fill_cam(Projection::Globe, 0.0, 0.0, 400.0, 800.0, 600.0);
+        c.width = f64::INFINITY;
+        let a = political_fill_amount(&c, 4096);
+        assert!((0.0..=1.0).contains(&a));
+        // A flat map whose center row is off the map (beyond Mercator's limit).
+        let c = fill_cam(Projection::Mercator, 89.9, 0.0, 400.0, 800.0, 600.0);
+        let a = political_fill_amount(&c, 4096);
+        assert!((0.0..=1.0).contains(&a));
+    }
+
     use super::*;
 
     // The tests below read the shader sources as written (with comments), so
