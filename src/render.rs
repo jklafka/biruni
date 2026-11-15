@@ -54,6 +54,9 @@ pub struct TextureBudget {
     pub map_width: u32,
     /// Country-ID raster width (height is half). R8, no mipmaps.
     pub ids_width: usize,
+    /// Glacier-mask width (height is half): half the map width. R8 with a
+    /// full mip chain (10.7 MB at 4096 wide, 2.7 MB at 2048 wide).
+    pub ice_width: u32,
     /// Satellite imagery width (height is half). RGBA8 with a full mip
     /// chain, allocated only when the Imagery layer is first selected.
     pub imagery_width: u32,
@@ -130,6 +133,7 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
     TextureBudget {
         map_width: map.min(cap),
         ids_width: (ids as u32).min(cap) as usize,
+        ice_width: map.min(cap) / 2,
         imagery_width: imagery.min(cap),
     }
 }
@@ -169,6 +173,21 @@ pub fn budget_bytes(b: &TextureBudget) -> (u64, u64) {
     (map, ids)
 }
 
+/// GPU bytes for the glacier mask (R8, full mip chain).
+pub fn ice_bytes(b: &TextureBudget) -> u64 {
+    let (mut w, mut h) = (b.ice_width as u64, b.ice_width as u64 / 2);
+    let mut total = 0;
+    loop {
+        total += w * h;
+        if w == 1 && h == 1 {
+            break;
+        }
+        w = (w / 2).max(1);
+        h = (h / 2).max(1);
+    }
+    total
+}
+
 /// Parse the value of the `tex` query parameter.
 pub fn parse_tier(search: &str) -> Option<TierOverride> {
     search
@@ -204,6 +223,7 @@ struct Uniforms {
     imagery: Option<WebGlUniformLocation>,
     has_imagery: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
+    ice: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
     political: Option<WebGlUniformLocation>,
@@ -242,6 +262,7 @@ impl Uniforms {
             imagery: u("u_imagery"),
             has_imagery: u("u_hasImagery"),
             ids: u("u_ids"),
+            ice: u("u_ice"),
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
             political: u("u_political"),
@@ -419,6 +440,9 @@ struct Resources {
     map: WebGlTexture,
     /// Country-ID raster (R8, one byte per texel, 0 = no country).
     ids: WebGlTexture,
+    /// Glacier mask (R8, mipmapped): a 1x1 "no ice" placeholder until the
+    /// map is uploaded.
+    ice: WebGlTexture,
     /// Satellite imagery: a 1x1 placeholder until the layer's file is decoded.
     imagery: WebGlTexture,
 }
@@ -488,6 +512,23 @@ impl Resources {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
 
+        let ice = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&ice));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::R8 as i32,
+            1,
+            1,
+            0,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(&[0]),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+
         let imagery = gl.create_texture().ok_or("failed to create texture")?;
         gl.bind_texture(GL::TEXTURE_2D, Some(&imagery));
         gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
@@ -515,6 +556,7 @@ impl Resources {
             uniforms,
             map,
             ids,
+            ice,
             imagery,
         })
     }
@@ -739,6 +781,8 @@ pub struct Renderer {
     ctx: ContextState,
     /// Country-ID raster texture (placeholder until uploaded).
     ids: WebGlTexture,
+    /// Glacier mask texture (placeholder until the map is uploaded).
+    ice: WebGlTexture,
     /// ID of the highlighted country, 0 for none.
     highlight: u8,
     /// Political fill color index per country ID, once the country data has
@@ -800,6 +844,7 @@ impl Renderer {
             sun: None,
             ctx: ContextState::default(),
             ids: r.ids,
+            ice: r.ice,
             highlight: 0,
             country_colors: None,
             budget,
@@ -962,6 +1007,7 @@ impl Renderer {
         self.uniforms = r.uniforms;
         self.map = r.map;
         self.ids = r.ids;
+        self.ice = r.ice;
         self.imagery = r.imagery;
         // The caller decodes the imagery again from its encoded bytes.
         self.has_imagery = false;
@@ -1020,9 +1066,11 @@ impl Renderer {
         let (map_bytes, ids_bytes) = budget_bytes(&self.budget);
         web_sys::console::log_1(
             &format!(
-                "map texture {width}x{height}, ids {w}x{}: {:.1} MB",
+                "map texture {width}x{height}, ids {w}x{}, ice {}x{}: {:.1} MB",
                 self.budget.ids_width / 2,
-                (map_bytes + ids_bytes) as f64 / 1048576.0,
+                self.budget.ice_width,
+                self.budget.ice_width / 2,
+                (map_bytes + ids_bytes + ice_bytes(&self.budget)) as f64 / 1048576.0,
                 w = self.budget.ids_width,
             )
             .into(),
@@ -1046,9 +1094,34 @@ impl Renderer {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
         self.set_anisotropy();
 
+        // The glacier mask: half the map width, same sampling as the map.
+        let gl = &self.gl;
+        let (iw, ih) = (self.budget.ice_width, self.budget.ice_width / 2);
+        let ice = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&ice));
+        gl.tex_storage_2d(
+            GL::TEXTURE_2D,
+            32 - iw.leading_zeros() as i32,
+            GL::R8,
+            iw as i32,
+            ih as i32,
+        );
+        layers.fill_ice_texture(gl, iw, ih)?;
+        gl.generate_mipmap(GL::TEXTURE_2D);
+        gl.tex_parameteri(
+            GL::TEXTURE_2D,
+            GL::TEXTURE_MIN_FILTER,
+            GL::LINEAR_MIPMAP_LINEAR as i32,
+        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+
         let gl = &self.gl;
         gl.delete_texture(Some(&self.map));
+        gl.delete_texture(Some(&self.ice));
         self.map = tex;
+        self.ice = ice;
         self.has_map = true;
         self.upload_lines(layers.lines())
     }
@@ -1413,6 +1486,9 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE3);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.imagery));
         gl.uniform1i(u.imagery.as_ref(), 3);
+        gl.active_texture(GL::TEXTURE4);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&self.ice));
+        gl.uniform1i(u.ice.as_ref(), 4);
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
         // Fills fade out as the view zooms in (see `political_fill_amount`).
@@ -1729,7 +1805,8 @@ mod tests {
             let b = choose_budget(&d, None);
             assert_eq!((b.map_width, b.ids_width), (4096, 2048), "{d:?}");
             let (map, ids) = budget_bytes(&b);
-            assert!((map + ids) as f64 / MB < 25.0, "{d:?}");
+            assert_eq!(b.ice_width, 2048, "{d:?}");
+            assert!((map + ids + ice_bytes(&b)) as f64 / MB < 25.0, "{d:?}");
         }
     }
 
@@ -1738,6 +1815,7 @@ mod tests {
         let (map, ids) = budget_bytes(&TextureBudget {
             map_width: 8192,
             ids_width: 4096,
+            ice_width: 4096,
             imagery_width: 4096,
         });
         assert!((map as f64 / MB - 42.7).abs() < 0.1);
@@ -1745,10 +1823,24 @@ mod tests {
         let (map, ids) = budget_bytes(&TextureBudget {
             map_width: 4096,
             ids_width: 2048,
+            ice_width: 2048,
             imagery_width: 2048,
         });
         assert!((map as f64 / MB - 10.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 2.0);
+    }
+
+    #[test]
+    fn ice_budget_is_half_the_map_width() {
+        let high = choose_budget(&dev(16384, Some(8.0), false), None);
+        assert_eq!(high.ice_width, 4096);
+        assert!((ice_bytes(&high) as f64 / MB - 10.7).abs() < 0.1);
+        let low = choose_budget(&dev(16384, None, true), None);
+        assert_eq!(low.ice_width, 2048);
+        assert!((ice_bytes(&low) as f64 / MB - 2.7).abs() < 0.1);
+        // Clamped with the map to a small GPU limit.
+        let tiny = choose_budget(&dev(1024, None, false), Some(TierOverride::High));
+        assert_eq!(tiny.ice_width, tiny.map_width / 2);
     }
 
     #[test]
@@ -1840,6 +1932,7 @@ mod tests {
             "u_imagery",
             "u_hasImagery",
             "u_ids",
+            "u_ice",
             "u_highlight",
             "u_idColor",
             "u_political",

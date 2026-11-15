@@ -17,6 +17,7 @@ uniform float u_scale;        // render scale (1 = full resolution); stars stay 
 uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = satellite imagery (see view::Layer)
 uniform sampler2D u_imagery;  // RGBA8 satellite image, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
+uniform sampler2D u_ice;      // R8 glacier mask (glaciated areas + ice shelves), half the width of u_map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform vec4 u_idColor[64];   // political color index of country ID i: u_idColor[i / 4][i % 4]
 uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads, fades out at close zoom
@@ -333,12 +334,17 @@ void main() {
         }
     }
 
-    // Ice overrides latitude-wise: the tint it leaves of the fill is faint
-    // (80% ice) in political mode, so Antarctica and northern Greenland read as
-    // ice, not as a country color.
-    float iceLat = latDeg < 0.0 ? 62.0 : 72.0;
+    // Ice: only inside Natural Earth's glaciated areas and Antarctic ice
+    // shelves (u_ice, half the map's resolution), cut to the land. It overrides
+    // fills at 80%: the tint left of the fill is faint, so Antarctica and
+    // Greenland's ice cap read as ice, not as a country color. Edges are
+    // thresholded when magnified, like the land mask.
+    float iceM = textureGrad(u_ice, uv, duvdx, duvdy).r * u_hasMap;
+    float iceFw = max(fwidth(iceM), 1e-4);
+    float iceSharpen = (1.0 - smoothstep(0.3, 0.8, texelsPerPx)) * u_hasMap;
+    float ice = mix(iceM, smoothstep(0.5 - iceFw, 0.5 + iceFw, iceM), iceSharpen);
     float filled = fillW > 0.0 ? u_political : 0.0;
-    ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat) * (1.0 - 0.2 * filled));
+    ground = mix(ground, ICE, ice * (1.0 - 0.2 * filled));
     vec3 borderCol = BORDER;
     float borderMix = 0.5;
     if (u_layer == 1) {
