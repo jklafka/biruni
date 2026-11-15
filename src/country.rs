@@ -31,6 +31,7 @@
 //! point-in-polygon works without special seam handling. Hit-testing
 //! normalizes the query longitude into [-180, 180].
 
+use crate::camera::Camera;
 use crate::geo::{read_delta, read_varint};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
@@ -41,6 +42,19 @@ const VERSION: u8 = 2;
 pub const PALETTE_SIZE: u8 = 6;
 /// IDs in the raster are `index + 1` in a byte, with 0 meaning no country.
 pub const MAX_COUNTRIES: usize = 255;
+/// Screen-space tolerance, in CSS pixels, for picking a country the pointer
+/// is just outside of (see [`Countries::hit_near`]). Larger for touch.
+pub const NEAR_RADIUS_MOUSE_PX: f64 = 8.0;
+pub const NEAR_RADIUS_TOUCH_PX: f64 = 16.0;
+
+/// Tolerance radius for a pointer kind.
+pub fn near_radius(coarse: bool) -> f64 {
+    if coarse {
+        NEAR_RADIUS_TOUCH_PX
+    } else {
+        NEAR_RADIUS_MOUSE_PX
+    }
+}
 
 /// Bounding box as `[min_lon, min_lat, max_lon, max_lat]`.
 type BBox = [f64; 4];
@@ -244,6 +258,24 @@ fn polygon_contains(poly: &Polygon, lon: f64, lat: f64) -> bool {
         .fold(false, |acc, r| acc ^ ring_parity(r, lon, lat))
 }
 
+/// Distance from point `p` to segment `a`-`b`, in the same units. NaN-safe:
+/// non-finite input gives infinity.
+fn point_segment_distance(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 {
+        (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let d = (p.0 - (a.0 + t * dx)).hypot(p.1 - (a.1 + t * dy));
+    if d.is_finite() {
+        d
+    } else {
+        f64::INFINITY
+    }
+}
+
 /// Normalize a longitude in degrees to [-180, 180].
 fn wrap_lon(lon: f64) -> f64 {
     if (-180.0..=180.0).contains(&lon) {
@@ -297,6 +329,106 @@ impl Countries {
             .filter(|(b, _, _)| b[0] <= lon && lon <= b[2] && b[1] <= lat && lat <= b[3])
             .find(|(_, ci, pi)| polygon_contains(&self.list[*ci].polygons[*pi], lon, lat))
             .map(|(_, ci, _)| *ci)
+    }
+
+    /// Like [`Countries::hit`] for a screen point, but forgiving: when the
+    /// point is inside no country, the nearest country whose outline passes
+    /// within `radius_px` screen pixels wins, so tiny islands can be hovered
+    /// and tapped. The radius is in screen space, so it does not depend on
+    /// zoom, and it works for the globe and the flat projections alike
+    /// (everything goes through `Camera::pick` and `Camera::project`).
+    /// Outline parts on the far side of the globe or outside a flat map's
+    /// domain never count. A country that contains the point always wins.
+    ///
+    /// Cost: a box in lon/lat is derived from the pixel radius by picking
+    /// eight points around the cursor; polygons are prefiltered by that box,
+    /// segments by an outcode test, and only segments that survive are
+    /// projected and measured.
+    pub fn hit_near(&self, cam: &Camera, sx: f64, sy: f64, radius_px: f64) -> Option<usize> {
+        if !(sx.is_finite() && sy.is_finite()) {
+            return None;
+        }
+        let (lat, lon) = cam.pick(sx, sy)?;
+        let (lat0, lon0) = (lat.to_degrees(), lon.to_degrees());
+        if let Some(i) = self.hit(lat0, lon0) {
+            return Some(i);
+        }
+        if !(radius_px.is_finite() && radius_px > 0.0) {
+            return None;
+        }
+        // Degrees spanned by the pixel radius around the cursor.
+        let (mut dlat, mut dlon) = (0.0f64, 0.0f64);
+        for (ox, oy) in [
+            (1.0, 0.0),
+            (-1.0, 0.0),
+            (0.0, 1.0),
+            (0.0, -1.0),
+            (1.0, 1.0),
+            (1.0, -1.0),
+            (-1.0, 1.0),
+            (-1.0, -1.0),
+        ] {
+            if let Some((la, lo)) = cam.pick(sx + ox * radius_px, sy + oy * radius_px) {
+                dlat = dlat.max((la.to_degrees() - lat0).abs());
+                dlon = dlon.max(wrap_lon(lo.to_degrees() - lon0).abs());
+            }
+        }
+        if dlat <= 0.0 {
+            return None;
+        }
+        // A margin for projection nonlinearity; the exact test is in pixels.
+        let (dlat, dlon) = (dlat * 1.5, (dlon * 1.5).min(180.0));
+        let (blat0, blat1) = (lat0 - dlat, lat0 + dlat);
+        let flat = cam.is_flat();
+        let cam_lon = cam.lon.to_degrees();
+        let shift = |lon_p: f64| lon_p + 360.0 * ((lon0 - lon_p) / 360.0).round();
+        let outcode = |lo: f64, la: f64| {
+            (lo < lon0 - dlon) as u8
+                | (((lo > lon0 + dlon) as u8) << 1)
+                | (((la < blat0) as u8) << 2)
+                | (((la > blat1) as u8) << 3)
+        };
+        let mut best: Option<(usize, f64)> = None;
+        for (b, ci, pi) in &self.index {
+            // Polygon box against the query box, with the box moved to the
+            // copy of the world nearest the cursor.
+            let s = 360.0 * ((lon0 - (b[0] + b[2]) / 2.0) / 360.0).round();
+            if b[1] > blat1 || b[3] < blat0 || b[0] + s > lon0 + dlon || b[2] + s < lon0 - dlon {
+                continue;
+            }
+            for ring in &self.list[*ci].polygons[*pi].rings {
+                let p = &ring.points;
+                let n = p.len();
+                let code_of = |q: [f64; 2]| outcode(shift(q[0]), q[1]);
+                let mut prev = p[n - 1];
+                let mut prev_code = code_of(prev);
+                // Screen position of `prev`, once projected.
+                let mut prev_xy: Option<Option<(f64, f64)>> = None;
+                for &cur in p.iter() {
+                    let code = code_of(cur);
+                    let mut cur_xy = None;
+                    if prev_code & code == 0
+                        && !(flat
+                            && (wrap_lon(prev[0] - cam_lon) - wrap_lon(cur[0] - cam_lon)).abs()
+                                > 180.0)
+                    {
+                        let a = prev_xy.unwrap_or_else(|| {
+                            cam.project(prev[1].to_radians(), prev[0].to_radians())
+                        });
+                        let c = cam.project(cur[1].to_radians(), cur[0].to_radians());
+                        cur_xy = Some(c);
+                        if let (Some(a), Some(c)) = (a, c) {
+                            let d = point_segment_distance((sx, sy), a, c);
+                            if d <= radius_px && best.is_none_or(|(_, bd)| d < bd) {
+                                best = Some((*ci, d));
+                            }
+                        }
+                    }
+                    (prev, prev_code, prev_xy) = (cur, code, cur_xy);
+                }
+            }
+        }
+        best.map(|(i, _)| i)
     }
 
     /// One interior point per country, `(index, lat, lon)` in degrees, used
@@ -521,6 +653,249 @@ mod tests {
 
     fn name_at(w: &Countries, lat: f64, lon: f64) -> Option<&str> {
         w.hit(lat, lon).map(|i| w.list[i].name.as_str())
+    }
+
+    // ---- tolerant hit testing ------------------------------------------
+
+    use crate::projection::Projection;
+
+    fn cam_at(proj: Projection, lat: f64, lon: f64, alt: f64) -> Camera {
+        let mut c = Camera::new(lat, lon, alt);
+        c.width = 1200.0;
+        c.height = 800.0;
+        c.set_projection(proj);
+        c
+    }
+
+    fn index_of(w: &Countries, name: &str) -> usize {
+        w.list.iter().position(|c| c.name == name).unwrap()
+    }
+
+    /// The vertex of a country with the largest longitude in `(min_lon,
+    /// max_lon]`, as `(lat, lon)`.
+    fn east_vertex(w: &Countries, name: &str, min_lon: f64, max_lon: f64) -> (f64, f64) {
+        w.list[index_of(w, name)]
+            .polygons
+            .iter()
+            .flat_map(|p| p.rings.iter().flat_map(|r| r.points.iter()))
+            .filter(|p| p[0] > min_lon && p[0] <= max_lon)
+            .max_by(|a, b| a[0].total_cmp(&b[0]))
+            .map(|p| (p[1], p[0]))
+            .unwrap()
+    }
+
+    /// Screen point `dx` pixels east of a vertex: outside a small island and
+    /// at least `dx` pixels from its outline.
+    fn east_of(cam: &Camera, v: (f64, f64), dx: f64) -> (f64, f64) {
+        let (x, y) = cam.project(v.0.to_radians(), v.1.to_radians()).unwrap();
+        (x + dx, y)
+    }
+
+    #[test]
+    fn near_island_within_tolerance_but_not_beyond() {
+        let w = world();
+        for (name, lat, lon, alt) in [
+            ("Malta", 35.9, 14.4, 0.05),
+            ("Jersey", 49.2, -2.13, 0.03),
+            ("Guernsey", 49.46, -2.58, 0.03),
+        ] {
+            let cam = cam_at(Projection::Globe, lat, lon, alt);
+            let ci = index_of(&w, name);
+            let v = east_vertex(&w, name, -180.0, 180.0);
+            let (x, y) = east_of(&cam, v, 6.0);
+            assert_eq!(w.hit_near(&cam, x, y, 8.0), Some(ci), "{name} near");
+            // The exact test still misses, so the tolerance did the work.
+            let (la, lo) = cam.pick(x, y).unwrap();
+            assert_eq!(w.hit(la.to_degrees(), lo.to_degrees()), None, "{name}");
+            let (x, y) = east_of(&cam, v, 40.0);
+            assert_eq!(w.hit_near(&cam, x, y, 8.0), None, "{name} far");
+        }
+    }
+
+    #[test]
+    fn touch_radius_is_larger_than_mouse_radius() {
+        let w = world();
+        let cam = cam_at(Projection::Globe, 35.9, 14.4, 0.05);
+        let v = east_vertex(&w, "Malta", -180.0, 180.0);
+        let (x, y) = east_of(&cam, v, 12.0);
+        assert!(near_radius(true) > near_radius(false));
+        assert_eq!(w.hit_near(&cam, x, y, near_radius(false)), None);
+        assert_eq!(
+            w.hit_near(&cam, x, y, near_radius(true)),
+            Some(index_of(&w, "Malta"))
+        );
+    }
+
+    #[test]
+    fn containing_country_is_never_stolen() {
+        let w = world();
+        // Huge radius: the country under the point still wins, whether or
+        // not small countries are nearby (Andorra, Vatican, Luxembourg).
+        for (lat, lon, alt) in [
+            (48.857, 2.352, 0.1),
+            (42.7, 1.2, 0.02),
+            (41.95, 12.3, 0.01),
+            (49.7, 6.0, 0.02),
+            (52.52, 13.405, 0.1),
+        ] {
+            let cam = cam_at(Projection::Globe, lat, lon, alt);
+            let exact = w.hit(lat, lon);
+            assert!(exact.is_some(), "{lat},{lon}");
+            assert_eq!(w.hit_near(&cam, 600.0, 400.0, 500.0), exact, "{lat},{lon}");
+        }
+    }
+
+    #[test]
+    fn open_ocean_gives_none() {
+        let w = world();
+        for (lat, lon, alt) in [(0.0, -30.0, 0.3), (-45.0, -150.0, 0.05), (0.0, -30.0, 3.0)] {
+            let cam = cam_at(Projection::Globe, lat, lon, alt);
+            assert_eq!(w.hit_near(&cam, 600.0, 400.0, 16.0), None, "{lat},{lon}");
+        }
+    }
+
+    #[test]
+    fn near_hits_across_the_seam() {
+        let w = world();
+        // Fiji's easternmost vertex west of the seam, and its easternmost
+        // one east of it, with the view centered on or near the seam.
+        for (min, max) in [(0.0, 180.0), (-180.0, 0.0)] {
+            let v = east_vertex(&w, "Fiji", min, max);
+            for center in [180.0, 179.0, -179.0, v.1] {
+                let cam = cam_at(Projection::Globe, v.0, center, 0.05);
+                let (x, y) = east_of(&cam, v, 6.0);
+                assert_eq!(
+                    w.hit_near(&cam, x, y, 8.0),
+                    Some(index_of(&w, "Fiji")),
+                    "vertex {v:?}, center {center}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn near_works_on_flat_maps() {
+        let w = world();
+        for proj in [
+            Projection::Equirectangular,
+            Projection::Mercator,
+            Projection::Robinson,
+            Projection::Mollweide,
+        ] {
+            let cam = cam_at(proj, 35.9, 14.4, 0.01);
+            let v = east_vertex(&w, "Malta", -180.0, 180.0);
+            let (x, y) = east_of(&cam, v, 6.0);
+            assert_eq!(
+                w.hit_near(&cam, x, y, 8.0),
+                Some(index_of(&w, "Malta")),
+                "{proj:?}"
+            );
+            let (x, y) = east_of(&cam, v, 40.0);
+            assert_eq!(w.hit_near(&cam, x, y, 8.0), None, "{proj:?} far");
+            // Fiji across the seam on a map centered on it.
+            let v = east_vertex(&w, "Fiji", -180.0, 0.0);
+            let cam = cam_at(proj, v.0, 180.0, 0.01);
+            let (x, y) = east_of(&cam, v, 6.0);
+            assert_eq!(
+                w.hit_near(&cam, x, y, 8.0),
+                Some(index_of(&w, "Fiji")),
+                "{proj:?} seam"
+            );
+        }
+    }
+
+    #[test]
+    fn outside_the_flat_domain_gives_none() {
+        let w = world();
+        // Mercator shows nothing beyond ~85 degrees, so Antarctica's outline
+        // is off the map and a cursor above or below the map picks nothing.
+        let cam = cam_at(Projection::Mercator, 80.0, 0.0, 3.0);
+        assert_eq!(w.hit_near(&cam, 600.0, 5.0, 16.0), None);
+        let cam = cam_at(Projection::Mercator, -80.0, 0.0, 3.0);
+        assert_eq!(w.hit_near(&cam, 600.0, 795.0, 16.0), None);
+    }
+
+    #[test]
+    fn far_side_of_the_globe_never_counts() {
+        let w = world();
+        // With the cursor on and around the limb, anything returned has an
+        // outline point on screen near the cursor (nothing past the horizon).
+        let cam = cam_at(Projection::Globe, 0.0, -30.0, 2.0);
+        for x in [0.0, 100.0, 300.0, 600.0, 900.0, 1100.0] {
+            if let Some(i) = w.hit_near(&cam, x, 400.0, 16.0) {
+                let near = w.list[i].polygons.iter().any(|p| {
+                    p.rings.iter().any(|r| {
+                        r.points
+                            .iter()
+                            .filter_map(|q| cam.project(q[1].to_radians(), q[0].to_radians()))
+                            .any(|(px, py)| (px - x).hypot(py - 400.0) <= 16.5)
+                    })
+                });
+                assert!(near, "x = {x}");
+            }
+        }
+    }
+
+    #[test]
+    fn near_is_nan_safe() {
+        let w = world();
+        let cam = cam_at(Projection::Globe, 35.9, 14.4, 0.05);
+        for (x, y, r) in [
+            (f64::NAN, 400.0, 8.0),
+            (600.0, f64::NAN, 8.0),
+            (f64::INFINITY, 400.0, 8.0),
+            (600.0, 400.0, f64::NAN),
+            (600.0, 400.0, f64::INFINITY),
+            (600.0, 400.0, -1.0),
+            (600.0, 400.0, 0.0),
+        ] {
+            let _ = w.hit_near(&cam, x, y, r);
+        }
+        assert_eq!(w.hit_near(&cam, f64::NAN, 400.0, 8.0), None);
+        assert_eq!(w.hit_near(&cam, 600.0, 400.0, f64::NAN), w.hit(35.9, 14.4));
+        let mut bad = cam_at(Projection::Globe, 35.9, 14.4, 0.05);
+        bad.lat = f64::NAN;
+        let _ = w.hit_near(&bad, 600.0, 400.0, 8.0);
+        assert!(point_segment_distance((f64::NAN, 0.0), (0.0, 0.0), (1.0, 1.0)).is_infinite());
+        assert_eq!(
+            point_segment_distance((1.0, 1.0), (0.0, 0.0), (0.0, 0.0)),
+            2f64.sqrt()
+        );
+    }
+
+    /// Worst case for the candidate scan: the Aegean, the Caribbean and the
+    /// Pacific at mid zoom. Release builds take well under 1 ms per query;
+    /// the bound here is loose so a debug build passes. Run
+    /// `cargo test --release near_query_time -- --nocapture` for the number.
+    #[test]
+    fn near_query_time() {
+        let w = world();
+        for (name, lat, lon, alt) in [
+            ("Aegean", 37.5, 25.0, 0.3),
+            ("Aegean wide", 37.5, 25.0, 1.5),
+            ("Caribbean", 15.0, -65.0, 0.5),
+            ("Caribbean wide", 15.0, -65.0, 2.0),
+            ("Pacific", -17.0, -175.0, 0.4),
+        ] {
+            let cam = cam_at(Projection::Globe, lat, lon, alt);
+            let n = 400;
+            let t = std::time::Instant::now();
+            let (mut found, mut misses) = (0, 0);
+            for i in 0..n {
+                let (x, y) = (
+                    300.0 + (i % 20) as f64 * 30.0,
+                    150.0 + (i / 20) as f64 * 25.0,
+                );
+                found += w.hit_near(&cam, x, y, 16.0).is_some() as usize;
+                misses += cam
+                    .pick(x, y)
+                    .is_some_and(|(la, lo)| w.hit(la.to_degrees(), lo.to_degrees()).is_none())
+                    as usize;
+            }
+            let per = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
+            println!("{name}: {per:.4} ms per query ({found}/{n} hit, {misses} exact misses)");
+            assert!(per < 5.0, "{name}: {per} ms");
+        }
     }
 
     #[test]
