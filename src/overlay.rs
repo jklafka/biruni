@@ -90,9 +90,28 @@ impl Overlay {
             let Some((x, y)) = cam.project(p.0, p.1) else {
                 continue;
             };
+            let selected = measure.selected() == Some(i);
+            let hover = measure.hover() == Some(i);
+            if selected || hover {
+                // A halo: solid blue when selected, faint white on hover.
+                ctx.begin_path();
+                let _ = ctx.arc(x, y, 11.0, 0.0, std::f64::consts::TAU);
+                ctx.set_line_width(3.0);
+                ctx.set_stroke_style_str(if selected {
+                    "#3aa0ff"
+                } else {
+                    "rgba(255,255,255,0.75)"
+                });
+                ctx.stroke();
+            }
             ctx.begin_path();
-            let _ = ctx.arc(x, y, 5.0, 0.0, std::f64::consts::TAU);
-            ctx.set_fill_style_str(if i == 0 { "#ffffff" } else { "#ffd24a" });
+            let r = if selected || hover { 7.0 } else { 5.0 };
+            let _ = ctx.arc(x, y, r, 0.0, std::f64::consts::TAU);
+            ctx.set_fill_style_str(if selected || i == 0 {
+                "#ffffff"
+            } else {
+                "#ffd24a"
+            });
             ctx.fill();
             ctx.set_line_width(2.0);
             ctx.set_stroke_style_str("rgba(0,0,0,0.8)");
@@ -161,7 +180,7 @@ impl Panel {
         let hint = match measure.points().len() {
             0 => "Click or tap the globe to start",
             1 => "Add a second point",
-            _ => "",
+            _ => "Drag a point to move it, double-click to remove",
         };
         self.hint.set_text_content(Some(hint));
         let _ = self
