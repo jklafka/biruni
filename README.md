@@ -67,6 +67,7 @@ One-time setup for the repository owner:
 | Face north and lock north-up | click the compass (top of the button column) | tap the compass | `F` toggles the lock (turning it on faces north); `R` also does |
 | Zoom | scroll wheel, trackpad pinch | pinch | `+` / `-` |
 | Fly to a point | double-click (shift + double-click zooms out) | double-tap | |
+| Fly to the North / South Pole (keeps the zoom; flat maps go to the top / bottom row, Mercator to about 85°) | | | `Home` / `End` |
 | Reset view | ⟲ button | ⟲ button | `R` |
 | Country info | hover highlights a country; click opens the info panel | tap a country | `I` for the country at the view center |
 | Cycle through the visible countries | | | `Tab` / `Shift`+`Tab` select the next / previous country in reading order (focus moves on after the last; `Shift`+`Tab` from the first), `]` / `[` wrap around |
