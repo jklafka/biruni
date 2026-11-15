@@ -236,6 +236,7 @@ const PANELS: &[&str] = &[
     "controls",
     "country-info",
     "measure",
+    "scrubber",
     "toast",
     "share-fallback",
 ];

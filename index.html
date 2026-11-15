@@ -50,7 +50,7 @@
       #title h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
       #title p { margin: 2px 0 0; color: var(--muted); }
       #hud {
-        bottom: 16px;
+        bottom: calc(16px + var(--scrub, 0px));
         left: 16px;
         font-variant-numeric: tabular-nums;
         min-width: 210px;
@@ -102,13 +102,13 @@
       #controls #share svg { width: 18px; height: 18px; vertical-align: middle; }
       #controls button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #toast, #share-fallback {
-        bottom: 150px;
+        bottom: calc(150px + var(--scrub, 0px));
         left: 16px;
         max-width: calc(100vw - 88px);
       }
       #share-fallback { pointer-events: auto; width: 340px; display: flex; }
       /* The toast sits above the link box when both show. */
-      body:has(#share-fallback:not([hidden])) #toast { bottom: 210px; }
+      body:has(#share-fallback:not([hidden])) #toast { bottom: calc(210px + var(--scrub, 0px)); }
       #share-fallback input {
         width: 100%;
         padding: 6px 8px;
@@ -134,23 +134,61 @@
         pointer-events: none;
         user-select: none;
       }
+      /* Time scrubber: shown while the terminator is on. It sits at the bottom
+         left, clear of the control column. Everything that lives at the bottom
+         left (HUD, toast, link box, measure, country info) moves up by --scrub. */
+      #scrubber {
+        left: 16px;
+        bottom: 16px;
+        width: min(380px, calc(100vw - 86px));
+        pointer-events: auto;
+        font-variant-numeric: tabular-nums;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 4px 8px;
+        padding: 8px 12px;
+      }
+      #scrubber label { color: var(--muted); }
+      #scrubber input[type="range"] { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: #6f9bf0; touch-action: pan-y; }
+      #scrubber .val { text-align: right; white-space: nowrap; }
+      #scrub-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+      #scrub-row button {
+        min-width: 38px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      #scrub-row button:hover { background: rgba(40, 56, 88, 0.85); }
+      #scrub-row button:focus-visible, #scrubber input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #scrub-row button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.6); }
+      #scrub-local { margin-left: auto; color: var(--muted); white-space: nowrap; }
+      body { --scrub: 0px; }
+      body:has(#scrubber:not([hidden])) { --scrub: 118px; }
       #globe.measuring { cursor: crosshair; }
       #globe.measuring.over-point { cursor: grab; }
       #globe.measuring.over-point.dragging { cursor: grabbing; }
       #measure {
         left: 16px;
-        bottom: 168px;
+        --mb: 168px;
+        bottom: calc(var(--mb) + var(--scrub, 0px));
         width: 210px;
-        max-height: 36vh;
+        /* Never grow into the title and search box at the top. */
+        max-height: min(36vh, calc(100vh - var(--mb) - var(--scrub, 0px) - 150px));
         overflow-y: auto;
         pointer-events: auto;
         font-variant-numeric: tabular-nums;
       }
       #measure[hidden] { display: none; }
       /* Stack above the share toast and link box instead of covering them. */
-      body:has(#toast:not([hidden])) #measure { bottom: 204px; }
-      body:has(#share-fallback:not([hidden])) #measure { bottom: 214px; }
-      body:has(#share-fallback:not([hidden])):has(#toast:not([hidden])) #measure { bottom: 264px; }
+      body:has(#toast:not([hidden])) #measure { --mb: 204px; }
+      body:has(#share-fallback:not([hidden])) #measure { --mb: 214px; }
+      body:has(#share-fallback:not([hidden])):has(#toast:not([hidden])) #measure { --mb: 264px; }
       #measure-total { font-size: 16px; font-weight: 600; }
       #measure-hint, #measure-legs { color: var(--muted); }
       #measure-legs { margin: 4px 0 0; padding: 0; list-style: none; }
@@ -293,7 +331,7 @@
       #ci-close:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       @media (max-width: 520px) {
         /* Sit above the HUD, left of the control buttons, above the toast and share box (bottom: 150px); measure mode closes this panel. */
-        #country-info { left: 16px; right: 70px; bottom: 216px; transform: none; width: auto; max-width: none; }
+        #country-info { left: 16px; right: 70px; bottom: calc(216px + var(--scrub, 0px)); transform: none; width: auto; max-width: none; }
       }
       #loading {
         top: 50%;
@@ -328,6 +366,20 @@
       <div id="measure-actions">
         <button id="measure-undo" title="Remove the selected point, or the last one (Backspace)">Undo</button>
         <button id="measure-exit" title="Clear and exit (Esc)">Exit</button>
+      </div>
+    </div>
+    <div id="scrubber" class="panel" role="group" aria-label="Time of the day/night terminator" hidden>
+      <label for="scrub-date">Date</label>
+      <input id="scrub-date" type="range" min="1" max="365" step="1" value="1" aria-label="Day of the year" />
+      <span id="scrub-date-val" class="val"></span>
+      <label for="scrub-time">UTC</label>
+      <input id="scrub-time" type="range" min="0" max="1439" step="1" value="0" aria-label="Time of day, UTC" />
+      <span id="scrub-time-val" class="val"></span>
+      <div id="scrub-row">
+        <button id="scrub-play" aria-pressed="false" title="Play (T)" aria-label="Play">&#9654;</button>
+        <button id="scrub-mode" title="Play a day or a year" aria-label="Play mode: day">Day</button>
+        <button id="scrub-now" aria-pressed="true" title="Back to the live clock" aria-label="Now">Now</button>
+        <span id="scrub-local"></span>
       </div>
     </div>
     <div id="layers" class="panel" role="group" aria-label="Map layer">

@@ -18,6 +18,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
 | `src/labels.rs` | Browser-free label selection: altitude gate, horizon test, priority, greedy collision, fade steps |
 | `src/label_layer.rs` | Draws labels on the `#labels` canvas (no pointer events), fade state, loads `labels.tsv` |
+| `src/scrub.rs`, `src/scrub_ui.rs` | Day/night time scrubber: browser-free UTC time math and play stepping, and the panel's DOM glue. Panels that sit bottom left offset themselves by `--scrub` in `index.html` |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, line pass and globe draw call |
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel, or inverts a flat projection (`u_mode`). `morph.vert` draws the globe <-> flat morph mesh. `line.vert`/`line.frag` draw coastlines and borders (in every projection) as screen-space-width lines into an offscreen target that `globe.frag` reads. |
 | `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
