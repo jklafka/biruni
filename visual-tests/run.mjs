@@ -29,6 +29,10 @@ const VIEWPORT = { width: 800, height: 600 };
 const VIEWS = [
   { name: "globe", hash: "" },
   { name: "mid-zoom", hash: "#38.5,22.5,1500" },
+  // Same view as mid-zoom, but the WebGL context is lost and restored through
+  // the ?debug=ctxloss key before the screenshot. It must match mid-zoom, and
+  // recovery must not start a Worker or download anything again.
+  { name: "ctxloss-restored", hash: "#38.5,22.5,1500", query: "?debug=ctxloss", loseContext: true },
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
   { name: "phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 } },
@@ -44,6 +48,8 @@ const VIEWS = [
   { name: "day-night", hash: "#30,0,9000&sun=on&t=1718992800" },
   { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
 ];
+
+const shots = {};
 
 const MIME = {
   ".html": "text/html",
@@ -123,7 +129,11 @@ try {
     // and that position is (0, 0) if the mouse never moved. (0, 0) lands on
     // the globe and would hover-highlight a country.
     await page.mouse.move(-20, -20);
-    await page.goto(base + view.hash);
+    const requests = [];
+    let workers = 0;
+    page.on("request", (r) => requests.push(r.url()));
+    page.on("worker", () => workers++);
+    await page.goto(base + (view.query ?? "") + view.hash);
     // The app hides #loading once the map texture is uploaded (or marks it
     // .error on failure). Then wait for two animation frames so the redraw
     // triggered by the upload has reached the screen.
@@ -139,6 +149,32 @@ try {
     await page.evaluate(
       () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
     );
+    if (view.loseContext) {
+      const before = { requests: requests.length, workers };
+      const lost = () =>
+        page.evaluate(() => document.getElementById("globe").getContext("webgl2").isContextLost());
+      await page.focus("#globe");
+      await page.keyboard.press("`"); // debug key: lose the context
+      await page.waitForFunction(() => document.getElementById("globe").getContext("webgl2").isContextLost());
+      await page.waitForSelector("#loading:not(.hidden)", { state: "attached", timeout: 10_000 });
+      await page.keyboard.press("`"); // and restore it
+      await page.waitForFunction(() => !document.getElementById("globe").getContext("webgl2").isContextLost());
+      await page.waitForSelector("#loading.hidden, #loading.error", { state: "attached", timeout: 30_000 });
+      if (await page.locator("#loading.error").count() || (await lost())) {
+        throw new Error(`${view.name}: context was not restored`);
+      }
+      // Let the re-render reach the screen.
+      await page.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+      );
+      await page.waitForTimeout(1000);
+      if (requests.length !== before.requests || workers !== before.workers) {
+        console.error(
+          `FAIL ${view.name}: recovery re-downloaded or started a worker: ${requests.slice(before.requests)} workers +${workers - before.workers}`,
+        );
+        failed = true;
+      }
+    }
     // No pointer may be over the globe: hover would tint a country and show
     // a cursor readout. Fail loudly instead of comparing a tinted frame.
     const cursor = (await page.locator("#hud-cursor").innerText()).trim();
@@ -161,6 +197,18 @@ try {
     }
     if (problems.length) console.warn(`${view.name}: page errors:\n  ${problems.join("\n  ")}`);
 
+    shots[view.name] = actual;
+    if (view.loseContext) {
+      // Recovery must reproduce the no-loss render, not just match a baseline.
+      const ref = shots["mid-zoom"];
+      const d = new PNG({ width: actual.width, height: actual.height });
+      const n = pixelmatch(ref.data, actual.data, d.data, actual.width, actual.height, {
+        threshold: PIXEL_THRESHOLD,
+      });
+      const ok = n <= actual.width * actual.height * 0.0005;
+      console.log(`${ok ? "ok  " : "FAIL"} ${view.name} vs mid-zoom (no loss): ${n} px differ`);
+      if (!ok) failed = true;
+    }
     await writeFile(join(actualDir, `${view.name}.png`), shot);
     const baselinePath = join(baselineDir, `${view.name}.png`);
 

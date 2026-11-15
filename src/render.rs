@@ -115,6 +115,15 @@ pub fn parse_tier(search: &str) -> Option<TierOverride> {
         })
 }
 
+/// True if the `debug=ctxloss` query flag is present. It enables the hidden
+/// context-loss key (see [`Renderer::debug_toggle_context_loss`]).
+pub fn parse_debug_ctxloss(search: &str) -> bool {
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .any(|kv| kv == "debug=ctxloss")
+}
+
 struct Uniforms {
     res: Option<WebGlUniformLocation>,
     dist: Option<WebGlUniformLocation>,
@@ -441,6 +450,11 @@ pub struct Renderer {
     highlight: u8,
     /// Texture sizes, chosen once from the device and kept across context loss.
     budget: TextureBudget,
+    /// With `?debug=ctxloss`, the `WEBGL_lose_context` extension for the debug
+    /// key. It must be fetched while the context is alive: `getExtension`
+    /// returns null once it is lost, and the object stays valid for
+    /// `restoreContext`.
+    lose_ext: Option<web_sys::WebglLoseContext>,
 }
 
 impl Renderer {
@@ -458,6 +472,15 @@ impl Renderer {
             .and_then(|w| w.location().search().ok())
             .and_then(|q| parse_tier(&q));
         let budget = choose_budget(&Self::detect_device(&gl), forced);
+        let debug_ctxloss = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .is_some_and(|q| parse_debug_ctxloss(&q));
+        // Browsers return a plain object with no global constructor, so
+        // `dyn_into` (an `instanceof` check) would always fail.
+        let lose_ext = debug_ctxloss
+            .then(|| gl.get_extension("WEBGL_lose_context").ok().flatten())
+            .flatten()
+            .map(|o| o.unchecked_into::<web_sys::WebglLoseContext>());
         Ok(Self {
             gl,
             line_pass: r.line_pass,
@@ -478,7 +501,23 @@ impl Renderer {
             ids: r.ids,
             highlight: 0,
             budget,
+            lose_ext,
         })
+    }
+
+    /// Debug aid for `?debug=ctxloss`: lose the context with
+    /// `WEBGL_lose_context`, or restore it if it is already lost. Returns
+    /// false (and does nothing) without the flag or the extension.
+    pub fn debug_toggle_context_loss(&self) -> bool {
+        let Some(ext) = &self.lose_ext else {
+            return false;
+        };
+        if self.gl.is_context_lost() {
+            ext.restore_context();
+        } else {
+            ext.lose_context();
+        }
+        true
     }
 
     /// Width of the country-ID raster this device uses. Rasterize the IDs at
@@ -1106,6 +1145,15 @@ mod tests {
             choose_budget(&desktop, Some(TierOverride::Low)).map_width,
             4096
         );
+    }
+
+    #[test]
+    fn debug_ctxloss_query_parsing() {
+        assert!(!parse_debug_ctxloss(""));
+        assert!(parse_debug_ctxloss("?debug=ctxloss"));
+        assert!(parse_debug_ctxloss("?tex=low&debug=ctxloss"));
+        assert!(!parse_debug_ctxloss("?debug=ctxlossy"));
+        assert!(!parse_debug_ctxloss("?debug=other"));
     }
 
     #[test]
