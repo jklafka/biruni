@@ -16,6 +16,8 @@ uniform float u_dpr;
 uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
 uniform int u_layer;          // 0 = political, 1 = monochrome (see view::Layer)
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
+uniform vec4 u_idColor[64];   // political color index of country ID i: u_idColor[i / 4][i % 4]
+uniform float u_political;    // 1 once the country data has loaded (fills on), else plain land
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
 uniform float u_sunOn;        // 1 = shade the night side
@@ -48,6 +50,18 @@ const vec3 OCEAN_DEEP = vec3(0.035, 0.115, 0.250);
 const vec3 OCEAN_LIGHT = vec3(0.070, 0.200, 0.340);
 const vec3 LAND = vec3(0.420, 0.530, 0.350);
 const vec3 LAND_DRY = vec3(0.600, 0.570, 0.420);
+// Political fills: a muted six-color set, varied in hue and lightness (not
+// hue alone) so neighbors stay apart for color-vision deficiencies and dark
+// borders and white labels with a dark halo stay readable on every one.
+// PALETTE_SIZE in src/country.rs must match.
+const vec3 PALETTE[6] = vec3[6](
+    vec3(0.745, 0.565, 0.510),   // clay
+    vec3(0.800, 0.745, 0.490),   // straw
+    vec3(0.545, 0.690, 0.510),   // sage
+    vec3(0.510, 0.640, 0.760),   // slate blue
+    vec3(0.690, 0.560, 0.710),   // heather
+    vec3(0.850, 0.650, 0.470)    // apricot
+);
 const vec3 ICE = vec3(0.900, 0.925, 0.950);
 const vec3 BORDER = vec3(0.150, 0.170, 0.130);
 const vec3 COAST = vec3(0.780, 0.860, 0.900);
@@ -56,6 +70,18 @@ const vec3 MONO_LAND = vec3(0.180, 0.190, 0.210);
 const vec3 MONO_BORDER = vec3(0.700, 0.730, 0.780);
 const vec3 HIGHLIGHT = vec3(1.000, 0.780, 0.300);
 const vec3 ATMOSPHERE = vec3(0.300, 0.560, 1.000);
+
+// Cubic B-spline weights of the four texels at offsets -1, 0, 1, 2 for a
+// fractional position f in [0, 1).
+vec4 bspline(float f) {
+    float f2 = f * f;
+    float f3 = f2 * f;
+    return vec4(
+        (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0,
+        (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0,
+        (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0,
+        f3 / 6.0);
+}
 
 float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -211,8 +237,97 @@ void main() {
 
     vec3 ocean = mix(OCEAN_LIGHT, OCEAN_DEEP, smoothstep(0.0, 70.0, alat) * 0.6 + 0.4);
     vec3 ground = mix(LAND, LAND_DRY, smoothstep(14.0, 22.0, alat) * (1.0 - smoothstep(30.0, 38.0, alat)) * 0.55);
+
+    // Country IDs around this point, for the political fill and the highlight.
+    // The raster is fetched, not filtered, so smooth its edges ourselves. Both
+    // paths below only call texelFetch and depend on uniforms and on the
+    // derivatives computed above, so derivatives elsewhere are unaffected.
+    bool political = u_layer == 0 && u_political > 0.5;
+    float fillW = 0.0;
+    vec3 fill = vec3(0.0);
+    float hlMask = 0.0;
+    if (political || u_highlight > 0) {
+        ivec2 isz = textureSize(u_ids, 0);
+        vec2 q = vec2(u * float(isz.x), uv.y * float(isz.y)) - 0.5;
+        ivec2 i0 = ivec2(floor(q));
+        vec2 f = fract(q);
+        float idTexelsPerPx = max(
+            (abs(duvdx.x) + abs(duvdy.x)) * float(isz.x),
+            (abs(duvdx.y) + abs(duvdy.y)) * float(isz.y));
+        float hl = float(u_highlight);
+        if (idTexelsPerPx < 0.8) {
+            // Magnified: a texel spans several pixels, so a bilinear blend of
+            // four texels leaves 45 degree staircases. Blur "is this country"
+            // over 4x4 texels with a cubic B-spline and let the strongest
+            // country win, which gives smooth contours.
+            vec4 wx = bspline(f.x);
+            vec4 wy = bspline(f.y);
+            float ids[16];
+            for (int j = 0; j < 16; j++) {
+                ivec2 c = i0 + ivec2(j & 3, j >> 2) - 1;
+                c.x = ((c.x % isz.x) + isz.x) % isz.x;
+                c.y = clamp(c.y, 0, isz.y - 1);
+                ids[j] = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+            }
+            if (u_highlight > 0) {
+                for (int j = 0; j < 16; j++) {
+                    hlMask += ids[j] == hl ? wx[j & 3] * wy[j >> 2] : 0.0;
+                }
+            }
+            if (political) {
+                // Candidates: the four texels around the point, each id once.
+                // Texels with no country are never candidates, so a country's
+                // color runs to the coast instead of leaving a plain fringe.
+                for (int k = 0; k < 4; k++) {
+                    int jc = 5 + (k & 1) + 4 * (k >> 1);
+                    float cid = ids[jc];
+                    bool first = cid > 0.0;
+                    for (int e = 0; e < 4; e++) {
+                        if (e < k && ids[5 + (e & 1) + 4 * (e >> 1)] == cid) first = false;
+                    }
+                    if (first) {
+                        float m = 0.0;
+                        for (int j = 0; j < 16; j++) {
+                            m += ids[j] == cid ? wx[j & 3] * wy[j >> 2] : 0.0;
+                        }
+                        float m2 = m * m;
+                        float m4 = m2 * m2;
+                        float m8 = m4 * m4;
+                        float m16 = m8 * m8;
+                        float w = m16 * m16;
+                        int id = int(cid);
+                        fill += w * PALETTE[int(u_idColor[id >> 2][id & 3])];
+                        fillW += w;
+                    }
+                }
+            }
+        } else {
+            // Minified or near 1:1: bilinear weights of the four nearest texels.
+            vec4 wts = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+            for (int k = 0; k < 4; k++) {
+                ivec2 c = i0 + ivec2(k & 1, k >> 1);
+                c.x = ((c.x % isz.x) + isz.x) % isz.x;
+                c.y = clamp(c.y, 0, isz.y - 1);
+                float cid = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+                hlMask += cid == hl ? wts[k] : 0.0;
+                if (political && cid > 0.0) {
+                    float w = wts[k] * wts[k] * wts[k];
+                    int id = int(cid);
+                    fill += w * PALETTE[int(u_idColor[id >> 2][id & 3])];
+                    fillW += w;
+                }
+            }
+        }
+        if (fillW > 0.0) {
+            ground = fill / fillW;
+        }
+    }
+
+    // Ice overrides latitude-wise: the tint it leaves of the fill is faint
+    // (80% ice) in political mode, so Antarctica and northern Greenland read as
+    // ice, not as a country color.
     float iceLat = latDeg < 0.0 ? 62.0 : 72.0;
-    ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat));
+    ground = mix(ground, ICE, smoothstep(iceLat - 2.0, iceLat + 4.0, alat) * (fillW > 0.0 ? 0.8 : 1.0));
     vec3 borderCol = BORDER;
     float borderMix = 0.5;
     if (u_layer == 1) {
@@ -226,25 +341,13 @@ void main() {
     float border = ln.g * land;
     ground = mix(ground, borderCol, border * borderMix);
 
-    // Highlighted country: bilinear blend of "texel is this country" so the
-    // edge of the ID raster (2048 or 4096 wide) stays smooth when magnified. The branch
-    // depends only on a uniform, so derivatives elsewhere are unaffected.
+    // Highlighted country.
     if (u_highlight > 0) {
-        ivec2 isz = textureSize(u_ids, 0);
-        vec2 q = vec2(u * float(isz.x), uv.y * float(isz.y)) - 0.5;
-        ivec2 i0 = ivec2(floor(q));
-        vec2 f = fract(q);
-        float h[4];
-        for (int k = 0; k < 4; k++) {
-            ivec2 c = i0 + ivec2(k & 1, k >> 1);
-            c.x = ((c.x % isz.x) + isz.x) % isz.x;
-            c.y = clamp(c.y, 0, isz.y - 1);
-            float id = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
-            h[k] = id == float(u_highlight) ? 1.0 : 0.0;
-        }
-        float mask = mix(mix(h[0], h[1], f.x), mix(h[2], h[3], f.x), f.y);
-        float hl = smoothstep(0.35, 0.65, mask) * land * u_hasMap;
-        ground = mix(ground, HIGHLIGHT, 0.42 * hl);
+        float hl = smoothstep(0.35, 0.65, hlMask) * land * u_hasMap;
+        // On a fill, amber would pass for the straw country color, so lighten
+        // toward a bright cream instead; no fill is that light.
+        ground = fillW > 0.0 ? mix(ground, vec3(1.0, 0.97, 0.84), 0.7 * hl)
+                             : mix(ground, HIGHLIGHT, 0.42 * hl);
     }
 
     vec3 col = mix(ocean, ground, land);
