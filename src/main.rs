@@ -5,6 +5,7 @@ mod controls;
 mod country;
 mod country_cycle;
 mod data;
+mod ephemeris;
 mod geo;
 mod geodesic;
 mod imagery;
