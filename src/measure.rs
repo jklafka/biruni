@@ -161,10 +161,15 @@ struct Grab {
     /// so the point does not jump under the cursor.
     offset: (f64, f64),
     moved: bool,
+    /// The point was already selected when this press began.
+    was_selected: bool,
+    /// The press landed in the outer ring of the hit area, away from the
+    /// point's center (see `ADD_RING_FRACTION`).
+    in_ring: bool,
 }
 
 /// What a release did.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Release {
     /// Not our pointer.
     Ignored,
@@ -172,7 +177,17 @@ pub enum Release {
     Done,
     /// A second click on the same point removed it.
     Removed,
+    /// A click in the hit ring of an already-selected point: the caller
+    /// should add a new point at this screen position instead.
+    Add(f64, f64),
 }
+
+/// A press farther than this fraction of the hit radius from a point's
+/// center is in its "ring". Clicking in the ring of a point that is already
+/// selected adds a new point there, so points can be placed close together.
+/// Pressing near the center never adds, so a double-click on the point
+/// itself still removes it.
+pub const ADD_RING_FRACTION: f64 = 0.5;
 
 /// A path of points on the globe being measured.
 #[derive(Clone, Debug, Default)]
@@ -344,6 +359,7 @@ impl Measure {
         };
         let p = self.points[idx];
         let (px, py) = cam.project(p.0, p.1).unwrap_or((x, y));
+        let was_selected = self.selected == Some(idx);
         self.selected = Some(idx);
         self.grab = Some(Grab {
             id,
@@ -351,6 +367,8 @@ impl Measure {
             start: (x, y),
             offset: (px - x, py - y),
             moved: false,
+            was_selected,
+            in_ring: (px - x).hypot(py - y) > ADD_RING_FRACTION * radius,
         });
         true
     }
@@ -382,7 +400,8 @@ impl Measure {
 
     /// A pointer was released at time `t` (ms). A click without a drag
     /// selects the point; a second click on the same point within the
-    /// double-click interval removes it.
+    /// double-click interval removes it. A slower click in the ring around
+    /// an already-selected point asks the caller to add a point there.
     pub fn release(&mut self, id: i32, t: f64, cancel: bool) -> Release {
         let Some(g) = self.grab.filter(|g| g.id == id) else {
             return Release::Ignored;
@@ -396,6 +415,10 @@ impl Measure {
             Some((i, t0)) if i == g.idx && t >= t0 && t - t0 <= DOUBLE_CLICK_MS => {
                 self.remove(g.idx);
                 Release::Removed
+            }
+            _ if g.was_selected && g.in_ring => {
+                self.last_click = None;
+                Release::Add(g.start.0, g.start.1)
             }
             _ => {
                 self.last_click = Some((g.idx, t));
@@ -751,7 +774,10 @@ mod tests {
                 assert!(c.project(hid.0, hid.1).is_none(), "{clat},{clon} {hid:?}");
                 let x = horizon_crossing(&c, vis, hid).expect("crossing");
                 let m = c.horizon_margin(x.0, x.1);
-                assert!((0.0..1e-9).contains(&m), "margin {m} for {clat},{clon} hid {hid:?}");
+                assert!(
+                    (0.0..1e-9).contains(&m),
+                    "margin {m} for {clat},{clon} hid {hid:?}"
+                );
                 assert!(c.project(x.0, x.1).is_some());
                 // It lies on the arc.
                 let d = central_angle(vis, x).unwrap() + central_angle(x, hid).unwrap();
@@ -1009,6 +1035,59 @@ mod tests {
         m.press(&c, 1, x0, y0, 11.0);
         assert_eq!(m.release(1, 6100.0, false), Release::Done);
         assert_eq!(m.points().len(), 2);
+    }
+
+    #[test]
+    fn click_in_the_ring_of_a_selected_point_adds() {
+        let c = cam(0.0, 0.0, 2.0);
+        let mut m = three();
+        let (x, y) = c.project(m.points()[1].0, m.points()[1].1).unwrap();
+        // First click in the ring only selects (the point was not selected).
+        assert!(m.press(&c, 1, x + 8.0, y, 11.0));
+        assert_eq!(m.release(1, 1000.0, false), Release::Done);
+        assert_eq!(m.selected(), Some(1));
+        // A quick second click is a double-click: removal wins.
+        let mut quick = m.clone();
+        quick.press(&c, 1, x + 8.0, y, 11.0);
+        assert_eq!(quick.release(1, 1200.0, false), Release::Removed);
+        // A slower click in the ring asks for a new point at the press.
+        assert!(m.press(&c, 1, x + 8.0, y, 11.0));
+        assert_eq!(
+            m.release(1, 1000.0 + DOUBLE_CLICK_MS + 50.0, false),
+            Release::Add(x + 8.0, y)
+        );
+        // And it does not leave a stale click that could remove a point.
+        m.select(Some(1));
+        m.press(&c, 1, x, y, 11.0);
+        assert_eq!(m.release(1, 5000.0, false), Release::Done);
+    }
+
+    #[test]
+    fn click_near_the_center_never_adds() {
+        let c = cam(0.0, 0.0, 2.0);
+        let mut m = three();
+        let (x, y) = c.project(m.points()[1].0, m.points()[1].1).unwrap();
+        m.select(Some(1));
+        assert!(m.press(&c, 1, x + 2.0, y, 11.0));
+        assert_eq!(m.release(1, 100.0, false), Release::Done);
+        // Double-click at the center still removes.
+        assert!(m.press(&c, 1, x + 2.0, y, 11.0));
+        assert_eq!(m.release(1, 250.0, false), Release::Removed);
+        // Touch uses a bigger ring: 8 px is the center for a finger.
+        let mut t = three();
+        t.select(Some(1));
+        assert!(t.press(&c, 1, x + 8.0, y, 22.0));
+        assert_eq!(t.release(1, 100.0, false), Release::Done);
+        // A drag or a cancel never adds.
+        let mut d = three();
+        d.select(Some(1));
+        d.press(&c, 1, x + 9.0, y, 11.0);
+        d.drag(&c, 1, x + 9.0, y + 40.0);
+        assert_eq!(d.release(1, 100.0, false), Release::Done);
+        d.select(Some(1));
+        let (x, y) = c.project(d.points()[1].0, d.points()[1].1).unwrap();
+        d.press(&c, 1, x + 9.0, y, 11.0);
+        assert_eq!(d.release(1, 200.0, true), Release::Done);
     }
 
     #[test]
