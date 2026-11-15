@@ -66,7 +66,7 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 2. **Clippy:** `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo clippy --all-targets -- -D warnings`
 3. **Test:** `cargo test --all-targets`
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
-5. **Data:** `scripts/check-data.sh` (generated files in `assets/data/` match `data-src/`)
+5. **Data:** `scripts/check-data.sh` (generated files in `assets/data/` match `data-src/`; also runs the Python script tests)
 6. **Build:** `trunk build --release`
 7. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
    `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, push your branch, wait for CI, then run `scripts/update-baselines.sh <PR number>` (add `--push` to push). It copies `actual/*.png` from the PR's `visual-screenshots` CI artifact into `visual-tests/baselines/` and commits them as you. Review the new PNGs before pushing (see README). Shared build steps live in `.github/actions/`, so `ci.yml` stays consistent.
