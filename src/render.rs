@@ -206,6 +206,7 @@ struct Uniforms {
     ids: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
+    theme: Option<WebGlUniformLocation>,
     political: Option<WebGlUniformLocation>,
     sun: Option<WebGlUniformLocation>,
     sun_on: Option<WebGlUniformLocation>,
@@ -244,6 +245,7 @@ impl Uniforms {
             ids: u("u_ids"),
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
+            theme: u("u_theme"),
             political: u("u_political"),
             sun: u("u_sun"),
             sun_on: u("u_sunOn"),
@@ -745,6 +747,10 @@ pub struct Renderer {
     /// loaded. Kept on the CPU so it survives context loss. `None` draws plain
     /// land, as before the data arrives.
     country_colors: Option<[f32; 256]>,
+    /// Class of each country ID for the shown thematic layer (see
+    /// `Countries::theme_classes`), or `None` before the country data loads or
+    /// on a layer that is not thematic.
+    theme_classes: Option<[f32; 256]>,
     /// Texture sizes, chosen once from the device and kept across context loss.
     budget: TextureBudget,
     /// With `?debug=ctxloss`, the `WEBGL_lose_context` extension for the debug
@@ -802,6 +808,7 @@ impl Renderer {
             ids: r.ids,
             highlight: 0,
             country_colors: None,
+            theme_classes: None,
             budget,
             lose_ext,
         })
@@ -1212,6 +1219,12 @@ impl Renderer {
         self.country_colors = Some(colors.map(f32::from));
     }
 
+    /// Per-ID classes for the thematic layer being shown (see
+    /// `Countries::theme_classes`); `None` when the layer has no theme.
+    pub fn set_theme_classes(&mut self, classes: Option<&[u8; 256]>) {
+        self.theme_classes = classes.map(|c| c.map(f32::from));
+    }
+
     pub fn set_layer(&mut self, layer: Layer) {
         self.layer = layer;
     }
@@ -1416,7 +1429,21 @@ impl Renderer {
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
         // Fills fade out as the view zooms in (see `political_fill_amount`).
-        let colors = self.country_colors.as_ref();
+        let theme = self.layer.theme();
+        let colors = if theme.is_some() {
+            self.theme_classes.as_ref()
+        } else {
+            self.country_colors.as_ref()
+        };
+        if let Some(t) = theme {
+            let flat: Vec<f32> = t
+                .palette()
+                .iter()
+                .flatten()
+                .map(|&c| f32::from(c) / 255.0)
+                .collect();
+            gl.uniform3fv_with_f32_array(u.theme.as_ref(), &flat);
+        }
         let fill = if colors.is_some() {
             political_fill_amount(camera, self.budget.ids_width)
         } else {
@@ -1842,6 +1869,7 @@ mod tests {
             "u_ids",
             "u_highlight",
             "u_idColor",
+            "u_theme",
             "u_political",
             "u_sun",
             "u_sunOn",

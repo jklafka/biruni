@@ -58,6 +58,11 @@ const VIEWS = [
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.
   { name: "day-night", hash: "#30,0,9000&sun=on&t=1718992800" },
+  // Thematic layers (country fills by statistic) with their legend. They use
+  // the country data, so there is nothing extra to download.
+  { name: "theme-pop-globe", hash: "#20,20,15000&layer=pop" },
+  { name: "theme-gdp-robinson", hash: "#0,0,19000&proj=robinson&layer=gdp" },
+  { name: "theme-income-phone", hash: "#30,10,15000&layer=income", viewport: { width: 390, height: 844 } },
   { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
 ];
 
@@ -170,6 +175,13 @@ try {
         state: "attached",
         timeout: 60_000,
       });
+    }
+    if (["pop", "gdp", "income"].includes(wantLayer)) {
+      await page.waitForSelector(`#globe[data-layer="${wantLayer}"]`, {
+        state: "attached",
+        timeout: 30_000,
+      });
+      await page.waitForSelector("#legend:not([hidden])", { timeout: 10_000 });
     }
     await page.evaluate(
       () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),

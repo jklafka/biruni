@@ -3,6 +3,7 @@
 
 use crate::camera::{wrap_angle, Camera, EARTH_RADIUS_KM, MAX_ALT, MIN_ALT};
 use crate::projection::Projection;
+use crate::thematic::Theme;
 
 /// Default view: latitude°, longitude°, altitude in globe radii.
 pub const HOME: (f64, f64, f64) = (25.0, 0.0, 2.4);
@@ -17,10 +18,33 @@ pub enum Layer {
     Monochrome,
     /// NASA Blue Marble satellite imagery (fetched on first use).
     Imagery,
+    /// Countries colored by population (see `thematic`).
+    Population,
+    /// Countries colored by GDP per capita.
+    GdpPerCapita,
+    /// Countries colored by income group.
+    Income,
 }
 
 impl Layer {
-    pub const ALL: [Layer; 3] = [Layer::Political, Layer::Monochrome, Layer::Imagery];
+    pub const ALL: [Layer; 6] = [
+        Layer::Political,
+        Layer::Monochrome,
+        Layer::Imagery,
+        Layer::Population,
+        Layer::GdpPerCapita,
+        Layer::Income,
+    ];
+
+    /// The statistic a thematic layer colors countries by.
+    pub fn theme(self) -> Option<Theme> {
+        match self {
+            Layer::Population => Some(Theme::Population),
+            Layer::GdpPerCapita => Some(Theme::GdpPerCapita),
+            Layer::Income => Some(Theme::Income),
+            _ => None,
+        }
+    }
 
     /// Short identifier used in the URL hash and in element ids.
     pub fn id(self) -> &'static str {
@@ -28,6 +52,9 @@ impl Layer {
             Layer::Political => "political",
             Layer::Monochrome => "mono",
             Layer::Imagery => "imagery",
+            Layer::Population => "pop",
+            Layer::GdpPerCapita => "gdp",
+            Layer::Income => "income",
         }
     }
 
@@ -37,6 +64,9 @@ impl Layer {
             Layer::Political => "Political",
             Layer::Monochrome => "Monochrome",
             Layer::Imagery => "Satellite",
+            Layer::Population => "Population",
+            Layer::GdpPerCapita => "GDP per capita",
+            Layer::Income => "Income group",
         }
     }
 
@@ -49,8 +79,8 @@ impl Layer {
     /// Monochrome are palettes over the base map and need none.
     pub fn data_url(self) -> Option<&'static str> {
         match self {
-            Layer::Political | Layer::Monochrome => None,
             Layer::Imagery => Some("data/blue_marble.webp"),
+            _ => None,
         }
     }
 
@@ -60,6 +90,10 @@ impl Layer {
             Layer::Political => 0,
             Layer::Monochrome => 1,
             Layer::Imagery => 2,
+            // One id per theme, read as `u_layer >= 3` in `globe.frag`.
+            Layer::Population => 3,
+            Layer::GdpPerCapita => 4,
+            Layer::Income => 5,
         }
     }
 
@@ -599,6 +633,37 @@ mod tests {
         seen.sort();
         seen.dedup();
         assert_eq!(seen.len(), Layer::ALL.len());
+    }
+
+    #[test]
+    fn thematic_layers_have_ids_themes_and_no_data_file() {
+        let themed: Vec<Layer> = Layer::ALL
+            .into_iter()
+            .filter(|l| l.theme().is_some())
+            .collect();
+        assert_eq!(
+            themed,
+            [Layer::Population, Layer::GdpPerCapita, Layer::Income]
+        );
+        for l in themed {
+            assert!(l.data_url().is_none(), "uses the country data");
+            assert!(l.shader_index() >= 3, "globe.frag reads u_layer >= 3");
+        }
+        for l in [Layer::Political, Layer::Monochrome, Layer::Imagery] {
+            assert!(l.theme().is_none());
+            assert!(l.shader_index() < 3);
+        }
+        let c = Camera::new(0.0, 0.0, 2.0);
+        for (l, id) in [
+            (Layer::Population, "pop"),
+            (Layer::GdpPerCapita, "gdp"),
+            (Layer::Income, "income"),
+        ] {
+            let hash = format_view_hash(&c, l, SunView::default());
+            assert!(hash.ends_with(&format!("&layer={id}")), "{hash}");
+            assert_eq!(parse_hash_layer(&hash), Some(l));
+        }
+        assert_eq!(parse_hash_layer("#1,2,3&layer=population"), None);
     }
 
     #[test]
@@ -1181,7 +1246,8 @@ mod tests {
             "https://example.com/maps/#46.8000,8.2000,600&layer=imagery"
         );
         assert_eq!(Layer::Monochrome.next(), Layer::Imagery);
-        assert_eq!(Layer::Imagery.next(), Layer::Political);
+        assert_eq!(Layer::Imagery.next(), Layer::Population);
+        assert_eq!(Layer::Income.next(), Layer::Political);
     }
 
     #[test]

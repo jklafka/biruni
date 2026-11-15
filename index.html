@@ -244,6 +244,34 @@
       }
       #layers #layer-status[hidden] { display: none; }
       #layers button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      /* The thematic layers share one menu, so the picker stays one row at phone width. */
+      #layer-theme {
+        min-height: 36px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        cursor: pointer;
+      }
+      #layer-theme option { background: #10151f; color: var(--text); }
+      #layer-theme:hover { color: var(--text); }
+      #layer-theme.on { background: rgba(90, 130, 210, 0.45); color: var(--text); }
+      #layer-theme:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      /* Legend of a thematic layer, beside the control buttons. */
+      #legend {
+        right: 70px;
+        bottom: 16px;
+        max-width: calc(100vw - 86px);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+      #legend h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+      #legend ul { margin: 0; padding: 0; list-style: none; }
+      #legend li { display: flex; align-items: center; gap: 8px; min-height: 18px; break-inside: avoid; }
+      #legend .sw { flex: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.35); }
+      #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
       #controls #proj-button svg { width: 20px; height: 20px; vertical-align: middle; }
       #proj-menu {
         right: 66px;
@@ -311,10 +339,23 @@
       #search-results mark { background: rgba(255, 214, 102, 0.3); color: inherit; font-weight: 700; border-radius: 2px; }
       .search-sub { color: var(--muted); font-size: 12px; }
       #search-status { margin: 6px 4px 0; color: var(--muted); }
+      /* The wider picker would run into the title's hint line. */
+      @media (max-width: 860px) {
+        #title p { display: none; }
+      }
       @media (max-width: 520px) {
         #title p { display: none; }
         #layers { top: 64px; left: 16px; right: auto; }
+        #layers button { padding: 0 8px; }
         #search { top: 116px; }
+        /* Above the HUD, left of the control buttons, in two columns to stay short. */
+        #legend { left: 16px; right: 70px; max-width: none; bottom: calc(150px + var(--scrub, 0px)); }
+        #legend ul { columns: 2; column-gap: 12px; }
+      }
+      body { --legend: 0px; }
+      @media (max-width: 520px) {
+        /* The legend sits above the HUD here, so the country info rises above it. */
+        body:has(#legend:not([hidden])) { --legend: 156px; }
       }
       #country-info {
         left: 50%;
@@ -348,7 +389,7 @@
       #ci-close:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       @media (max-width: 520px) {
         /* Sit above the HUD, left of the control buttons, above the toast and share box (bottom: 150px); measure mode closes this panel. */
-        #country-info { left: 16px; right: 70px; bottom: calc(216px + var(--scrub, 0px)); transform: none; width: auto; max-width: none; }
+        #country-info { left: 16px; right: 70px; bottom: calc(216px + var(--scrub, 0px) + var(--legend, 0px)); transform: none; width: auto; max-width: none; }
       }
       #loading {
         top: 50%;
@@ -403,6 +444,12 @@
       <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
       <button id="layer-mono" aria-pressed="false" title="Monochrome (2)">Monochrome</button>
       <button id="layer-imagery" aria-pressed="false" title="Satellite imagery (3)">Satellite</button>
+      <select id="layer-theme" aria-label="Data layer: color countries by a statistic" title="Color countries by a statistic (4, 5, 6)">
+        <option value="">Data</option>
+        <option value="pop">Population</option>
+        <option value="gdp">GDP per capita</option>
+        <option value="income">Income group</option>
+      </select>
       <div id="layer-status" role="status" hidden></div>
     </div>
     <div id="search" class="panel" role="search">
@@ -444,6 +491,12 @@
       <div id="ci-r1"><span id="ci-l1"></span><span id="ci-v1"></span></div>
       <div id="ci-r2"><span id="ci-l2"></span><span id="ci-v2"></span></div>
       <div id="ci-r3"><span id="ci-l3"></span><span id="ci-v3"></span></div>
+      <div id="ci-r4"><span id="ci-l4"></span><span id="ci-v4"></span></div>
+    </div>
+    <div id="legend" class="panel" role="region" aria-label="Map legend" hidden>
+      <h2 id="legend-title"></h2>
+      <ul id="legend-list"></ul>
+      <p id="legend-note"></p>
     </div>
     <div id="loading" class="panel">Loading map data…</div>
   </body>

@@ -11,6 +11,7 @@ mod info_panel;
 mod label_layer;
 mod labels;
 mod layer_loader;
+mod legend_ui;
 mod lines;
 mod measure;
 mod overlay;
@@ -23,6 +24,7 @@ mod search;
 mod search_ui;
 mod share;
 mod sun;
+mod thematic;
 mod view;
 
 use camera::Camera;
@@ -69,6 +71,9 @@ struct App {
     /// Set when the last load failed; cleared by the next selection.
     layer_error: Option<String>,
     layer_buttons: Vec<(Layer, HtmlElement)>,
+    /// Picker for the thematic layers; the buttons cover the others.
+    theme_select: web_sys::HtmlSelectElement,
+    legend: legend_ui::Legend,
     sun_on: bool,
     /// Fixed time from `&t=`; `None` follows the clock.
     sun_pin: Option<f64>,
@@ -260,6 +265,7 @@ impl App {
                     // The camera is untouched.
                     debug_assert!(self.layers_state.shown() == l);
                     self.renderer.set_layer(l);
+                    self.sync_theme();
                     self.redraw.mark_render();
                     // Lets the visual tests wait for the layer to be on screen.
                     self.set_globe_attr("data-layer", l.id());
@@ -277,6 +283,24 @@ impl App {
         }
         self.refresh_layer_ui();
         self.hash_stale = true;
+    }
+
+    /// Point the renderer, the legend and the info panel at the shown layer's
+    /// theme. Runs when the layer changes and when the country data arrives.
+    fn sync_theme(&mut self) {
+        let theme = self.layers_state.shown().theme();
+        let classes = theme
+            .zip(self.countries.as_ref())
+            .map(|(t, c)| c.theme_classes(t));
+        self.renderer.set_theme_classes(classes.as_ref());
+        let year = self.countries.as_ref().map_or(0, |c| c.data_year());
+        self.legend.show(theme, year);
+        // The open info panel gains or loses the theme's value row.
+        let c = self.selected.and_then(|i| self.countries.as_ref()?.get(i));
+        if c.is_some() {
+            self.info.show(c, theme);
+        }
+        self.redraw.mark_render();
     }
 
     fn fetch_layer(&mut self, layer: Layer) {
@@ -360,6 +384,12 @@ impl App {
                 if Some(*l) == pending { "true" } else { "false" },
             );
         }
+        // The select shows the wanted layer when it is a thematic one.
+        self.theme_select.set_value(if wanted.theme().is_some() {
+            wanted.id()
+        } else {
+            ""
+        });
         let text = match (pending, &self.layer_error) {
             (Some(l), _) => format!("Loading {}…", l.label()),
             (None, Some(e)) => e.clone(),
@@ -587,7 +617,7 @@ impl App {
     fn select(&mut self, country: Option<usize>) {
         self.selected = country;
         let c = country.and_then(|i| self.countries.as_ref()?.get(i));
-        self.info.show(c);
+        self.info.show(c, self.layers_state.shown().theme());
         self.sync_highlight();
     }
 
@@ -988,10 +1018,11 @@ fn start() -> Result<(), JsValue> {
         .map(|h| SunView::from_hash(&h))
         .unwrap_or_default();
     let mut layer_buttons = Vec::new();
-    for layer in Layer::ALL {
+    for layer in Layer::ALL.into_iter().filter(|l| l.theme().is_none()) {
         let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
         layer_buttons.push((layer, b));
     }
+    let theme_select: web_sys::HtmlSelectElement = element(&doc, "layer-theme")?;
 
     let overlay_canvas: HtmlCanvasElement = element(&doc, "overlay")?;
     let overlay = overlay::Overlay::new(overlay_canvas)?;
@@ -1008,6 +1039,8 @@ fn start() -> Result<(), JsValue> {
         layer_status: element(&doc, "layer-status")?,
         layer_error: None,
         layer_buttons: layer_buttons.clone(),
+        theme_select: theme_select.clone(),
+        legend: legend_ui::Legend::new(&doc)?,
         sun_on: sun_hash.on,
         sun_pin: sun_hash.pin,
         sun_button: element(&doc, "sun-toggle")?,
@@ -1165,6 +1198,21 @@ fn start() -> Result<(), JsValue> {
                 app.borrow_mut().go_live();
             })?;
         }
+    }
+    {
+        let app = app.clone();
+        let select = theme_select.clone();
+        listen(
+            select.clone().as_ref(),
+            "change",
+            true,
+            move |_: web_sys::Event| {
+                // The empty option is only a prompt: leave the layer alone.
+                if let Some(layer) = Layer::from_id(&select.value()) {
+                    app.borrow_mut().select_layer(layer);
+                }
+            },
+        )?;
     }
     for (layer, button) in layer_buttons {
         let app = app.clone();
@@ -1489,7 +1537,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2" | "3") => {
+                    k @ ("1" | "2" | "3" | "4" | "5" | "6") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);
@@ -1659,9 +1707,12 @@ fn start() -> Result<(), JsValue> {
                         web_sys::console::error_1(&e);
                     }
                     a.renderer.set_country_colors(&countries.id_colors());
+                    // Thematic classes are only known now: set them up after
+                    // the countries are stored, below.
                     a.redraw.mark_render(); // political fills switch on
                     a.ids = Some(Rc::new(ids));
                     a.countries = Some(countries);
+                    a.sync_theme();
                     a.update_hover();
                     // Lets the visual tests wait for the political fills.
                     let globe = web_sys::window()

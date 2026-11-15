@@ -18,7 +18,8 @@ uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = satellite im
 uniform sampler2D u_imagery;  // RGBA8 satellite image, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
-uniform vec4 u_idColor[64];   // political color index of country ID i: u_idColor[i / 4][i % 4]
+uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
+uniform vec3 u_theme[8];       // thematic layers (u_layer >= 3): color of class i, class 7 = no data (see thematic.rs)
 uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads, fades out at close zoom
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
@@ -64,6 +65,12 @@ const vec3 PALETTE[6] = vec3[6](
     vec3(0.690, 0.560, 0.710),   // heather
     vec3(0.850, 0.650, 0.470)    // apricot
 );
+// Fill of country id: a political palette color, or on a thematic layer the
+// color of its class. u_idColor holds the index for whichever is shown.
+vec3 fillColor(int id) {
+    int i = int(u_idColor[id >> 2][id & 3]);
+    return u_layer >= 3 ? u_theme[i] : PALETTE[i];
+}
 const vec3 ICE = vec3(0.900, 0.925, 0.950);
 const vec3 BORDER = vec3(0.150, 0.170, 0.130);
 const vec3 COAST = vec3(0.780, 0.860, 0.900);
@@ -252,7 +259,7 @@ void main() {
     // derivatives computed above, so derivatives elsewhere are unaffected.
     // At 0 (data not loaded, or zoomed in so far that the coarse raster
     // would sit visibly off the vector borders) the fill lookups are skipped.
-    bool political = u_layer == 0 && u_political > 0.0;
+    bool political = (u_layer == 0 || u_layer >= 3) && u_political > 0.0;
     float fillW = 0.0;
     vec3 fill = vec3(0.0);
     float hlMask = 0.0;
@@ -306,7 +313,7 @@ void main() {
                         float m16 = m8 * m8;
                         float w = m16 * m16;
                         int id = int(cid);
-                        fill += w * PALETTE[int(u_idColor[id >> 2][id & 3])];
+                        fill += w * fillColor(id);
                         fillW += w;
                     }
                 }
@@ -323,7 +330,7 @@ void main() {
                 if (political && cid > 0.0) {
                     float w = wts[k] * wts[k] * wts[k];
                     int id = int(cid);
-                    fill += w * PALETTE[int(u_idColor[id >> 2][id & 3])];
+                    fill += w * fillColor(id);
                     fillW += w;
                 }
             }
