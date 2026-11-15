@@ -73,7 +73,10 @@ def encode(geojson) -> bytes:
     for pts, closed in shapes:
         out += varint(len(pts) << 1 | int(closed))
         for lon, lat in pts:
-            x, y = round(lon * SCALE), round(lat * SCALE)
+            # Some Natural Earth files overshoot the seam by a hair (-180.000015);
+            # clamp so the decoder's lon/lat bounds hold.
+            x = round(max(-180.0, min(180.0, lon)) * SCALE)
+            y = round(max(-90.0, min(90.0, lat)) * SCALE)
             out += varint(zigzag(x - px)) + varint(zigzag(y - py))
             px, py = x, y
     return bytes(out)

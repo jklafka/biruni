@@ -15,7 +15,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/geodesic.rs` | WGS84 inverse geodesic distance (Vincenty, with Karney-style bisection near the antipode). Measure lengths use it; the drawn path and the scale bar stay spherical |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km[,bearing]&layer=&proj=` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
-| `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile` and the binary decoder. Copied to `dist/` by Trunk |
+| `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile`, `geo::draw_ice` and the binary decoder. Copied to `dist/` by Trunk |
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
 | `src/labels.rs` | Browser-free label selection: altitude gate, horizon test, priority, greedy collision, fade steps |
 | `src/label_layer.rs` | Draws labels on the `#labels` canvas (no pointer events), fade state, loads `labels.tsv` |
@@ -123,8 +123,8 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 
 - The projection morph counts as motion for the dynamic resolution (`quality.rs`), and `prefers-reduced-motion` switches projections at once instead of animating.
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
-- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB), 13 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
-- Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask is drawn in the worker, and `assets/raster-worker.js` and `geo::draw_tile` must stay pixel-identical (the main-thread fallback is the reference).
+- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB) and a 4096×2048 glacier mask (R8, mipmapped, about 11 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB) and a 2048×1024 glacier mask (about 3 MB), 16 MB total (the satellite imagery, 11 MB, is allocated only when that layer is opened). `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
+- Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask and the glacier mask are drawn in the worker, and `assets/raster-worker.js` must stay pixel-identical with `geo::draw_tile` and `geo::draw_ice` (the main-thread fallback is the reference).
 - Rasterize on canvases of 4096×4096 or smaller, because some mobile browsers cap a canvas at 16.7 MP. That's why the map is drawn in two halves.
 - Debounce `history.replaceState` (see `hash_stale` and `last_hash`), because Safari throttles it.
 
