@@ -97,38 +97,92 @@ pub fn format_lat_lon(lat: f64, lon: f64) -> String {
     )
 }
 
-/// Altitude in globe radii as whole kilometres with thousands separators.
-pub fn format_altitude(alt: f64) -> String {
-    let km = (alt * EARTH_RADIUS_KM).round().max(0.0) as u64;
-    let digits = km.to_string();
-    let mut out = String::with_capacity(digits.len() + 4);
+/// Whole number with thousands separators, e.g. `1,234,567`.
+pub fn group_thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, ch) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
     }
-    out.push_str(" km");
     out
 }
 
-/// Unit system for the scale bar.
+/// Altitude in globe radii as a whole number of `units` with thousands
+/// separators, e.g. `1,500 km`, `932 mi` or `810 nmi`.
+pub fn format_altitude(alt: f64, units: Units) -> String {
+    let v = (alt * EARTH_RADIUS_KM / units.km_per_unit()).round();
+    // `max` also maps NaN to 0.
+    format!("{} {}", group_thousands(v.max(0.0) as u64), units.suffix())
+}
+
+/// Distance unit for the scale bar, the measure panel and the altitude.
+/// The choice is remembered in `localStorage` (not the URL hash: a shared
+/// link should not impose the sharer's preference).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Units {
     Metric,
     Imperial,
+    Nautical,
 }
 
 impl Units {
-    pub fn toggled(self) -> Self {
+    /// The next unit in the cycle km -> mi -> nmi -> km.
+    pub fn next(self) -> Self {
         match self {
             Units::Metric => Units::Imperial,
-            Units::Imperial => Units::Metric,
+            Units::Imperial => Units::Nautical,
+            Units::Nautical => Units::Metric,
         }
+    }
+
+    /// Kilometres in one main unit (km, mi or nmi).
+    pub fn km_per_unit(self) -> f64 {
+        match self {
+            Units::Metric => 1.0,
+            Units::Imperial => KM_PER_MILE,
+            Units::Nautical => KM_PER_NMI,
+        }
+    }
+
+    pub fn suffix(self) -> &'static str {
+        match self {
+            Units::Metric => "km",
+            Units::Imperial => "mi",
+            Units::Nautical => "nmi",
+        }
+    }
+
+    /// Small unit used on the scale bar below one main unit, with its size
+    /// in km. Metres for km, feet for miles. A nautical mile is exactly
+    /// 1852 m and is defined from the metre, so sub-mile distances at sea
+    /// are given in metres (cables, 0.1 nmi, are rarely used and would
+    /// need a third unit and a fractional "0.5 cable" label).
+    pub fn small(self) -> (&'static str, f64) {
+        match self {
+            Units::Metric | Units::Nautical => ("m", 0.001),
+            Units::Imperial => ("ft", KM_PER_FOOT),
+        }
+    }
+
+    /// Stable identifier stored in `localStorage`.
+    pub fn id(self) -> &'static str {
+        self.suffix()
+    }
+
+    /// Inverse of `id`; `None` for anything else (missing or corrupt value).
+    pub fn from_id(id: &str) -> Option<Units> {
+        [Units::Metric, Units::Imperial, Units::Nautical]
+            .into_iter()
+            .find(|u| u.id() == id)
     }
 }
 
 pub const KM_PER_MILE: f64 = 1.609_344;
+pub const KM_PER_NMI: f64 = 1.852;
+pub const KM_PER_FOOT: f64 = 0.000_304_8;
 /// Above this altitude (globe radii) the scale varies too much across the
 /// view to be meaningful, so no scale bar is shown.
 pub const SCALE_MAX_ALT: f64 = 1.0;
@@ -183,10 +237,15 @@ pub fn scale_bar(cam: &Camera, units: Units, max_px: f64) -> Option<ScaleBar> {
     {
         return None;
     }
-    let (per_px, suffix) = match units {
-        Units::Metric => (km_per_px, "km"),
-        Units::Imperial => (km_per_px / KM_PER_MILE, "mi"),
-    };
+    let mut per_px = km_per_px / units.km_per_unit();
+    let mut suffix = units.suffix();
+    // Under one main unit, switch to the small one (m or ft) so the bar
+    // reads "500 m" rather than "0.5 km".
+    if max_px * per_px < 1.0 {
+        let (small, km) = units.small();
+        per_px = km_per_px / km;
+        suffix = small;
+    }
     let len = nice_length(max_px * per_px)?;
     Some(ScaleBar {
         px: len / per_px,
@@ -386,12 +445,18 @@ mod tests {
 
     #[test]
     fn altitude_formatting() {
-        assert_eq!(format_altitude(0.0), "0 km");
-        assert_eq!(format_altitude(400.0 / EARTH_RADIUS_KM), "400 km");
-        assert_eq!(format_altitude(1500.0 / EARTH_RADIUS_KM), "1,500 km");
-        assert_eq!(format_altitude(2.4), "15,290 km");
+        assert_eq!(format_altitude(0.0, Units::Metric), "0 km");
         assert_eq!(
-            format_altitude(1_234_567.0 / EARTH_RADIUS_KM),
+            format_altitude(400.0 / EARTH_RADIUS_KM, Units::Metric),
+            "400 km"
+        );
+        assert_eq!(
+            format_altitude(1500.0 / EARTH_RADIUS_KM, Units::Metric),
+            "1,500 km"
+        );
+        assert_eq!(format_altitude(2.4, Units::Metric), "15,290 km");
+        assert_eq!(
+            format_altitude(1_234_567.0 / EARTH_RADIUS_KM, Units::Metric),
             "1,234,567 km"
         );
     }
@@ -399,8 +464,14 @@ mod tests {
     #[test]
     fn altitude_rounds_before_grouping() {
         // 15,999.7 km must not render as "15,1000 km".
-        assert_eq!(format_altitude(15_999.7 / EARTH_RADIUS_KM), "16,000 km");
-        assert_eq!(format_altitude(999.6 / EARTH_RADIUS_KM), "1,000 km");
+        assert_eq!(
+            format_altitude(15_999.7 / EARTH_RADIUS_KM, Units::Metric),
+            "16,000 km"
+        );
+        assert_eq!(
+            format_altitude(999.6 / EARTH_RADIUS_KM, Units::Metric),
+            "1,000 km"
+        );
     }
 
     #[test]
@@ -833,6 +904,8 @@ mod tests {
         assert_eq!(RedrawFlags::new().take(), (true, true));
     }
 
+    const ALL_UNITS: [Units; 3] = [Units::Metric, Units::Imperial, Units::Nautical];
+
     fn sized(lat: f64, alt: f64, w: f64, h: f64) -> Camera {
         let mut c = Camera::new(lat, 10.0, alt);
         c.width = w;
@@ -862,15 +935,18 @@ mod tests {
     fn scale_bar_matches_ground_distance() {
         for alt in [0.06, 0.1, 0.3, 0.7, 1.0] {
             let c = sized(30.0, alt, 1200.0, 800.0);
-            for units in [Units::Metric, Units::Imperial] {
+            for units in ALL_UNITS {
                 let bar = scale_bar(&c, units, 120.0).unwrap();
                 assert!(bar.px <= 120.0 + 1e-9 && bar.px >= 120.0 / 2.5, "{bar:?}");
                 // Bar length in km must equal px * km/px, and be a nice number.
                 let value: f64 = bar.label.split(' ').next().unwrap().parse().unwrap();
-                let km = match units {
-                    Units::Metric => value,
-                    Units::Imperial => value * KM_PER_MILE,
-                };
+                let small = bar.label.ends_with(" m") || bar.label.ends_with(" ft");
+                let km = value
+                    * if small {
+                        units.small().1
+                    } else {
+                        units.km_per_unit()
+                    };
                 assert!((bar.px * c.km_per_pixel() - km).abs() / km < 1e-9);
                 assert_eq!(nice_length(value), Some(value));
             }
@@ -900,6 +976,79 @@ mod tests {
         assert_eq!(m.label, "50 km");
         let i = scale_bar(&c, Units::Imperial, 100.0).unwrap();
         assert_eq!(i.label, "20 mi");
+        // 58 km is 31.3 nmi, so the round length is 20 nmi.
+        let n = scale_bar(&c, Units::Nautical, 100.0).unwrap();
+        assert_eq!(n.label, "20 nmi");
+        assert!((n.px - 20.0 * 1.852 / c.km_per_pixel()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn scale_bar_small_units() {
+        // alt 0.001: 0.005797 km/px, so 100 px is 580 m = 1,902 ft = 0.313 nmi.
+        let c = sized(0.0, 0.001, 1200.0, 800.0);
+        assert_eq!(scale_bar(&c, Units::Metric, 100.0).unwrap().label, "500 m");
+        assert_eq!(
+            scale_bar(&c, Units::Imperial, 100.0).unwrap().label,
+            "1000 ft"
+        );
+        assert_eq!(
+            scale_bar(&c, Units::Nautical, 100.0).unwrap().label,
+            "500 m"
+        );
+        // The bar width matches the ground distance in the small unit.
+        let m = scale_bar(&c, Units::Metric, 100.0).unwrap();
+        assert!((m.px * c.km_per_pixel() - 0.5).abs() < 1e-9);
+        let f = scale_bar(&c, Units::Imperial, 100.0).unwrap();
+        assert!((f.px * c.km_per_pixel() - 1000.0 * KM_PER_FOOT).abs() < 1e-9);
+    }
+
+    #[test]
+    fn scale_bar_switches_at_one_main_unit() {
+        // Choose km/px so that 100 px is exactly `d` km via a target alt.
+        let c = sized(0.0, 0.1, 1200.0, 800.0);
+        let per_px = c.km_per_pixel();
+        for units in ALL_UNITS {
+            let one = units.km_per_unit();
+            // Just over one main unit: main unit; just under: small unit.
+            let over = scale_bar(&c, units, one * 1.01 / per_px).unwrap();
+            assert!(over.label.ends_with(units.suffix()), "{over:?}");
+            let under = scale_bar(&c, units, one * 0.99 / per_px).unwrap();
+            assert!(under.label.ends_with(units.small().0), "{under:?}");
+            assert!(!under.label.contains('.'), "{under:?}");
+            assert!(under.px <= one * 0.99 / per_px + 1e-9);
+        }
+    }
+
+    #[test]
+    fn scale_bar_works_at_tiny_altitude() {
+        // If MIN_ALT drops, the bar must stay finite and non-empty.
+        for units in ALL_UNITS {
+            for alt in [1e-4, 1e-6, 1e-9] {
+                let bar = scale_bar(&sized(10.0, alt, 800.0, 600.0), units, 100.0).unwrap();
+                assert!(bar.px.is_finite() && bar.px > 0.0 && bar.px <= 100.0 + 1e-9);
+                let v: f64 = bar.label.split(' ').next().unwrap().parse().unwrap();
+                assert!(v > 0.0, "{bar:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn units_ids_round_trip() {
+        for u in ALL_UNITS {
+            assert_eq!(Units::from_id(u.id()), Some(u));
+        }
+        for bad in ["", "KM", "miles", "null", " km"] {
+            assert_eq!(Units::from_id(bad), None);
+        }
+    }
+
+    #[test]
+    fn altitude_follows_units() {
+        let a = 1500.0 / EARTH_RADIUS_KM;
+        assert_eq!(format_altitude(a, Units::Metric), "1,500 km");
+        assert_eq!(format_altitude(a, Units::Imperial), "932 mi");
+        assert_eq!(format_altitude(a, Units::Nautical), "810 nmi");
+        assert_eq!(format_altitude(f64::NAN, Units::Nautical), "0 nmi");
     }
 
     #[test]
@@ -949,9 +1098,11 @@ mod tests {
     }
 
     #[test]
-    fn units_toggle() {
-        assert_eq!(Units::Metric.toggled(), Units::Imperial);
-        assert_eq!(Units::Imperial.toggled().toggled(), Units::Imperial);
+    fn units_cycle() {
+        assert_eq!(Units::Metric.next(), Units::Imperial);
+        assert_eq!(Units::Imperial.next(), Units::Nautical);
+        assert_eq!(Units::Nautical.next(), Units::Metric);
+        assert_eq!(Units::Metric.next().next().next(), Units::Metric);
     }
 
     #[test]

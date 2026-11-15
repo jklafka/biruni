@@ -522,7 +522,7 @@ impl App {
         self.hud_center
             .set_text_content(Some(&format_lat_lon(self.camera.lat, self.camera.lon)));
         self.hud_alt
-            .set_text_content(Some(&format_altitude(self.camera.alt)));
+            .set_text_content(Some(&format_altitude(self.camera.alt, self.units)));
         // The needle points at north: the globe turned by the bearing, so
         // north sits that many degrees counterclockwise from screen up.
         let bearing = self.camera.bearing_deg();
@@ -563,6 +563,14 @@ impl App {
                 let _ = self.hud_scale.style().set_property("display", "none");
             }
         }
+    }
+
+    /// Switch to the next unit, remember it, and refresh the HUD text (the globe does
+    /// not change, so no redraw).
+    fn cycle_units(&mut self) {
+        self.units = self.units.next();
+        save_units(&self.window, self.units);
+        self.redraw.mark_hud();
     }
 
     // ---- pointer input -------------------------------------------------
@@ -638,6 +646,27 @@ fn element<T: JsCast>(doc: &Document, id: &str) -> Result<T, JsValue> {
         .ok_or_else(|| JsValue::from_str(&format!("missing #{id}")))?
         .dyn_into::<T>()
         .map_err(|_| JsValue::from_str(&format!("#{id} has the wrong element type")))
+}
+
+const UNITS_KEY: &str = "maps.units";
+
+/// Saved unit, or km when nothing usable is stored. `localStorage` can be
+/// missing or throw (private mode, blocked site data), so every step falls
+/// back instead of failing.
+fn load_units(window: &Window) -> Units {
+    window
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|s| s.get_item(UNITS_KEY).ok().flatten())
+        .and_then(|id| Units::from_id(&id))
+        .unwrap_or(Units::Metric)
+}
+
+fn save_units(window: &Window, units: Units) {
+    if let Ok(Some(s)) = window.local_storage() {
+        let _ = s.set_item(UNITS_KEY, units.id());
+    }
 }
 
 fn listen<E: JsCast + 'static>(
@@ -759,7 +788,7 @@ fn start() -> Result<(), JsValue> {
         hud_scale: element(&doc, "hud-scale")?,
         hud_scale_bar: element(&doc, "hud-scale-bar")?,
         hud_scale_label: element(&doc, "hud-scale-label")?,
-        units: Units::Metric,
+        units: load_units(&window),
         layers: None,
         status: loading.clone(),
         share_ui: share::ShareUi::new(&window, &doc, canvas.clone().into())?,
@@ -891,14 +920,13 @@ fn start() -> Result<(), JsValue> {
         })?;
     }
 
-    // Clicking or tapping the scale bar toggles metric/imperial.
+    // Clicking or tapping the scale bar cycles km, mi and nmi.
     {
         let app = app.clone();
         let scale: EventTarget = app.borrow().hud_scale.clone().into();
         listen(&scale, "click", true, move |_: MouseEvent| {
             let mut a = app.borrow_mut();
-            a.units = a.units.toggled();
-            a.redraw.mark_hud();
+            a.cycle_units();
         })?;
     }
 
@@ -989,8 +1017,7 @@ fn start() -> Result<(), JsValue> {
                 }
                 "u" | "U" => {
                     // Only the HUD text changes; no need to redraw the globe.
-                    a.units = a.units.toggled();
-                    a.redraw.mark_hud();
+                    a.cycle_units();
                     return;
                 }
                 "s" | "S" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
