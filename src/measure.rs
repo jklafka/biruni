@@ -4,7 +4,7 @@
 //! `EARTH_RADIUS_KM`, which is within about 0.5% of the WGS84 geodesic.
 
 use crate::camera::{spherical, Camera, EARTH_RADIUS_KM};
-use crate::view::{Units, KM_PER_MILE};
+use crate::view::{group_thousands, Units};
 use std::f64::consts::PI;
 
 /// Most points a path may have.
@@ -152,17 +152,14 @@ impl Measure {
     }
 }
 
-/// Distance as text with thousands separators, e.g. `5,570 km` or
-/// `3,461 mi`. Below 10 shows one decimal, and zero shows
+/// Distance as text with thousands separators, e.g. `5,570 km`,
+/// `3,461 mi` or `3,008 nmi`. Below 10 shows one decimal, and zero shows
 /// `0 km`; non-finite shows an em dash.
 pub fn format_distance(km: f64, units: Units) -> String {
     if !km.is_finite() || km < 0.0 {
         return "—".into();
     }
-    let (v, unit) = match units {
-        Units::Metric => (km, "km"),
-        Units::Imperial => (km / KM_PER_MILE, "mi"),
-    };
+    let (v, unit) = (km / units.km_per_unit(), units.suffix());
     if v < 10.0 {
         // Zero (including -0.0 from `0.0 * -1.0` style arithmetic) and
         // values that round to 0.0 print as a plain "0".
@@ -171,15 +168,7 @@ pub fn format_distance(km: f64, units: Units) -> String {
         }
         return format!("{v:.1} {unit}");
     }
-    let digits = (v.round() as u64).to_string();
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    format!("{out} {unit}")
+    format!("{} {unit}", group_thousands(v.round() as u64))
 }
 
 /// Screen-space polylines (CSS pixels) for the path. Each is a run of
@@ -402,6 +391,12 @@ mod tests {
         assert_eq!(format_distance(0.05, Units::Metric), "0.1 km");
         assert_eq!(format_distance(2.5, Units::Metric), "2.5 km");
         assert_eq!(format_distance(5570.0, Units::Imperial), "3,461 mi");
+        assert_eq!(format_distance(0.0, Units::Nautical), "0 nmi");
+        assert_eq!(format_distance(-0.0, Units::Nautical), "0 nmi");
+        assert_eq!(format_distance(0.09, Units::Nautical), "0 nmi");
+        assert_eq!(format_distance(1.852, Units::Nautical), "1.0 nmi");
+        assert_eq!(format_distance(5570.0, Units::Nautical), "3,008 nmi");
+        assert_eq!(format_distance(f64::NAN, Units::Nautical), "—");
         assert_eq!(format_distance(f64::NAN, Units::Metric), "—");
         assert_eq!(format_distance(f64::INFINITY, Units::Imperial), "—");
         assert_eq!(format_distance(-1.0, Units::Metric), "—");
@@ -413,7 +408,7 @@ mod tests {
         assert!(m.add(0.3, 0.4));
         let total = m.total_km();
         assert!(total.is_sign_positive());
-        for units in [Units::Metric, Units::Imperial] {
+        for units in [Units::Metric, Units::Imperial, Units::Nautical] {
             let text = format_distance(total, units);
             assert!(!text.contains('-'), "{text}");
             assert!(text.starts_with("0 "), "{text}");
