@@ -5,6 +5,8 @@
 
 Biruni is a web app for exploring maps, written in Rust and compiled to WebAssembly. It is named after al-Bīrūnī (973–c. 1050), who measured the radius of the Earth, wrote on astronomy, and described the peoples of India.
 
+**Live:** <https://biruni.jklafka.cloud>
+
 The first map is an interactive 3D globe. Drag to rotate it, and scroll or pinch to zoom from orbit down to about 400 km. It can also unroll into a flat map: equirectangular, Mercator (clipped at about 85°), Robinson or Mollweide, with an animated morph between them.
 
 ## Running locally
@@ -59,7 +61,8 @@ One-time setup for the repository owner:
 2. Create an API token (My Profile, API Tokens) with the permission **Account, Cloudflare Pages, Edit**.
 3. Copy your Account ID from the dashboard.
 4. In GitHub, under Settings, Secrets and variables, Actions, add the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-5. Optionally, add the **Deploy to Cloudflare Pages** job as a required check in the `main` branch protection, and put the live URL here.
+5. Optionally, add the **Deploy to Cloudflare Pages** job as a required check in the `main` branch protection.
+6. Attach the custom domain (`biruni.jklafka.cloud`) under the project's Custom domains. On the zone, set Browser Cache TTL to **Respect Existing Headers** (or add a Cache Rule for this hostname that does), or Cloudflare raises short `max-age` values such as `raster-worker.js`'s to the zone default.
 
 ## Controls
 
