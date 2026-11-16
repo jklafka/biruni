@@ -10,6 +10,7 @@ Prerequisites:
 
 - Rust via [rustup](https://rustup.rs) with the wasm target: `rustup target add wasm32-unknown-unknown`
 - [Trunk](https://trunkrs.dev): `brew install trunk` or `cargo install trunk`
+- Python 3 (standard library only): Trunk runs `scripts/hash_data.py` after every build
 
 ```sh
 trunk serve --open      # dev server with live reload at http://127.0.0.1:8080
@@ -131,6 +132,8 @@ These are for testing, not controls, and have no UI. `?debug=ctxloss` (before th
 Map data is from [Natural Earth](https://www.naturalearthdata.com/) (1:50m land, lakes, glaciated areas, Antarctic ice shelves, admin-0 boundary lines and admin-0 countries, whose names, ISO codes, continent, subregion and population estimate feed the info panel, plus 1:10m populated places for search and labels, and 1:50m marine polygons for ocean and sea names). It is in the public domain.
 
 The GeoJSON sources live in `data-src/`. The app downloads compact binary files (`assets/data/*.bin`, quantized to 1e-4° and delta/varint encoded, about 680 KB instead of 6.4 MB; the country file is about 292 KB, fetched after the first frame). After changing a source file, regenerate them with `python3 scripts/convert_geojson.py`; `scripts/check-data.sh` (CI job "Data") checks byte-for-byte that the committed files are what the script generates.
+
+The app never fetches these files by name. After every build (including `trunk serve`), a Trunk hook (`scripts/hash_data.py`) moves each file to `data/files/<name>.<hash>.<ext>` and writes `data/manifest.json`, which maps the original names to the hashed paths. The app loads the manifest once (`src/data.rs`; `index.html` preloads it so it costs no extra round trip) and resolves every data file through it. Hashed files never change, so `assets/_headers` caches them as immutable, and only the small manifest revalidates (every 60 s). Paths in the manifest are relative to it or absolute URLs, so the data can later be served from another host without changing the app.
 
 The Satellite layer uses `assets/data/blue_marble.webp` (4096x2048 lossy WebP, about 0.7 MB), downloaded only the first time the layer is selected. It is NASA Earth Observatory's [Blue Marble: Next Generation w/ Topography and Bathymetry](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography-bathymetry), July 2004 (Reto Stockli and Jesse Allen; ocean depth shading from GEBCO), resampled from the 5400x2700 JPEG at <https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x5400x2700.jpg>. NASA says its imagery is generally not subject to copyright in the United States, asks that NASA be acknowledged as the source (see its [media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)), and asks for the credit "NASA Earth Observatory" on Blue Marble images. NASA insignia and logos are not covered, and none is used. `python3 scripts/make_blue_marble.py` downloads the source and rebuilds the file (needs Pillow with WebP; the original is not committed). CI cannot download from NASA and the encoder output varies between versions, so the "Data" job does not regenerate this file: it checks that it exists, is a 4096x2048 WebP and is under 2 MB.
 
