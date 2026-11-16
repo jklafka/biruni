@@ -129,6 +129,8 @@ These are for testing, not controls, and have no UI. `?debug=ctxloss` (before th
 
 ## Data
 
+Licenses and required credits for every dataset, including the ones planned for the roadmap, are tracked in [`DATA_LICENSES.md`](DATA_LICENSES.md).
+
 Map data is from [Natural Earth](https://www.naturalearthdata.com/) (1:50m land, lakes, glaciated areas, Antarctic ice shelves, admin-0 boundary lines and admin-0 countries, whose names, ISO codes, continent, subregion and population estimate feed the info panel, plus 1:10m populated places for search and labels, and 1:50m marine polygons for ocean and sea names). It is in the public domain.
 
 The GeoJSON sources live in `data-src/`. The app downloads compact binary files (`assets/data/*.bin`, quantized to 1e-4° and delta/varint encoded, about 680 KB instead of 6.4 MB; the country file is about 292 KB, fetched after the first frame). After changing a source file, regenerate them with `python3 scripts/convert_geojson.py`; `scripts/check-data.sh` (CI job "Data") checks byte-for-byte that the committed files are what the script generates.
