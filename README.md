@@ -1,5 +1,8 @@
 # Biruni
 
+[![CI](https://github.com/jklafka/biruni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jklafka/biruni/actions/workflows/ci.yml?query=branch%3Amain)
+[![Deploy](https://github.com/jklafka/biruni/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/jklafka/biruni/actions/workflows/deploy.yml?query=branch%3Amain)
+
 Biruni is a web app for exploring maps, written in Rust and compiled to WebAssembly. It is named after al-Bīrūnī (973–c. 1050), who measured the radius of the Earth, wrote on astronomy, and described the peoples of India.
 
 The first map is an interactive 3D globe. Drag to rotate it, and scroll or pinch to zoom from orbit down to about 400 km. It can also unroll into a flat map: equirectangular, Mercator (clipped at about 85°), Robinson or Mollweide, with an animated morph between them.
