@@ -361,6 +361,56 @@
         /* The legend sits above the HUD here, so the country info rises above it. */
         body:has(#legend:not([hidden])) { --legend: 156px; }
       }
+      #hud #hud-credits { justify-content: flex-start; margin-top: 4px; }
+      #credits-button {
+        padding: 6px 0;
+        margin: -6px 0;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+        pointer-events: auto;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #credits-button:hover { color: var(--text); }
+      #credits-button:focus-visible, #credits-close:focus-visible, #credits a:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      /* Covers the HUD while open; Esc or the × button closes it. */
+      #credits {
+        left: 16px;
+        bottom: calc(16px + var(--scrub, 0px));
+        width: 340px;
+        max-width: calc(100vw - 32px);
+        max-height: calc(100vh - 32px - var(--scrub, 0px));
+        overflow-y: auto;
+        pointer-events: auto;
+        user-select: text;
+      }
+      @media (max-width: 520px) {
+        /* Leave the control buttons usable beside it. */
+        #credits { right: 70px; width: auto; max-width: none; }
+      }
+      #credits h2 { margin: 0 32px 8px 0; font-size: 16px; font-weight: 600; }
+      #credits ul { margin: 0; padding: 0; list-style: none; }
+      #credits li + li { margin-top: 10px; }
+      #credits .cr-name { font-weight: 600; }
+      #credits .cr-text { color: var(--muted); }
+      #credits a { color: #8fb4ff; }
+      #credits-close {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 20px;
+        cursor: pointer;
+      }
+      #credits-close:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
       #country-info {
         left: 50%;
         bottom: 16px;
@@ -420,6 +470,7 @@
       <div id="hud-scale" style="display: none" title="Click to switch km / mi (U)">
         <span id="hud-scale-bar"></span><span id="hud-scale-label"></span>
       </div>
+      <div id="hud-credits"><button id="credits-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="credits" title="Data sources and licenses">Data credits</button></div>
     </div>
     <div id="measure" class="panel" hidden>
       <div id="measure-total">0 km</div>
@@ -501,6 +552,11 @@
       <h2 id="legend-title"></h2>
       <ul id="legend-list"></ul>
       <p id="legend-note"></p>
+    </div>
+    <div id="credits" class="panel" role="dialog" aria-labelledby="credits-title" hidden>
+      <h2 id="credits-title">Data credits</h2>
+      <button id="credits-close" title="Close (Esc)" aria-label="Close data credits">×</button>
+      <ul id="credits-list"></ul>
     </div>
     <div id="loading" class="panel">Loading map data…</div>
   </body>
