@@ -5,6 +5,15 @@ name: Deploy
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets (see
 # README.md). Without them, or on pull requests from forks, no deploy happens
 # and this workflow still passes.
+#
+# On main only (push, or a manual run on main), and only if the
+# CLOUDFLARE_R2_TOKEN secret is set, the map data is published to the R2
+# bucket first: validate against the live data, set CORS, upload the content-
+# hashed files that R2 lacks, check they are served, then rewrite
+# dist/data/manifest.json to absolute R2 URLs and drop dist/data/files. Every
+# step before the Pages deploy fails the job, so a manifest never ships
+# pointing at files that are not there. Pull requests, dev servers and visual
+# tests keep serving the data from the site itself.
 
 on:
   pull_request:
@@ -23,6 +32,11 @@ env:
   CARGO_TERM_COLOR: always
   TRUNK_VERSION: v0.22.1
   PAGES_PROJECT: biruni
+  # Pinned so the R2 commands behave the same on every run.
+  WRANGLER_VERSION: 4.164.0
+  R2_BUCKET: biruni-data
+  R2_BASE_URL: https://biruni-data.jklafka.cloud
+  LIVE_MANIFEST_URL: https://biruni.jklafka.cloud/data/manifest.json
 
 jobs:
   build:
@@ -73,11 +87,84 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Cloudflare secrets are not set; skipping deploy."
           fi
+      - name: Check whether to publish data to R2
+        id: r2
+        env:
+          R2_TOKEN: ${{ secrets.CLOUDFLARE_R2_TOKEN }}
+          ON_MAIN: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          if [ "$ON_MAIN" != "true" ] || [ "${{ steps.creds.outputs.present }}" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$R2_TOKEN" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLOUDFLARE_R2_TOKEN is not set; deploying with the data served from Pages."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.r2.outputs.enabled == 'true'
+      # Checkout cleans the workspace, so it must come before the download.
       - uses: actions/download-artifact@v5
         if: steps.creds.outputs.present == 'true'
         with:
           name: site
           path: dist
+      - name: Validate data against the live data
+        if: steps.r2.outputs.enabled == 'true'
+        run: |
+          baseline="$RUNNER_TEMP/baseline"
+          python3 scripts/publish_data.py fetch-baseline "$LIVE_MANIFEST_URL" "$baseline"
+          if [ -f "$baseline/manifest.json" ]; then
+            python3 scripts/validate_data.py dist/data --baseline "$baseline"
+          else
+            python3 scripts/validate_data.py dist/data
+          fi
+      - name: Set CORS on the R2 bucket
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_TOKEN }}
+        run: npx --yes "wrangler@${WRANGLER_VERSION}" r2 bucket cors set "$R2_BUCKET" --file scripts/r2-cors.json --force
+      - name: Upload new data files to R2
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_TOKEN }}
+        run: |
+          python3 scripts/publish_data.py plan dist/data "$R2_BASE_URL" > "$RUNNER_TEMP/missing.tsv"
+          echo "$(wc -l < "$RUNNER_TEMP/missing.tsv" | tr -d ' ') new data files to upload"
+          while IFS=$'\t' read -r name ctype; do
+            echo "uploading $name ($ctype)"
+            npx --yes "wrangler@${WRANGLER_VERSION}" r2 object put "$R2_BUCKET/files/$name" \
+              --file "dist/data/files/$name" --content-type "$ctype" \
+              --cache-control "public, max-age=31536000, immutable" --remote < /dev/null
+          done < "$RUNNER_TEMP/missing.tsv"
+      - name: Verify every data file is served from R2
+        if: steps.r2.outputs.enabled == 'true'
+        run: |
+          origin=https://biruni.jklafka.cloud
+          for f in dist/data/files/*; do
+            name="$(basename "$f")"
+            want="$(wc -c < "$f" | tr -d ' ')"
+            ok=false
+            for _ in 1 2 3 4 5 6; do
+              got="$(curl -s -o /dev/null -H "Origin: $origin" -D "$RUNNER_TEMP/h" \
+                -w '%{http_code} %{size_download}' "$R2_BASE_URL/files/$name" || true)"
+              if [ "$got" = "200 $want" ] && grep -qi "^access-control-allow-origin: $origin" "$RUNNER_TEMP/h"; then
+                ok=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$ok" != true ]; then
+              echo "::error::$R2_BASE_URL/files/$name not served correctly (got '$got', want '200 $want' and CORS for $origin)"
+              exit 1
+            fi
+          done
+          echo "all data files are served from $R2_BASE_URL"
+      - name: Point the manifest at R2
+        if: steps.r2.outputs.enabled == 'true'
+        run: |
+          python3 scripts/publish_data.py rewrite dist/data "$R2_BASE_URL"
+          cat dist/data/manifest.json
       - name: Deploy
         id: deploy
         if: steps.creds.outputs.present == 'true'
