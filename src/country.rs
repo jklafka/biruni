@@ -1,7 +1,7 @@
 //! Country polygons and attributes: hit-testing and the ID raster.
 //!
 //! Everything here is browser-free so it can be tested natively; only
-//! [`load`] touches the network, through `geo::fetch_bytes`.
+//! [`load`] touches the network, through `data::fetch`.
 //!
 //! The data comes from Natural Earth admin-0 countries (public domain),
 //! converted by `scripts/convert_geojson.py` into this binary format (all
@@ -657,9 +657,9 @@ pub fn format_population(n: u64) -> String {
 
 /// Fetch and decode the country file.
 pub async fn load() -> Result<Countries, JsValue> {
-    let url = "data/ne_50m_admin_0_countries.bin";
-    let bytes = crate::geo::fetch_bytes(url).await?;
-    decode_countries(&bytes).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))
+    let name = "ne_50m_admin_0_countries.bin";
+    let bytes = crate::data::fetch(name).await?;
+    decode_countries(&bytes).map_err(|e| JsValue::from_str(&format!("{name}: {e}")))
 }
 
 #[cfg(test)]

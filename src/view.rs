@@ -74,12 +74,12 @@ impl Layer {
         Layer::ALL.into_iter().find(|l| l.id() == id.trim())
     }
 
-    /// Data file (relative to the page) this layer needs before it can be
+    /// Data file (its name in `assets/data/`) this layer needs before it can be
     /// shown, fetched the first time it is selected. Political and
     /// Monochrome are palettes over the base map and need none.
-    pub fn data_url(self) -> Option<&'static str> {
+    pub fn data_file(self) -> Option<&'static str> {
         match self {
-            Layer::Imagery => Some("data/blue_marble.webp"),
+            Layer::Imagery => Some("blue_marble.webp"),
             _ => None,
         }
     }
@@ -106,7 +106,7 @@ impl Layer {
 
 impl crate::layer_loader::Loadable for Layer {
     fn needs_data(self) -> bool {
-        self.data_url().is_some()
+        self.data_file().is_some()
     }
 }
 
@@ -646,7 +646,7 @@ mod tests {
             [Layer::Population, Layer::GdpPerCapita, Layer::Income]
         );
         for l in themed {
-            assert!(l.data_url().is_none(), "uses the country data");
+            assert!(l.data_file().is_none(), "uses the country data");
             assert!(l.shader_index() >= 3, "globe.frag reads u_layer >= 3");
         }
         for l in [Layer::Political, Layer::Monochrome, Layer::Imagery] {
@@ -1253,16 +1253,16 @@ mod tests {
     #[test]
     fn only_the_imagery_layer_needs_data_and_the_file_ships() {
         for l in Layer::ALL {
-            assert_eq!(l.data_url().is_some(), l == Layer::Imagery, "{l:?}");
+            assert_eq!(l.data_file().is_some(), l == Layer::Imagery, "{l:?}");
             assert_eq!(
                 crate::layer_loader::Loadable::needs_data(l),
-                l.data_url().is_some()
+                l.data_file().is_some()
             );
         }
-        let url = Layer::Imagery.data_url().unwrap();
+        let name = Layer::Imagery.data_file().unwrap();
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join(url);
+            .join("assets/data")
+            .join(name);
         let len = std::fs::metadata(&path)
             .expect("imagery asset is committed")
             .len();

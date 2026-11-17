@@ -1,7 +1,7 @@
 {
-  "name": "maps-visual-tests",
+  "name": "biruni-visual-tests",
   "private": true,
-  "description": "Headless-browser screenshot tests for the maps globe",
+  "description": "Headless-browser screenshot tests for the Biruni globe",
   "scripts": {
     "test": "node run.mjs",
     "update": "node run.mjs --update"

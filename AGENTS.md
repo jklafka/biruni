@@ -4,7 +4,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 ## Project
 
-`maps` is a web app for exploring maps. It is written in Rust, compiled to WebAssembly, and rendered with WebGL2. There is no JavaScript framework and no backend. The build output is a static site.
+`biruni` (Biruni) is a web app for exploring maps. It is written in Rust, compiled to WebAssembly, and rendered with WebGL2. There is no JavaScript framework and no backend. The build output is a static site.
 
 | Path | Purpose |
 | --- | --- |
@@ -13,16 +13,19 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
 | `src/projection.rs` | Flat map projections (forward/inverse math), the `Projection` enum and the globe <-> flat morph timeline |
 | `src/geodesic.rs` | WGS84 inverse geodesic distance (Vincenty, with Karney-style bisection near the antipode). Measure lengths use it; the drawn path and the scale bar stay spherical |
+| `src/ephemeris.rs` | Browser-free planet positions from JPL's approximate Keplerian elements (Standish and Williams), 3000 BC to 3000 AD; tests compare against JPL Horizons. Not yet used by a view |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km[,bearing]&layer=&proj=` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
-| `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile` and the binary decoder. Copied to `dist/` by Trunk |
+| `assets/raster-worker.js` | Web Worker (OffscreenCanvas) that rasterizes the land mask off the main thread. Mirrors `geo::draw_tile`, `geo::draw_ice` and the binary decoder. Copied to `dist/` by Trunk |
 | `src/lines.rs` | Pure geometry for vector coastlines and borders: seam splitting, Douglas–Peucker levels of detail, segment building |
 | `src/labels.rs` | Browser-free label selection: altitude gate, horizon test, priority, greedy collision, fade steps |
 | `src/label_layer.rs` | Draws labels on the `#labels` canvas (no pointer events), fade state, loads `labels.tsv` |
 | `src/scrub.rs`, `src/scrub_ui.rs` | Day/night time scrubber: browser-free UTC time math and play stepping, and the panel's DOM glue. Panels that sit bottom left offset themselves by `--scrub` in `index.html` |
 | `src/render.rs` | WebGL2 setup, shader compilation, texture upload, line pass and globe draw call |
 | `src/shaders/` | GLSL ES 3.00. `globe.frag` ray-traces the globe for each pixel, or inverts a flat projection (`u_mode`). `morph.vert` draws the globe <-> flat morph mesh. `line.vert`/`line.frag` draw coastlines and borders (in every projection) as screen-space-width lines into an offscreen target that `globe.frag` reads. |
-| `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk |
+| `assets/data/` | Compact `.bin` map layers generated from `data-src/`, copied to `dist/data/` by Trunk, then moved to content-hashed names under `dist/data/files/` with a `manifest.json` by `scripts/hash_data.py` (a Trunk post-build hook) |
+| `src/data.rs` | Data files by name: loads `data/manifest.json` once and resolves each name to its hashed URL (`data::fetch`) |
+| `DATA_LICENSES.md` | License, required credit and status of every dataset in use or planned; the policy for share-alike and non-commercial data |
 | `data-src/` | Natural Earth GeoJSON sources (public domain). Not served; tests use them as the reference |
 | `build.rs`, `shader_minify.rs` | Strip comments and indentation from `src/shaders/*` into `OUT_DIR` before `include_str!` embeds them (the minify function is unit tested in `render.rs`) |
 | `scripts/` | `convert_geojson.py` converts `data-src/*.geojson` into `assets/data/*.bin`, `places.tsv` and `labels.tsv`; `marine_label_points.py` derives ocean label points from the Natural Earth marine shapefile; `make_blue_marble.py` builds the satellite imagery `assets/data/blue_marble.webp` from NASA |
@@ -34,7 +37,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 
 ## Setup and commands
 
-You need rustup with the `wasm32-unknown-unknown` target, plus [Trunk](https://trunkrs.dev).
+You need rustup with the `wasm32-unknown-unknown` target, [Trunk](https://trunkrs.dev), and Python 3 (Trunk runs `scripts/hash_data.py` after every build).
 
 ```sh
 trunk serve                 # dev server with live reload at http://127.0.0.1:8080
@@ -65,7 +68,7 @@ CI (`.github/workflows/ci.yml`) runs the checks below on every pull request. Bra
 2. **Clippy:** `cargo clippy --target wasm32-unknown-unknown -- -D warnings` and `cargo clippy --all-targets -- -D warnings`
 3. **Test:** `cargo test --all-targets`
 4. **Shaders:** `glslangValidator src/shaders/*.vert src/shaders/*.frag` (from `brew install glslang` or `apt install glslang-tools`)
-5. **Data:** `scripts/check-data.sh` (generated files in `assets/data/` match `data-src/`)
+5. **Data:** `scripts/check-data.sh` (generated files in `assets/data/` match `data-src/`; also runs the Python script tests)
 6. **Build:** `trunk build --release`
 7. For rendering or interaction changes, look at the result in a browser. The URL hash sets the view, so you can test a specific place reproducibly, e.g. `http://127.0.0.1:8080/#46.8,8.2,600` (lat, lon, altitude in km). Check at least three views: the whole globe, a mid zoom, and the closest zoom (about 400 km). If you can't look at it, say so in the PR. Don't claim it works.
    `cd visual-tests && npm test` (after `trunk build --release`) renders five fixed views headlessly into `visual-tests/actual/`. Read those PNGs to check your change, and see `diff/` for what moved. Baselines must come from Linux CI, not your Mac: for an intentional change, push your branch, wait for CI, then run `scripts/update-baselines.sh <PR number>` (add `--push` to push). It copies `actual/*.png` from the PR's `visual-screenshots` CI artifact into `visual-tests/baselines/` and commits them as you. Review the new PNGs before pushing (see README). Shared build steps live in `.github/actions/`, so `ci.yml` stays consistent.
@@ -123,8 +126,8 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 
 - The projection morph counts as motion for the dynamic resolution (`quality.rs`), and `prefers-reduced-motion` switches projections at once instead of animating.
 - Only redraw when something changed. The frame loop sets `dirty`. Don't add work that runs every frame while the app is idle.
-- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB), 13 MB total. `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
-- Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask is drawn in the worker, and `assets/raster-worker.js` and `geo::draw_tile` must stay pixel-identical (the main-thread fallback is the reference).
+- Texture sizes come from `render::choose_budget` (pure, unit tested). Capable desktops: map 8192×4096 R8 (land mask) with mipmaps (about 43 MB) plus a 4096-wide country-ID raster (8 MB) and a 4096×2048 glacier mask (R8, mipmapped, about 11 MB). Touch devices, `deviceMemory` ≤ 4 GB and GPUs limited to 4096: map 4096×2048 (about 11 MB) plus a 2048-wide ID raster (2 MB) and a 2048×1024 glacier mask (about 3 MB), 16 MB total (the satellite imagery, 11 MB, is allocated only when that layer is opened). `?tex=low|high` forces a tier for testing. Keep the small tier under 25 MB, and don't increase either tier without a plan for mobile.
+- Don't add rasterizing or other multi-millisecond work to the main thread during load; keep each main-thread task under about 50 ms. The land mask and the glacier mask are drawn in the worker, and `assets/raster-worker.js` must stay pixel-identical with `geo::draw_tile` and `geo::draw_ice` (the main-thread fallback is the reference).
 - Rasterize on canvases of 4096×4096 or smaller, because some mobile browsers cap a canvas at 16.7 MP. That's why the map is drawn in two halves.
 - Debounce `history.replaceState` (see `hash_stale` and `last_hash`), because Safari throttles it.
 
@@ -135,11 +138,12 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 
 ## Data
 
-- Map data comes from [Natural Earth](https://www.naturalearthdata.com/) (1:50m), which is public domain. If you add another dataset, check that its license allows redistribution, and credit it in `README.md`.
+- Map data comes from [Natural Earth](https://www.naturalearthdata.com/) (1:50m), which is public domain. If you add another dataset, check that its license allows redistribution, record it in `DATA_LICENSES.md` (which also sets the policy for share-alike and non-commercial licenses), and credit it in `README.md`.
 - Edit the GeoJSON in `data-src/`, never the `.bin` files. After changing it, or the format, run `python3 scripts/convert_geojson.py` and commit the regenerated `assets/data/*.bin`. If you change the format, update `decode_shapes`, the script, the format doc in `geo.rs` and the decoder in `assets/raster-worker.js` together and bump the version byte.
 - CI (job "Data") runs `scripts/check-data.sh`, which regenerates everything into a temp dir and compares it byte-for-byte with `assets/data/` (`*.bin`, `places.tsv`, `labels.tsv`). Run it locally before opening a PR that touches `data-src/` or `scripts/`. The converter is stdlib-only Python 3 and must stay deterministic across platforms (no reliance on dict/set order, locale or newline translation; write bytes). `data-src/ne_50m_marine_label_points.geojson` is a committed source: `scripts/marine_label_points.py` needs a separate Natural Earth download, so it is not part of the check.
 - `assets/data/blue_marble.webp` (NASA Blue Marble, credited in `README.md`) is not generated from `data-src/`: CI cannot download it, so `scripts/check-data.sh` only checks its format and size. Rebuild it with `scripts/make_blue_marble.py`. Its decoded GPU memory (44.7 MB high tier, 11.2 MB low tier) is allocated only when the Satellite layer is first selected.
 - Keep large data out of the wasm binary. Fetch it at runtime from `assets/` instead of using `include_str!`/`include_bytes!`.
+- Fetch data files with `data::fetch("<name in assets/data>")`, never by a `data/...` path: the deployed files have content-hashed names that only the manifest knows. The hashed files are cached as immutable, so never serve changed bytes under an existing hashed name.
 - If you change data files or how they are loaded, note the download size in the PR.
 
 ## Documentation
@@ -149,7 +153,7 @@ Flat projections follow the same discipline, in `src/projection.rs` (forward and
 
 ## GitHub issues and beads
 
-GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/maps`. The token is not stored. Pass it from `gh` on each call.
+GitHub issues are the public backlog: the issues that people read and comment on, and that PRs close. Beads (`bd`) is the working layer on top: claiming work, dependencies and agent subtasks. Each GitHub issue is mirrored as a bead whose `External:` field links back to the issue (see `bd show <id>`). The repository is configured with `bd config set github.repository jklafka/biruni`. The token is not stored. Pass it from `gh` on each call.
 
 ```sh
 # Start of a session: bring new and updated GitHub issues into beads (local only)

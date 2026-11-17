@@ -1,7 +1,9 @@
 //! Loading GeoJSON and rasterizing it into an equirectangular map texture.
 //!
 //! The map texture is a single `R8` channel: the land mask with lakes cut
-//! out, sampled with a 0.5 threshold for crisp fills at any zoom. Coastlines
+//! out, sampled with a 0.5 threshold for crisp fills at any zoom. A second,
+//! coarser `R8` texture holds the glacier mask (Natural Earth glaciated areas
+//! plus Antarctic ice shelves), which the shader intersects with the land. Coastlines
 //! and country borders are not baked in; they are kept as vector geometry
 //! (see [`crate::lines`]) and drawn as constant-width lines.
 //!
@@ -186,10 +188,21 @@ struct Tiles {
     halves: Vec<js_sys::Uint8Array>,
 }
 
-/// Vector layers plus the rasterized land mask.
+/// The glacier mask for one map width, rasterized by the worker: a single
+/// `width/2 × width/4` canvas of bytes (the red channel).
+struct IceTile {
+    width: u32,
+    pixels: js_sys::Uint8Array,
+}
+
+/// Vector layers plus the rasterized land and glacier masks.
 pub struct Layers {
     land: Vec<Shape>,
     lakes: Vec<Shape>,
+    glaciers: Vec<Shape>,
+    shelves: Vec<Shape>,
+    /// Glacier mask from the worker, at half the map width; kept like `tiles`.
+    ice: Option<IceTile>,
     /// Set when the worker rasterized the mask. Kept so a context restore can
     /// re-upload without rasterizing again.
     tiles: Option<Tiles>,
@@ -236,11 +249,13 @@ fn worker_supported() -> bool {
         .all(|name| js_sys::Reflect::has(&global, &JsValue::from_str(name)).unwrap_or(false))
 }
 
-/// Start `raster-worker.js` on the land and lake layers. The promise resolves
-/// to the worker's reply, `{ tiles }` or `{ error }`.
+/// Start `raster-worker.js` on the land, lake and ice layers. The promise
+/// resolves to the worker's reply, `{ tiles, ice }` or `{ error }`.
 fn start_worker(
     land: &[u8],
     lakes: &[u8],
+    glaciers: &[u8],
+    shelves: &[u8],
     width: u32,
 ) -> Result<(Worker, js_sys::Promise), JsValue> {
     let worker = Worker::new("raster-worker.js")?;
@@ -257,11 +272,20 @@ fn start_worker(
     // The worker gets its own copies, transferred so they are not cloned again.
     let land = js_sys::Uint8Array::from(land);
     let lakes = js_sys::Uint8Array::from(lakes);
+    let glaciers = js_sys::Uint8Array::from(glaciers);
+    let shelves = js_sys::Uint8Array::from(shelves);
     let msg = js_sys::Object::new();
     js_sys::Reflect::set(&msg, &"land".into(), &land)?;
     js_sys::Reflect::set(&msg, &"lakes".into(), &lakes)?;
+    js_sys::Reflect::set(&msg, &"glaciers".into(), &glaciers)?;
+    js_sys::Reflect::set(&msg, &"shelves".into(), &shelves)?;
     js_sys::Reflect::set(&msg, &"width".into(), &JsValue::from(width))?;
-    let transfer = js_sys::Array::of2(&land.buffer(), &lakes.buffer());
+    let transfer = js_sys::Array::of4(
+        &land.buffer(),
+        &lakes.buffer(),
+        &glaciers.buffer(),
+        &shelves.buffer(),
+    );
     worker.post_message_with_transfer(&msg, &transfer)?;
     Ok((worker, promise))
 }
@@ -270,7 +294,7 @@ async fn finish_worker(
     worker: Worker,
     promise: js_sys::Promise,
     width: u32,
-) -> Result<Tiles, JsValue> {
+) -> Result<(Tiles, IceTile), JsValue> {
     let reply = JsFuture::from(promise).await;
     worker.terminate();
     let reply = reply.map_err(|_| JsValue::from_str("the worker script failed to load or run"))?;
@@ -284,7 +308,12 @@ async fn finish_worker(
     if halves.len() != 2 || halves.iter().any(|t| t.length() as usize != h * h) {
         return Err("worker returned unexpected tiles".into());
     }
-    Ok(Tiles { width, halves })
+    let ice = js_sys::Uint8Array::new(&js_sys::Reflect::get(&reply, &"ice".into())?);
+    let (iw, ih) = ((width / 2) as usize, (width / 4) as usize);
+    if ice.length() as usize != iw * ih {
+        return Err("worker returned an unexpected glacier mask".into());
+    }
+    Ok((Tiles { width, halves }, IceTile { width, pixels: ice }))
 }
 
 impl Layers {
@@ -292,45 +321,61 @@ impl Layers {
     /// `map_width` pixels wide is rasterized off the main thread while this
     /// thread decodes the shapes and builds the line levels.
     pub async fn load(map_width: u32) -> Result<Layers, JsValue> {
-        const LAND: &str = "data/ne_50m_land.bin";
-        const LAKES: &str = "data/ne_50m_lakes.bin";
-        const BORDERS: &str = "data/ne_50m_admin_0_boundary_lines_land.bin";
-        let land = fetch_bytes(LAND);
-        let lakes = fetch_bytes(LAKES);
-        let borders = fetch_bytes(BORDERS);
+        const LAND: &str = "ne_50m_land.bin";
+        const LAKES: &str = "ne_50m_lakes.bin";
+        const BORDERS: &str = "ne_50m_admin_0_boundary_lines_land.bin";
+        const GLACIERS: &str = "ne_50m_glaciated_areas.bin";
+        const SHELVES: &str = "ne_50m_antarctic_ice_shelves_polys.bin";
+        let land = crate::data::fetch(LAND);
+        let lakes = crate::data::fetch(LAKES);
+        let borders = crate::data::fetch(BORDERS);
+        let glaciers = crate::data::fetch(GLACIERS);
+        let shelves = crate::data::fetch(SHELVES);
         let (land_bytes, lakes_bytes, borders_bytes) = (land.await?, lakes.await?, borders.await?);
+        let (glacier_bytes, shelf_bytes) = (glaciers.await?, shelves.await?);
         let job = if worker_supported() {
-            start_worker(&land_bytes, &lakes_bytes, map_width)
-                .map_err(|e| web_sys::console::warn_1(&e))
-                .ok()
+            start_worker(
+                &land_bytes,
+                &lakes_bytes,
+                &glacier_bytes,
+                &shelf_bytes,
+                map_width,
+            )
+            .map_err(|e| web_sys::console::warn_1(&e))
+            .ok()
         } else {
             None
         };
         let land = decode_layer(LAND, &land_bytes)?;
         let lakes = decode_layer(LAKES, &lakes_bytes)?;
         let borders = decode_layer(BORDERS, &borders_bytes)?;
+        let glaciers = decode_layer(GLACIERS, &glacier_bytes)?;
+        let shelves = decode_layer(SHELVES, &shelf_bytes)?;
         // Coastlines are the outlines of land and of lakes.
         let coast: Vec<Shape> = land.iter().chain(&lakes).map(Shape::clone).collect();
         let lines = LineSet {
             coast: build_levels(&coast),
             borders: build_levels(&borders),
         };
-        let tiles = match job {
+        let (tiles, ice) = match job {
             Some((worker, promise)) => match finish_worker(worker, promise, map_width).await {
-                Ok(t) => Some(t),
+                Ok((t, i)) => (Some(t), Some(i)),
                 Err(e) => {
                     web_sys::console::warn_2(
                         &"map worker failed, drawing on the main thread:".into(),
                         &e,
                     );
-                    None
+                    (None, None)
                 }
             },
-            None => None,
+            None => (None, None),
         };
         Ok(Layers {
             land,
             lakes,
+            glaciers,
+            shelves,
+            ice,
             tiles,
             lines,
         })
@@ -365,6 +410,47 @@ impl Layers {
                 Ok(())
             }
             _ => self.fill_texture_on_main_thread(gl, map_w, map_h),
+        }
+    }
+
+    /// Fill the bound `R8` texture (`ice_w × ice_h`, row 0 at the north) with
+    /// the glacier mask, from the worker's pixels or by drawing on the main
+    /// thread (one canvas, at most 4096 × 2048).
+    pub fn fill_ice_texture(&self, gl: &GL, ice_w: u32, ice_h: u32) -> Result<(), JsValue> {
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        match &self.ice {
+            Some(t) if t.width / 2 == ice_w => gl
+                .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
+                    GL::TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    ice_w as i32,
+                    ice_h as i32,
+                    GL::RED,
+                    GL::UNSIGNED_BYTE,
+                    Some(&t.pixels),
+                ),
+            _ => {
+                let doc = web_sys::window()
+                    .ok_or("no window")?
+                    .document()
+                    .ok_or("no document")?;
+                let canvas: HtmlCanvasElement = doc.create_element("canvas")?.dyn_into()?;
+                canvas.set_width(ice_w);
+                canvas.set_height(ice_h);
+                let (glaciers, shelves) = (to_path(&self.glaciers)?, to_path(&self.shelves)?);
+                draw_ice(&canvas, &glaciers, &shelves, ice_w as f64, ice_h as f64)?;
+                gl.tex_sub_image_2d_with_u32_and_u32_and_html_canvas_element(
+                    GL::TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    GL::RED,
+                    GL::UNSIGNED_BYTE,
+                    &canvas,
+                )
+            }
         }
     }
 
@@ -425,6 +511,34 @@ fn draw_tile(
     ctx.set_fill_style_str("#000");
     ctx.fill_with_path_2d_and_winding(lakes, CanvasWindingRule::Nonzero);
 
+    Ok(())
+}
+
+/// Draw the glacier mask for a whole `map_w × map_h` equirectangular map into
+/// `canvas` (the same size): glaciated areas, then ice shelves, each filled
+/// even-odd on its own so overlaps between the two sets do not cancel. The
+/// worker (`assets/raster-worker.js`) makes the same calls; keep them in sync.
+fn draw_ice(
+    canvas: &HtmlCanvasElement,
+    glaciers: &Path2d,
+    shelves: &Path2d,
+    map_w: f64,
+    map_h: f64,
+) -> Result<(), JsValue> {
+    let ctx: CanvasRenderingContext2d = canvas
+        .get_context("2d")?
+        .ok_or("2d canvas unavailable")?
+        .dyn_into()?;
+    ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
+    ctx.set_global_composite_operation("source-over")?;
+    ctx.set_fill_style_str("#000");
+    ctx.fill_rect(0.0, 0.0, canvas.width() as f64, canvas.height() as f64);
+    let sx = map_w / 360.0;
+    let sy = map_h / 180.0;
+    ctx.set_transform(sx, 0.0, 0.0, -sy, 180.0 * sx, 90.0 * sy)?;
+    ctx.set_fill_style_str("#f00");
+    ctx.fill_with_path_2d_and_winding(glaciers, CanvasWindingRule::Evenodd);
+    ctx.fill_with_path_2d_and_winding(shelves, CanvasWindingRule::Evenodd);
     Ok(())
 }
 
@@ -511,7 +625,7 @@ mod tests {
         );
     }
 
-    const DATASETS: [(&str, &str, &[u8], usize); 3] = [
+    const DATASETS: [(&str, &str, &[u8], usize); 5] = [
         (
             "land",
             include_str!("../data-src/ne_50m_land.geojson"),
@@ -530,13 +644,54 @@ mod tests {
             include_bytes!("../assets/data/ne_50m_admin_0_boundary_lines_land.bin"),
             300,
         ),
+        (
+            "glaciers",
+            include_str!("../data-src/ne_50m_glaciated_areas.geojson"),
+            include_bytes!("../assets/data/ne_50m_glaciated_areas.bin"),
+            300,
+        ),
+        (
+            "ice shelves",
+            include_str!("../data-src/ne_50m_antarctic_ice_shelves_polys.geojson"),
+            include_bytes!("../assets/data/ne_50m_antarctic_ice_shelves_polys.bin"),
+            50,
+        ),
     ];
+
+    /// The ice layers are filled polygons, and they cover the right places:
+    /// glaciers span the Antarctic and the Arctic (Greenland, Svalbard), the
+    /// shelves are all in the far south. The shader paints ice only inside them.
+    #[test]
+    fn ice_layers_are_polygons_in_the_polar_regions() {
+        let load = |i: usize| decode_shapes(DATASETS[i].2).unwrap();
+        let (glaciers, shelves) = (load(3), load(4));
+        assert!(glaciers.iter().chain(&shelves).all(|s| s.closed));
+        let lat_range = |shapes: &[Shape]| {
+            shapes
+                .iter()
+                .flat_map(|s| s.points.iter().map(|p| p[1]))
+                .fold((f64::MAX, f64::MIN), |(lo, hi), y| (lo.min(y), hi.max(y)))
+        };
+        let (lo, hi) = lat_range(&glaciers);
+        assert!(lo < -85.0, "glaciers reach the south pole region: {lo}");
+        assert!(hi > 80.0, "glaciers reach Greenland and Svalbard: {hi}");
+        let (_, shelf_hi) = lat_range(&shelves);
+        assert!(shelf_hi < -60.0, "shelves are in Antarctica: {shelf_hi}");
+        // No glacier in the Siberian lowlands the old latitude band painted.
+        let siberia = |s: &Shape| {
+            s.points
+                .iter()
+                .all(|p| (60.0..130.0).contains(&p[0]) && (62.0..72.0).contains(&p[1]))
+        };
+        assert!(!glaciers.iter().any(siberia));
+    }
 
     fn assert_in_bounds(name: &str, shapes: &[Shape]) {
         for s in shapes {
             for &[lon, lat] in &s.points {
                 assert!(
-                    (-180.0..=180.0).contains(&lon) && (-90.0..=90.0).contains(&lat),
+                    (-180.0 - COORD_TOLERANCE..=180.0 + COORD_TOLERANCE).contains(&lon)
+                        && (-90.0 - COORD_TOLERANCE..=90.0 + COORD_TOLERANCE).contains(&lat),
                     "{name}: point out of range: {lon},{lat}"
                 );
             }

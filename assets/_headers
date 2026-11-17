@@ -7,7 +7,7 @@
 
 # Only Trunk's content-hashed bundle is immutable; raster-worker.js keeps a
 # fixed name, so it must revalidate.
-/maps-*.js
+/biruni-*.js
   Cache-Control: public, max-age=31536000, immutable
 
 /raster-worker.js
@@ -19,5 +19,19 @@
 /index.html
   Cache-Control: public, max-age=300, must-revalidate
 
-/data/*
-  Cache-Control: public, max-age=3600
+# Data files have content-hashed names (scripts/hash_data.py), so they never
+# change; the manifest that names them must revalidate. Pages merges every
+# rule that matches a URL (joining repeated headers), so no two matching rules
+# may both set Cache-Control: no /data/* rule.
+/data/files/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/data/manifest.json
+  Cache-Control: public, max-age=60, must-revalidate
+
+# Cloudflare compresses only some content types, and text/tab-separated-values
+# is not one of them, so the TSVs would be sent uncompressed. As text/plain
+# they are sent with Brotli/gzip. This sets no Cache-Control, so it can
+# overlap /data/files/* (whose Cache-Control it then inherits).
+/data/files/*.tsv
+  Content-Type: text/plain; charset=utf-8

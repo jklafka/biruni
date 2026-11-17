@@ -125,7 +125,7 @@ async fn try_web_share(window: &Window, url: &str) -> Outcome {
     };
     let data = Object::new();
     let _ = Reflect::set(&data, &"url".into(), &url.into());
-    let _ = Reflect::set(&data, &"title".into(), &"Maps".into());
+    let _ = Reflect::set(&data, &"title".into(), &"Biruni".into());
     let promise = match share.call1(&nav, &data) {
         Ok(p) => p,
         Err(_) => return Outcome::Failed,

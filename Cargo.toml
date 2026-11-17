@@ -1,8 +1,8 @@
 [package]
-name = "maps"
+name = "biruni"
 version = "0.1.0"
 edition = "2021"
-description = "Explore maps in the browser — Rust + WebAssembly"
+description = "Biruni: explore the Earth and sky in the browser — Rust + WebAssembly"
 publish = false
 
 [dependencies]

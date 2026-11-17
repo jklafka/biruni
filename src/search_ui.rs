@@ -2,7 +2,7 @@
 //! `/` shortcut. The matching itself lives in the browser-free `search`
 //! module.
 //!
-//! The gazetteer (`data/places.tsv`) is fetched the first time the box gets
+//! The gazetteer (`places.tsv`) is fetched the first time the box gets
 //! focus, never at startup. While typing, keystrokes stay inside the input:
 //! `main`'s global key handler ignores events whose target is an input.
 
@@ -166,7 +166,7 @@ fn ensure_loaded(st: &Shared) {
     let st = st.clone();
     wasm_bindgen_futures::spawn_local(async move {
         let loaded = async {
-            let bytes = crate::geo::fetch_bytes("data/places.tsv").await?;
+            let bytes = crate::data::fetch("places.tsv").await?;
             let text = String::from_utf8(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
             Gazetteer::parse(&text).map_err(|e| JsValue::from_str(&e))
         }

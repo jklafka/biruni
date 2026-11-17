@@ -1,9 +1,10 @@
 // Rasterizes the land mask off the main thread.
 //
-// Receives { land, lakes, width } (the raw .bin layers, see `decode_shapes` in
-// src/geo.rs, and the map width in pixels). Replies with { tiles: [ArrayBuffer,
-// ArrayBuffer] }: the left and right square halves of the width x width/2 map,
-// one byte per pixel (the red channel), row 0 at the north. On any failure it
+// Receives { land, lakes, glaciers, shelves, width } (the raw .bin layers, see
+// `decode_shapes` in src/geo.rs, and the map width in pixels). Replies with
+// { tiles: [ArrayBuffer, ArrayBuffer], ice: ArrayBuffer }: the left and right square halves of the width x width/2 map,
+// one byte per pixel (the red channel), row 0 at the north. `ice` is the glacier
+// mask, one width/2 x width/4 canvas (mirrors `draw_ice`). On any failure it
 // replies { error } and the page falls back to drawing on the main thread.
 //
 // The drawing calls mirror `Layers::draw_tile` in src/geo.rs exactly (same
@@ -86,11 +87,34 @@ function rasterize(landBytes, lakeBytes, width) {
   return tiles;
 }
 
+// Glaciated areas and ice shelves for the whole map at width w (height w/2).
+function rasterizeIce(glacierBytes, shelfBytes, w) {
+  const h = w / 2;
+  const glaciers = toPath(new Uint8Array(glacierBytes));
+  const shelves = toPath(new Uint8Array(shelfBytes));
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2d OffscreenCanvas unavailable");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  const sx = w / 360;
+  const sy = h / 180;
+  ctx.setTransform(sx, 0, 0, -sy, 180 * sx, 90 * sy);
+  ctx.fillStyle = "#f00";
+  ctx.fill(glaciers, "evenodd");
+  ctx.fill(shelves, "evenodd");
+  const rgba = ctx.getImageData(0, 0, w, h).data;
+  const out = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < out.length; i++, j += 4) out[i] = rgba[j];
+  return out.buffer;
+}
+
 self.onmessage = (e) => {
   try {
-    const { land, lakes, width } = e.data;
+    const { land, lakes, glaciers, shelves, width } = e.data;
     const tiles = rasterize(land, lakes, width);
-    self.postMessage({ tiles }, tiles);
+    const ice = rasterizeIce(glaciers, shelves, width / 2);
+    self.postMessage({ tiles, ice }, [...tiles, ice]);
   } catch (err) {
     self.postMessage({ error: String(err && err.message ? err.message : err) });
   }
