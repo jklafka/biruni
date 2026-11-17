@@ -66,6 +66,8 @@ On pushes to `main` the map data is served from a Cloudflare R2 bucket (`biruni-
 
 Any failure stops the job before the Pages deploy, so a manifest never points at missing files. The manifest ships with the app, so the app and its data switch together. Hashed files are never overwritten, and old ones are never deleted (for now), so pages that are still open keep working. Pull requests, `trunk serve` and the visual tests keep using the relative local data.
 
+Cloudflare's cache may keep the first response it sees for an R2 file, including its CORS headers, so the scripts send `Origin: https://biruni.jklafka.cloud` on every request. Do the same when checking R2 files by hand (`curl -H 'Origin: https://biruni.jklafka.cloud' ...`).
+
 One-time setup for the repository owner (done): the R2 bucket `biruni-data`; its custom domain `biruni-data.jklafka.cloud`; the zone setting Browser Cache TTL = **Respect Existing Headers** (so R2's `Cache-Control` is kept); and the repository secret `CLOUDFLARE_R2_TOKEN`, an API token with **Account, Workers R2 Storage, Edit**. The R2 steps use that token, not the Pages one.
 
 One-time setup for the repository owner:

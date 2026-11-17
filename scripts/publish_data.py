@@ -79,8 +79,15 @@ def file_url(base_url, name):
     return f"{base_url.rstrip('/')}/{FILES_DIR}/{urllib.parse.quote(name)}"
 
 
+# Sent on every request. Cloudflare's cache may keep the first response it
+# sees for an R2 file, CORS headers included; a request without Origin could
+# store a copy without Access-Control-Allow-Origin that browsers then get.
+ORIGIN = "https://biruni.jklafka.cloud"
+
+
 def request(url, method="GET"):
-    req = urllib.request.Request(url, method=method, headers={"User-Agent": USER_AGENT})
+    headers = {"User-Agent": USER_AGENT, "Origin": ORIGIN}
+    req = urllib.request.Request(url, method=method, headers=headers)
     return urllib.request.urlopen(req, timeout=TIMEOUT)
 
 
