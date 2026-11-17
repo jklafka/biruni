@@ -26,7 +26,7 @@ pub const NATURAL_EARTH: Credit = Credit {
 };
 
 pub const BLUE_MARBLE: Credit = Credit {
-    id: "nasa-blue-marble",
+    id: "nasa-bmng",
     name: "NASA Blue Marble: Next Generation",
     license: "US government work (NASA media guidelines)",
     license_url: "https://www.nasa.gov/nasa-brand-center/images-and-media/",
@@ -114,6 +114,16 @@ mod tests {
             assert!(
                 ALL.iter().any(|c| c.source_url == url),
                 "no credits entry for {url}"
+            );
+            // The `[key: id]` tag (shared with data-sources.lock.json) is the credit id.
+            let key = line
+                .split("[key: ")
+                .nth(1)
+                .and_then(|s| s.split(']').next())
+                .expect("[key: id] tag in first column");
+            assert!(
+                ALL.iter().any(|c| c.id == key && c.source_url == url),
+                "credits entry for {url} should have id {key}"
             );
         }
         assert_eq!(
