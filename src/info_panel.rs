@@ -1,11 +1,12 @@
 //! DOM glue for the country info panel (markup lives in `index.html`).
 
 use crate::country::Country;
+use crate::thematic::Theme;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, HtmlElement};
 
 /// Rows pre-built in `index.html` (`#ci-r0` ... with `#ci-l0` / `#ci-v0`).
-const ROWS: usize = 4;
+const ROWS: usize = 5;
 
 pub struct InfoPanel {
     panel: HtmlElement,
@@ -38,8 +39,9 @@ impl InfoPanel {
     }
 
     /// Show a country's name and attributes, or hide the panel for `None`.
-    /// Text goes in with `textContent`, never as markup.
-    pub fn show(&self, country: Option<&Country>) {
+    /// On a thematic layer its value comes first. Text goes in with
+    /// `textContent`, never as markup.
+    pub fn show(&self, country: Option<&Country>, theme: Option<Theme>) {
         let Some(c) = country else {
             self.panel.set_hidden(true);
             return;
@@ -49,7 +51,10 @@ impl InfoPanel {
             None => c.name.clone(),
         };
         self.title.set_text_content(Some(&title));
-        let data = c.rows();
+        let mut data = c.rows();
+        if let Some(t) = theme {
+            data.insert(0, (t.title(), t.describe(&c.stats)));
+        }
         for (i, (row, label, value)) in self.rows.iter().enumerate() {
             match data.get(i) {
                 Some((l, v)) => {

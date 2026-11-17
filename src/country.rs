@@ -8,13 +8,20 @@
 //! integers are LEB128 varints):
 //!
 //! ```text
-//! "MAPC" | version u8 = 2 | scale | country_count
+//! "MAPC" | version u8 = 3 | scale | country_count
 //! country_count × (
 //!     name | iso2 | iso3 | continent | subregion   (strings: len, UTF-8 bytes)
-//!     population | color u8 (political fill, 0..PALETTE_SIZE) | polygon_count
+//!     population | gdp_md | income u8 | pop_year | gdp_year
+//!     | color u8 (political fill, 0..PALETTE_SIZE) | polygon_count
 //!     polygon_count × ( ring_count | ring_count × ( point_count | points ) )
 //! )
 //! ```
+//!
+//! `gdp_md` is Natural Earth's GDP in million US dollars (0 = unknown),
+//! `income` its income group as a rank from 1 (low) to 5 (high income, OECD)
+//! (0 = unknown), and the two years say when `population` and `gdp_md` were
+//! estimated (0 = unknown). They feed the thematic layers (see
+//! [`crate::thematic`]).
 //!
 //! `color` is a graph coloring computed by the converter: countries that share
 //! a border edge never get the same color (checked by a test against the ID
@@ -33,11 +40,12 @@
 
 use crate::camera::Camera;
 use crate::geo::{read_delta, read_varint};
+use crate::thematic::{Stats, Theme};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
 const MAGIC: &[u8; 4] = b"MAPC";
-const VERSION: u8 = 2;
+const VERSION: u8 = 3;
 /// Number of political fill colors; `PALETTE` in `globe.frag` has this many.
 pub const PALETTE_SIZE: u8 = 6;
 /// IDs in the raster are `index + 1` in a byte, with 0 meaning no country.
@@ -80,6 +88,8 @@ pub struct Country {
     pub continent: String,
     pub subregion: String,
     pub population: u64,
+    /// Attributes behind the thematic layers.
+    pub stats: Stats,
     /// Political fill color index, below [`PALETTE_SIZE`].
     pub color: u8,
     polygons: Vec<Polygon>,
@@ -160,6 +170,14 @@ pub fn decode_countries(data: &[u8]) -> Result<Countries, String> {
         let continent = read_string(data, &mut pos)?;
         let subregion = read_string(data, &mut pos)?;
         let population = read_varint(data, &mut pos)?;
+        let gdp_md = read_varint(data, &mut pos)?;
+        let income = *data.get(pos).ok_or("truncated income group")?;
+        pos += 1;
+        if income > 5 {
+            return Err("income group out of range".into());
+        }
+        let pop_year = u16::try_from(read_varint(data, &mut pos)?).map_err(|_| "year too large")?;
+        let gdp_year = u16::try_from(read_varint(data, &mut pos)?).map_err(|_| "year too large")?;
         let color = *data.get(pos).ok_or("truncated color")?;
         pos += 1;
         if color >= PALETTE_SIZE {
@@ -211,6 +229,13 @@ pub fn decode_countries(data: &[u8]) -> Result<Countries, String> {
             continent,
             subregion,
             population,
+            stats: Stats {
+                population,
+                gdp_md,
+                income,
+                pop_year,
+                gdp_year,
+            },
             color,
             polygons,
         });
@@ -304,6 +329,25 @@ impl Countries {
             out[i + 1] = c.color;
         }
         out
+    }
+
+    /// Class per raster ID for a thematic layer, laid out like
+    /// [`Self::id_colors`]; entry 0 (no country) is `NO_DATA`.
+    pub fn theme_classes(&self, theme: Theme) -> [u8; 256] {
+        let mut out = [crate::thematic::NO_DATA; 256];
+        for (i, c) in self.list.iter().enumerate() {
+            out[i + 1] = theme.class_of(&c.stats);
+        }
+        out
+    }
+
+    /// The year most countries' population and GDP estimates share.
+    pub fn data_year(&self) -> u16 {
+        crate::thematic::mode_year(
+            self.list
+                .iter()
+                .flat_map(|c| [c.stats.pop_year, c.stats.gdp_year]),
+        )
     }
 
     pub fn get(&self, index: usize) -> Option<&Country> {
@@ -1146,7 +1190,7 @@ mod tests {
 
     /// One country per entry; polygons are lists of rings in whole degrees.
     fn build(countries: &[(&str, Vec<Rings>)]) -> Vec<u8> {
-        let mut out = b"MAPC\x02".to_vec();
+        let mut out = b"MAPC\x03".to_vec();
         put(&mut out, 1);
         put(&mut out, countries.len() as u64);
         let (mut px, mut py) = (0, 0);
@@ -1155,6 +1199,10 @@ mod tests {
                 put_str(&mut out, s);
             }
             put(&mut out, 1234);
+            put(&mut out, 5678); // gdp_md
+            out.push(i as u8 % 6); // income
+            put(&mut out, 2019);
+            put(&mut out, 2018);
             out.push(i as u8 % 3);
             put(&mut out, polys.len() as u64);
             for rings in polys {
@@ -1236,10 +1284,10 @@ mod tests {
         assert!(decode_countries(b"").is_err());
         assert!(decode_countries(b"MAPD\x01\x01\x00").is_err(), "bad magic");
         assert!(
-            decode_countries(b"MAPC\x01\x01\x00").is_err(),
+            decode_countries(b"MAPC\x02\x01\x00").is_err(),
             "old version"
         );
-        assert!(decode_countries(b"MAPC\x02\x00\x00").is_err(), "zero scale");
+        assert!(decode_countries(b"MAPC\x03\x00\x00").is_err(), "zero scale");
         for len in 0..good.len() {
             assert!(
                 decode_countries(&good[..len]).is_err(),
@@ -1250,13 +1298,104 @@ mod tests {
         trailing.push(0);
         assert!(decode_countries(&trailing).is_err());
         // Huge counts and string lengths must not allocate or panic.
-        assert!(decode_countries(b"MAPC\x02\x01\xff\xff\xff\xff\x0f").is_err());
+        assert!(decode_countries(b"MAPC\x03\x01\xff\xff\xff\xff\x0f").is_err());
         assert!(decode_countries(b"MAPC\x01\x01\x01\xff\xff\xff\xff\x0f").is_err());
         // Coordinates beyond lon/lat range.
         let bad = build(&[("A", vec![vec![square(0, 0, 181, 10)]])]);
         assert!(decode_countries(&bad).is_err());
         let bad = build(&[("A", vec![vec![square(0, 0, 10, 91)]])]);
         assert!(decode_countries(&bad).is_err());
+    }
+
+    #[test]
+    fn thematic_attributes_round_trip_and_are_validated() {
+        let data = build(&[
+            ("A", vec![vec![square(0, 0, 10, 10)]]),
+            ("B", vec![vec![square(10, 0, 20, 10)]]),
+        ]);
+        let w = decode_countries(&data).unwrap();
+        let a = w.get(0).unwrap();
+        assert_eq!(
+            a.stats,
+            Stats {
+                population: 1234,
+                gdp_md: 5678,
+                income: 0,
+                pop_year: 2019,
+                gdp_year: 2018,
+            }
+        );
+        assert_eq!(w.get(1).unwrap().stats.income, 1);
+        assert_eq!(
+            w.data_year(),
+            2018,
+            "tie between 2018 and 2019 goes earlier"
+        );
+        // Entry 0 (no country) and unknown income are "no data"; GDP per
+        // capita of A is 5678 million / 1234 people.
+        let classes = w.theme_classes(Theme::Income);
+        assert_eq!(
+            &classes[..3],
+            &[crate::thematic::NO_DATA, crate::thematic::NO_DATA, 0]
+        );
+        assert_eq!(classes[255], crate::thematic::NO_DATA);
+        assert_eq!(w.theme_classes(Theme::GdpPerCapita)[1], 6);
+        // An income group above 5 is rejected. It follows the header (7), the
+        // strings (18), population (2) and gdp (2).
+        let good = build(&[("A", vec![vec![square(0, 0, 10, 10)]])]);
+        let at = 7 + 18 + 2 + 2;
+        assert_eq!(good[at], 0);
+        let mut bad = good.clone();
+        bad[at] = 6;
+        assert!(decode_countries(&bad).is_err());
+    }
+
+    #[test]
+    fn bundled_thematic_data_is_sane() {
+        let w = world();
+        let get = |n: &str| w.list.iter().find(|c| c.name == n).unwrap();
+        // Unknown GDP (-99 in Natural Earth) and uninhabited places are no data.
+        assert_eq!(
+            Theme::GdpPerCapita.class_of(&get("Vatican").stats),
+            crate::thematic::NO_DATA
+        );
+        assert_eq!(
+            Theme::Population.class_of(&get("Heard I. and McDonald Is.").stats),
+            crate::thematic::NO_DATA
+        );
+        // The extremes land in the end classes.
+        assert_eq!(Theme::Population.class_of(&get("China").stats), 6);
+        assert_eq!(Theme::Population.class_of(&get("Norway").stats), 1);
+        assert_eq!(Theme::GdpPerCapita.class_of(&get("Switzerland").stats), 6);
+        assert_eq!(Theme::GdpPerCapita.class_of(&get("Niger").stats), 0);
+        assert_eq!(Theme::Income.class_of(&get("Norway").stats), 4);
+        assert_eq!(Theme::Income.class_of(&get("Niger").stats), 0);
+        assert_eq!(w.data_year(), 2019);
+        // Every country's stats match the GeoJSON source of truth.
+        let fc: serde_json::Value = serde_json::from_str(GEOJSON).unwrap();
+        for (f, c) in fc["features"].as_array().unwrap().iter().zip(&w.list) {
+            let p = &f["properties"];
+            assert_eq!(
+                p["GDP_MD"].as_i64().unwrap().max(0) as u64,
+                c.stats.gdp_md,
+                "{}",
+                c.name
+            );
+            assert_eq!(
+                p["POP_YEAR"].as_i64().unwrap().max(0) as u16,
+                c.stats.pop_year,
+                "{}",
+                c.name
+            );
+            assert_eq!(
+                p["GDP_YEAR"].as_i64().unwrap().max(0) as u16,
+                c.stats.gdp_year,
+                "{}",
+                c.name
+            );
+            let n: u8 = p["INCOME_GRP"].as_str().unwrap()[..1].parse().unwrap();
+            assert_eq!(c.stats.income, 6 - n, "{}", c.name);
+        }
     }
 
     #[test]
@@ -1271,9 +1410,10 @@ mod tests {
         let colors = w.id_colors();
         assert_eq!(&colors[..6], &[0, 0, 1, 2, 0, 0]);
         // A color index outside the palette is rejected. The color byte of the
-        // only country follows the header (7 bytes), its strings (18) and population (2).
+        // only country follows the header (7 bytes), its strings (18), population (2),
+        // gdp (2), income (1) and the two years (2 each).
         let good = build(&[("A", vec![vec![square(0, 0, 10, 10)]])]);
-        let at = 7 + 18 + 2;
+        let at = 7 + 18 + 2 + 2 + 1 + 4;
         assert_eq!(good[at], 0);
         let mut bad = good.clone();
         bad[at] = PALETTE_SIZE;
@@ -1320,7 +1460,7 @@ mod tests {
 
     #[test]
     fn empty_file_has_no_countries() {
-        let w = decode_countries(b"MAPC\x02\x01\x00").unwrap();
+        let w = decode_countries(b"MAPC\x03\x01\x00").unwrap();
         assert_eq!(w.len(), 0);
         assert_eq!(w.hit(0.0, 0.0), None);
         assert!(w.rasterize_ids(8).iter().all(|&b| b == 0));

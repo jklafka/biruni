@@ -18,6 +18,7 @@ Output is deterministic, so rerunning it must not change the committed files.
 """
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -83,7 +84,7 @@ def encode(geojson) -> bytes:
 
 
 COUNTRY_MAGIC = b"MAPC"
-COUNTRY_VERSION = 2
+COUNTRY_VERSION = 3
 PALETTE_SIZE = 6  # political fill colors; keep in sync with PALETTE in src/shaders/globe.frag
 COUNTRY_SCALE = 1_000  # units per degree (1e-3 degree, about 110 m)
 
@@ -145,6 +146,21 @@ def color_countries(adj):
     return color
 
 
+def income_rank(props) -> int:
+    """Natural Earth's INCOME_GRP ("1. High income: OECD" ... "5. Low income") as
+    a rank from 1 (low income) to 5 (high income, OECD); 0 when missing."""
+    m = re.match(r"([1-5])\.", props.get("INCOME_GRP") or "")
+    return 6 - int(m.group(1)) if m else 0
+
+
+def positive_int(v) -> int:
+    """Natural Earth uses -99 (and sometimes 0) for 'unknown'; both become 0."""
+    try:
+        return max(int(v), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def encode_countries(geojson) -> bytes:
     """Country polygons and attributes. Rings drop their repeated closing point
     (they are implicitly closed) and rings with fewer than 3 points are dropped.
@@ -179,6 +195,10 @@ def encode_countries(geojson) -> bytes:
         out += string(props.get("CONTINENT") or "")
         out += string(props.get("SUBREGION") or "")
         out += varint(max(int(props.get("POP_EST") or 0), 0))
+        out += varint(positive_int(props.get("GDP_MD")))  # million USD, 0 = unknown
+        out += bytes([income_rank(props)])
+        out += varint(positive_int(props.get("POP_YEAR")))
+        out += varint(positive_int(props.get("GDP_YEAR")))
         out += bytes([color])
         out += varint(len(polys))
         for rings in polys:
