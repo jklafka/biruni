@@ -8,3 +8,6 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Cached upstream data (scripts/data_sources.py)
+/.data-cache/
