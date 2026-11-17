@@ -81,6 +81,9 @@ jobs:
       - uses: ./.github/actions/build-site
         with:
           trunk-version: ${{ env.TRUNK_VERSION }}
+      # The publish workflow (maps-8r8.6) also passes --baseline.
+      - name: Validate built data
+        run: python3 scripts/validate_data.py dist/data
       - uses: actions/upload-artifact@v4
         with:
           name: dist
