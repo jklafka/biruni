@@ -63,6 +63,9 @@ const VIEWS = [
   { name: "theme-pop-globe", hash: "#20,20,15000&layer=pop" },
   { name: "theme-gdp-robinson", hash: "#0,0,19000&proj=robinson&layer=gdp" },
   { name: "theme-income-phone", hash: "#30,10,15000&layer=income", viewport: { width: 390, height: 844 } },
+  // The data credits panel open (Satellite lists two sources), desktop and phone.
+  { name: "credits-open", hash: "#38.5,22.5,1500&layer=imagery", openCredits: true },
+  { name: "credits-phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 }, openCredits: true },
   { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
 ];
 
@@ -211,6 +214,11 @@ try {
         );
         failed = true;
       }
+    }
+    if (view.openCredits) {
+      await page.click("#credits-button");
+      await page.waitForSelector("#credits:not([hidden])");
+      await page.waitForTimeout(200);
     }
     // No pointer may be over the globe: hover would tint a country and show
     // a cursor readout. Fail loudly instead of comparing a tinted frame.
