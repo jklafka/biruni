@@ -4,6 +4,8 @@ mod camera;
 mod controls;
 mod country;
 mod country_cycle;
+mod credits;
+mod credits_ui;
 mod data;
 mod ephemeris;
 mod geo;
@@ -76,6 +78,7 @@ struct App {
     /// Picker for the thematic layers; the buttons cover the others.
     theme_select: web_sys::HtmlSelectElement,
     legend: legend_ui::Legend,
+    credits: credits_ui::CreditsPanel,
     sun_on: bool,
     /// Fixed time from `&t=`; `None` follows the clock.
     sun_pin: Option<f64>,
@@ -297,6 +300,7 @@ impl App {
         self.renderer.set_theme_classes(classes.as_ref());
         let year = self.countries.as_ref().map_or(0, |c| c.data_year());
         self.legend.show(theme, year);
+        self.credits.show_layer(self.layers_state.shown());
         // The open info panel gains or loses the theme's value row.
         let c = self.selected.and_then(|i| self.countries.as_ref()?.get(i));
         if c.is_some() {
@@ -1043,6 +1047,7 @@ fn start() -> Result<(), JsValue> {
         layer_buttons: layer_buttons.clone(),
         theme_select: theme_select.clone(),
         legend: legend_ui::Legend::new(&doc)?,
+        credits: credits_ui::CreditsPanel::new(&doc)?,
         sun_on: sun_hash.on,
         sun_pin: sun_hash.pin,
         sun_button: element(&doc, "sun-toggle")?,
@@ -1292,6 +1297,27 @@ fn start() -> Result<(), JsValue> {
         })?;
     }
 
+    // The credits button toggles the panel; its × button closes it.
+    {
+        let (button, close): (EventTarget, EventTarget) = {
+            let a = app.borrow();
+            (
+                a.credits.button.clone().into(),
+                a.credits.close.clone().into(),
+            )
+        };
+        let a1 = app.clone();
+        listen(&button, "click", true, move |_: MouseEvent| {
+            let a = a1.borrow();
+            let open = !a.credits.is_open();
+            a.credits.set_open(open);
+        })?;
+        let a2 = app.clone();
+        listen(&close, "click", true, move |_: MouseEvent| {
+            a2.borrow().credits.set_open(false);
+        })?;
+    }
+
     // WebGL context loss: preventDefault is required for restoration.
     {
         let app = app.clone();
@@ -1332,6 +1358,15 @@ fn start() -> Result<(), JsValue> {
                     return;
                 }
                 let mut a = app.borrow_mut();
+                // The credits panel: Esc closes it; keys typed inside it
+                // (Tab, Enter on a link) are not map shortcuts.
+                if a.credits.is_open() && e.key() == "Escape" {
+                    a.credits.set_open(false);
+                    return;
+                }
+                if e.target().is_some_and(|t| a.credits.contains(&t)) {
+                    return;
+                }
                 // Measure editing keys. Shift+arrows nudge the selected point;
                 // without a selection they pan as usual.
                 if a.measure.active {
