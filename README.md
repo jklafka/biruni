@@ -55,6 +55,21 @@ It needs `gh`. It finds the latest completed CI run for the PR's head commit, do
 
 The site is hosted on [Cloudflare Pages](https://pages.cloudflare.com). Cloudflare's build image has no Rust toolchain, so `.github/workflows/deploy.yml` builds `dist/` in GitHub Actions and uploads it with `wrangler pages deploy`. Pushes to `main` publish to production. Pull requests from this repository get a preview deployment, and the preview URL is posted as a PR comment. Fork PRs are not deployed. If the secrets below are missing, the deploy step is skipped and the workflow still passes. `assets/_headers` sets the MIME type and cache headers.
 
+### Map data on R2
+
+On pushes to `main` the map data is served from a Cloudflare R2 bucket (`biruni-data`, public at `https://biruni-data.jklafka.cloud`) instead of from Pages. After the build, the deploy job (only if the `CLOUDFLARE_R2_TOKEN` secret is set; otherwise the data stays on Pages):
+
+1. validates `dist/data` against the data currently live (`scripts/validate_data.py --baseline`, the baseline fetched by `scripts/publish_data.py fetch-baseline`),
+2. sets the bucket's CORS rules from `scripts/r2-cors.json` (GET and HEAD from the site and the local dev server),
+3. uploads each content-hashed file that the bucket lacks (`publish_data.py plan`, then `wrangler r2 object put`, immutable cache headers) and checks that each one is served with the right size and CORS header,
+4. rewrites `dist/data/manifest.json` to absolute R2 URLs, drops `dist/data/files`, and only then runs `pages deploy`.
+
+Any failure stops the job before the Pages deploy, so a manifest never points at missing files. The manifest ships with the app, so the app and its data switch together. Hashed files are never overwritten, and old ones are never deleted (for now), so pages that are still open keep working. Pull requests, `trunk serve` and the visual tests keep using the relative local data.
+
+Cloudflare's cache may keep the first response it sees for an R2 file, including its CORS headers, so the scripts send `Origin: https://biruni.jklafka.cloud` on every request. Do the same when checking R2 files by hand (`curl -H 'Origin: https://biruni.jklafka.cloud' ...`).
+
+One-time setup for the repository owner (done): the R2 bucket `biruni-data`; its custom domain `biruni-data.jklafka.cloud`; the zone setting Browser Cache TTL = **Respect Existing Headers** (so R2's `Cache-Control` is kept); and the repository secret `CLOUDFLARE_R2_TOKEN`, an API token with **Account, Workers R2 Storage, Edit**. The R2 steps use that token, not the Pages one.
+
 One-time setup for the repository owner:
 
 1. In the Cloudflare dashboard, go to Workers & Pages, then create a **Pages** project named `biruni` using **Direct Upload** (any placeholder upload). Set its production branch to `main`. A different name needs a matching change to `PAGES_PROJECT` in the workflow.
