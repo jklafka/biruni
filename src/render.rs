@@ -773,10 +773,10 @@ pub struct Renderer {
     uniforms: Uniforms,
     map: WebGlTexture,
     has_map: bool,
-    /// Satellite imagery texture (placeholder until uploaded) and whether
-    /// the real image is in it.
+    /// Image layer texture (Satellite or Terrain; placeholder until
+    /// uploaded) and the size of the image in it, if any.
     imagery: WebGlTexture,
-    has_imagery: bool,
+    imagery_size: Option<(u32, u32)>,
     layer: Layer,
     /// World-space direction to the sun, or `None` when the terminator is off.
     sun: Option<[f32; 3]>,
@@ -845,7 +845,7 @@ impl Renderer {
             map: r.map,
             has_map: false,
             imagery: r.imagery,
-            has_imagery: false,
+            imagery_size: None,
             layer: Layer::default(),
             sun: None,
             ctx: ContextState::default(),
@@ -893,16 +893,19 @@ impl Renderer {
 
     /// Whether the satellite imagery is in GPU memory right now.
     pub fn has_imagery(&self) -> bool {
-        self.has_imagery
+        self.imagery_size.is_some()
     }
 
     pub fn is_lost(&self) -> bool {
         self.ctx.is_lost()
     }
 
-    /// Upload the decoded satellite image as an RGBA8 texture with mipmaps,
-    /// sized from the bitmap. While the context is lost nothing is done (the
-    /// caller decodes and uploads again after the restore).
+    /// Upload a decoded image layer picture as an RGBA8 texture with mipmaps,
+    /// sized from the bitmap. It replaces the previous picture: an image of
+    /// the same size is written into the existing texture, so switching
+    /// between image layers never holds two of them in GPU memory. While the
+    /// context is lost nothing is done (the caller decodes and uploads again
+    /// after the restore).
     pub fn upload_imagery(&mut self, bitmap: &web_sys::ImageBitmap) -> Result<(), JsValue> {
         if self.gl.is_context_lost() || self.ctx.is_lost() {
             return Ok(());
@@ -915,17 +918,24 @@ impl Renderer {
             .and_then(|v| v.as_f64())
             .unwrap_or(4096.0) as u32;
         if w == 0 || h == 0 || w > max {
-            return Err(format!("satellite image {w}x{h} does not fit this GPU").into());
+            return Err(format!("image {w}x{h} does not fit this GPU").into());
         }
-        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        let reuse = self.imagery_size == Some((w, h));
+        let tex = if reuse {
+            self.imagery.clone()
+        } else {
+            gl.create_texture().ok_or("failed to create texture")?
+        };
         gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
-        gl.tex_storage_2d(
-            GL::TEXTURE_2D,
-            crate::imagery::mip_levels(w, h),
-            GL::RGBA8,
-            w as i32,
-            h as i32,
-        );
+        if !reuse {
+            gl.tex_storage_2d(
+                GL::TEXTURE_2D,
+                crate::imagery::mip_levels(w, h),
+                GL::RGBA8,
+                w as i32,
+                h as i32,
+            );
+        }
         gl.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 0);
         gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
         if let Err(e) = gl.tex_sub_image_2d_with_u32_and_u32_and_image_bitmap(
@@ -937,7 +947,12 @@ impl Renderer {
             GL::UNSIGNED_BYTE,
             bitmap,
         ) {
-            gl.delete_texture(Some(&tex));
+            if reuse {
+                // Part of the old picture may be overwritten: show none.
+                self.imagery_size = None;
+            } else {
+                gl.delete_texture(Some(&tex));
+            }
             return Err(e);
         }
         gl.generate_mipmap(GL::TEXTURE_2D);
@@ -950,12 +965,14 @@ impl Renderer {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
         self.set_anisotropy();
-        self.gl.delete_texture(Some(&self.imagery));
-        self.imagery = tex;
-        self.has_imagery = true;
+        if !reuse {
+            self.gl.delete_texture(Some(&self.imagery));
+            self.imagery = tex;
+        }
+        self.imagery_size = Some((w, h));
         web_sys::console::log_1(
             &format!(
-                "satellite texture {w}x{h}: {:.1} MB",
+                "image layer texture {w}x{h}: {:.1} MB",
                 imagery_bytes(&TextureBudget {
                     imagery_width: w,
                     ..self.budget
@@ -1017,7 +1034,7 @@ impl Renderer {
         self.ice = r.ice;
         self.imagery = r.imagery;
         // The caller decodes the imagery again from its encoded bytes.
-        self.has_imagery = false;
+        self.imagery_size = None;
         self.has_map = false;
         // Buffers and the render target died with the old context.
         self.lines = None;
@@ -1473,7 +1490,11 @@ impl Renderer {
         gl.uniform1i(u.layer.as_ref(), self.layer.shader_index());
         gl.uniform1f(
             u.has_imagery.as_ref(),
-            if self.has_imagery { 1.0 } else { 0.0 },
+            if self.imagery_size.is_some() {
+                1.0
+            } else {
+                0.0
+            },
         );
         let sun = self.sun.unwrap_or([0.0, 0.0, 1.0]);
         gl.uniform3f(u.sun.as_ref(), sun[0], sun[1], sun[2]);

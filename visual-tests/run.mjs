@@ -55,6 +55,11 @@ const VIEWS = [
   { name: "imagery-close-zoom", hash: "#47,8.5,400&layer=imagery" },
   { name: "imagery-robinson", hash: "#0,0,19000&proj=robinson&layer=imagery" },
   { name: "imagery-day-night", hash: "#30,0,9000&layer=imagery&sun=on&t=1718992800" },
+  // Terrain (Natural Earth relief and sea floor): the second image layer,
+  // fetched from data/terrain.webp into the same texture as the satellite image.
+  { name: "terrain-globe", hash: "#20,-20,15000&layer=terrain" },
+  { name: "terrain-mid-zoom", hash: "#45,-15,2500&layer=terrain" },
+  { name: "terrain-close-zoom", hash: "#46.5,9,400&layer=terrain" },
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.
   { name: "day-night", hash: "#30,0,9000&sun=on&t=1718992800" },
@@ -173,7 +178,7 @@ try {
     // uploaded. The app sets data-layer on the canvas then, and fails loudly
     // (status text) if the download or decode fails.
     const wantLayer = /[&#]layer=([a-z]+)/.exec(view.hash)?.[1];
-    if (wantLayer === "imagery") {
+    if (wantLayer === "imagery" || wantLayer === "terrain") {
       await page.waitForSelector(`#globe[data-layer="${wantLayer}"][data-imagery="1"]`, {
         state: "attached",
         timeout: 60_000,

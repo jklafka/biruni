@@ -18,6 +18,8 @@ pub enum Layer {
     Monochrome,
     /// NASA Blue Marble satellite imagery (fetched on first use).
     Imagery,
+    /// Natural Earth shaded relief and sea floor (fetched on first use).
+    Terrain,
     /// Countries colored by population (see `thematic`).
     Population,
     /// Countries colored by GDP per capita.
@@ -27,10 +29,11 @@ pub enum Layer {
 }
 
 impl Layer {
-    pub const ALL: [Layer; 6] = [
+    pub const ALL: [Layer; 7] = [
         Layer::Political,
         Layer::Monochrome,
         Layer::Imagery,
+        Layer::Terrain,
         Layer::Population,
         Layer::GdpPerCapita,
         Layer::Income,
@@ -52,6 +55,7 @@ impl Layer {
             Layer::Political => "political",
             Layer::Monochrome => "mono",
             Layer::Imagery => "imagery",
+            Layer::Terrain => "terrain",
             Layer::Population => "pop",
             Layer::GdpPerCapita => "gdp",
             Layer::Income => "income",
@@ -64,6 +68,7 @@ impl Layer {
             Layer::Political => "Political",
             Layer::Monochrome => "Monochrome",
             Layer::Imagery => "Satellite",
+            Layer::Terrain => "Terrain",
             Layer::Population => "Population",
             Layer::GdpPerCapita => "GDP per capita",
             Layer::Income => "Income group",
@@ -80,8 +85,16 @@ impl Layer {
     pub fn data_file(self) -> Option<&'static str> {
         match self {
             Layer::Imagery => Some("blue_marble.webp"),
+            Layer::Terrain => Some("terrain.webp"),
             _ => None,
         }
+    }
+
+    /// Whether the layer shows a whole-globe image (its `data_file`, a WebP)
+    /// instead of a palette. Image layers share one texture, so only one of
+    /// them is in GPU memory at a time.
+    pub fn is_image(self) -> bool {
+        matches!(self, Layer::Imagery | Layer::Terrain)
     }
 
     /// Value of the `u_layer` uniform in `globe.frag`.
@@ -89,7 +102,8 @@ impl Layer {
         match self {
             Layer::Political => 0,
             Layer::Monochrome => 1,
-            Layer::Imagery => 2,
+            // Image layers draw whatever image `u_imagery` holds.
+            Layer::Imagery | Layer::Terrain => 2,
             // One id per theme, read as `u_layer >= 3` in `globe.frag`.
             Layer::Population => 3,
             Layer::GdpPerCapita => 4,
@@ -628,11 +642,20 @@ mod tests {
     }
 
     #[test]
-    fn shader_indices_are_unique() {
-        let mut seen: Vec<i32> = Layer::ALL.iter().map(|l| l.shader_index()).collect();
+    fn shader_indices_are_unique_except_image_layers() {
+        // Image layers share index 2: the shader draws the image it is given.
+        let mut seen: Vec<i32> = Layer::ALL
+            .iter()
+            .filter(|l| !l.is_image())
+            .map(|l| l.shader_index())
+            .collect();
+        let n = seen.len();
         seen.sort();
         seen.dedup();
-        assert_eq!(seen.len(), Layer::ALL.len());
+        assert_eq!(seen.len(), n);
+        for l in Layer::ALL {
+            assert_eq!(l.is_image(), l.shader_index() == 2, "{l:?}");
+        }
     }
 
     #[test]
@@ -649,7 +672,12 @@ mod tests {
             assert!(l.data_file().is_none(), "uses the country data");
             assert!(l.shader_index() >= 3, "globe.frag reads u_layer >= 3");
         }
-        for l in [Layer::Political, Layer::Monochrome, Layer::Imagery] {
+        for l in [
+            Layer::Political,
+            Layer::Monochrome,
+            Layer::Imagery,
+            Layer::Terrain,
+        ] {
             assert!(l.theme().is_none());
             assert!(l.shader_index() < 3);
         }
@@ -1246,27 +1274,33 @@ mod tests {
             "https://example.com/maps/#46.8000,8.2000,600&layer=imagery"
         );
         assert_eq!(Layer::Monochrome.next(), Layer::Imagery);
-        assert_eq!(Layer::Imagery.next(), Layer::Population);
+        assert_eq!(Layer::Imagery.next(), Layer::Terrain);
+        assert_eq!(Layer::Terrain.next(), Layer::Population);
         assert_eq!(Layer::Income.next(), Layer::Political);
     }
 
     #[test]
-    fn only_the_imagery_layer_needs_data_and_the_file_ships() {
+    fn only_image_layers_need_data_and_their_files_ship() {
         for l in Layer::ALL {
-            assert_eq!(l.data_file().is_some(), l == Layer::Imagery, "{l:?}");
+            assert_eq!(l.data_file().is_some(), l.is_image(), "{l:?}");
             assert_eq!(
                 crate::layer_loader::Loadable::needs_data(l),
                 l.data_file().is_some()
             );
         }
-        let name = Layer::Imagery.data_file().unwrap();
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets/data")
-            .join(name);
-        let len = std::fs::metadata(&path)
-            .expect("imagery asset is committed")
-            .len();
-        assert!(len > 100_000 && len < 2_000_000, "{len} bytes");
+        assert!(Layer::Imagery.is_image() && Layer::Terrain.is_image());
+        for l in Layer::ALL.into_iter().filter(|l| l.is_image()) {
+            let name = l.data_file().unwrap();
+            assert!(name.ends_with(".webp"), "imagery::decode reads images");
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("assets/data")
+                .join(name);
+            let len = std::fs::metadata(&path)
+                .unwrap_or_else(|e| panic!("{name} is committed: {e}"))
+                .len();
+            assert!(len > 100_000 && len < 2_000_000, "{name}: {len} bytes");
+        }
+        assert_eq!(Layer::from_id("terrain"), Some(Layer::Terrain));
     }
 
     #[test]

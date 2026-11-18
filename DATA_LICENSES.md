@@ -23,7 +23,7 @@ A `[key: id]` tag in a dataset cell is the id that `data-sources.lock.json` entr
 
 | Dataset | Used for | License | Credit | Verified |
 | --- | --- | --- | --- | --- |
-| [Natural Earth](https://www.naturalearthdata.com/) 1:50m and 1:10m vectors [key: natural-earth] | Land, lakes, borders, countries, glaciers, ice shelves, places, labels, marine names | Public domain | "Made with Natural Earth" (requested, not required) | Yes, naturalearthdata.com terms |
+| [Natural Earth](https://www.naturalearthdata.com/) 1:50m and 1:10m vectors, 1:50m rasters (cross blended hypso with shaded relief and water, ocean bottom) [key: natural-earth] | Land, lakes, borders, countries, glaciers, ice shelves, places, labels, marine names; Terrain layer | Public domain | "Made with Natural Earth" (requested, not required) | Yes, naturalearthdata.com terms |
 | [NASA Blue Marble: Next Generation](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography-bathymetry) (July 2004, with GEBCO bathymetry) [key: nasa-bmng] | Satellite layer | US government work, generally not subject to US copyright. NASA insignia and logos excluded (none used) | "NASA Earth Observatory" | Yes, NASA media usage guidelines |
 
 ## Candidates for the roadmap

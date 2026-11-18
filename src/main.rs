@@ -69,6 +69,9 @@ struct App {
     /// Fetched (still encoded) data of layers that need it. Kept so a lost
     /// WebGL context can rebuild the layer's texture without a download.
     layer_data: HashMap<Layer, Rc<Vec<u8>>>,
+    /// The image layer (Satellite or Terrain) whose picture is in the shared
+    /// image texture, or was before a context loss.
+    image_slot: Option<Layer>,
     /// Handle to this app, for spawning layer fetches.
     me: Weak<RefCell<App>>,
     layer_status: HtmlElement,
@@ -318,37 +321,68 @@ impl App {
         wasm_bindgen_futures::spawn_local(async move {
             let result = Self::load_layer_data(&app, layer, name).await;
             let mut a = app.borrow_mut();
-            let effects = a.layers_state.finished(layer, result);
+            let in_gpu = result == Ok(true);
+            let effects = a.layers_state.finished(layer, result.map(|_| ()));
+            if !in_gpu {
+                // Stale result: the bytes are cached but not on the GPU, so
+                // the next selection must upload them before showing.
+                a.layers_state.evict(layer);
+            }
             a.apply_layer_effects(effects);
         });
     }
 
-    /// Fetch, decode and upload one layer's data. No borrow of the app is
-    /// held across an await.
+    /// Fetch (or take from the cache), decode and upload one image layer.
+    /// Image layers share one texture, so this replaces the other's picture.
+    /// Returns whether the image went to the GPU: a layer the user has moved
+    /// away from meanwhile is cached but not uploaded, so the shown layer
+    /// keeps its picture. No borrow of the app is held across an await.
     async fn load_layer_data(
         app: &Rc<RefCell<App>>,
         layer: Layer,
         name: &str,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let js_msg = |e: JsValue| e.as_string().unwrap_or_else(|| format!("{e:?}"));
-        let bytes = data::fetch(name).await.map_err(js_msg)?;
-        // Today the only layer with data is the satellite imagery.
-        debug_assert_eq!(layer, Layer::Imagery);
+        debug_assert!(layer.is_image(), "only image layers have data");
+        let cached = app.borrow().layer_data.get(&layer).cloned();
+        let bytes = match cached {
+            Some(b) => b,
+            None => Rc::new(data::fetch(name).await.map_err(js_msg)?),
+        };
+        app.borrow_mut().layer_data.insert(layer, bytes.clone());
+        if app.borrow().layers_state.wanted() != layer {
+            return Ok(false);
+        }
         let width = app.borrow().renderer.imagery_width();
         let bitmap = imagery::decode(&bytes, width).await.map_err(js_msg)?;
         let mut a = app.borrow_mut();
-        a.layer_data.insert(layer, Rc::new(bytes));
+        if a.layers_state.wanted() != layer {
+            bitmap.close();
+            return Ok(false);
+        }
         // A no-op while the context is lost; `context_restored` redoes it.
         let uploaded = a.renderer.upload_imagery(&bitmap);
         bitmap.close();
         uploaded.map_err(js_msg)?;
-        a.sync_imagery_attr();
-        Ok(())
+        a.set_image_slot(layer);
+        Ok(true)
     }
 
-    /// After a context restore: decode the kept bytes again and upload them.
+    /// `layer`'s picture is now in the shared image texture: any other image
+    /// layer must load again before it is shown.
+    fn set_image_slot(&mut self, layer: Layer) {
+        if let Some(old) = self.image_slot.filter(|&l| l != layer) {
+            self.layers_state.evict(old);
+        }
+        self.image_slot = Some(layer);
+        self.sync_imagery_attr();
+    }
+
+    /// After a context restore: decode the kept bytes of the image layer that
+    /// was in the texture again and upload them.
     fn restore_imagery(&mut self) {
-        let Some(bytes) = self.layer_data.get(&Layer::Imagery).cloned() else {
+        let Some(layer) = self.image_slot else { return };
+        let Some(bytes) = self.layer_data.get(&layer).cloned() else {
             return;
         };
         let Some(app) = self.me.upgrade() else { return };
@@ -359,12 +393,15 @@ impl App {
                 Err(e) => return web_sys::console::error_1(&e),
             };
             let mut a = app.borrow_mut();
-            if let Err(e) = a.renderer.upload_imagery(&bitmap) {
-                web_sys::console::error_1(&e);
+            // Another image layer may have taken the texture meanwhile.
+            if a.image_slot == Some(layer) {
+                if let Err(e) = a.renderer.upload_imagery(&bitmap) {
+                    web_sys::console::error_1(&e);
+                }
+                a.sync_imagery_attr();
+                a.redraw.mark_render();
             }
             bitmap.close();
-            a.sync_imagery_attr();
-            a.redraw.mark_render();
         });
     }
 
@@ -1041,6 +1078,7 @@ fn start() -> Result<(), JsValue> {
         renderer,
         layers_state: LayerLoader::new(Layer::default()),
         layer_data: HashMap::new(),
+        image_slot: None,
         me: Weak::new(),
         layer_status: element(&doc, "layer-status")?,
         layer_error: None,
@@ -1574,7 +1612,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2" | "3" | "4" | "5" | "6") => {
+                    k @ ("1" | "2" | "3" | "4" | "5" | "6" | "7") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);
