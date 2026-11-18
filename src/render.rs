@@ -222,6 +222,7 @@ struct Uniforms {
     layer: Option<WebGlUniformLocation>,
     imagery: Option<WebGlUniformLocation>,
     has_imagery: Option<WebGlUniformLocation>,
+    image_emissive: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
     ice: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
@@ -262,6 +263,7 @@ impl Uniforms {
             layer: u("u_layer"),
             imagery: u("u_imagery"),
             has_imagery: u("u_hasImagery"),
+            image_emissive: u("u_imageEmissive"),
             ids: u("u_ids"),
             ice: u("u_ice"),
             highlight: u("u_highlight"),
@@ -1489,6 +1491,10 @@ impl Renderer {
         gl.uniform1f(u.dpr.as_ref(), dpr as f32);
         gl.uniform1i(u.layer.as_ref(), self.layer.shader_index());
         gl.uniform1f(
+            u.image_emissive.as_ref(),
+            if self.layer.is_emissive() { 1.0 } else { 0.0 },
+        );
+        gl.uniform1f(
             u.has_imagery.as_ref(),
             if self.imagery_size.is_some() {
                 1.0
@@ -1979,6 +1985,7 @@ mod tests {
             "u_layer",
             "u_imagery",
             "u_hasImagery",
+            "u_imageEmissive",
             "u_ids",
             "u_ice",
             "u_highlight",

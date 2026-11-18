@@ -1612,7 +1612,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2" | "3" | "4" | "5" | "6" | "7") => {
+                    k @ ("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);

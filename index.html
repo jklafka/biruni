@@ -350,6 +350,8 @@
         /* Fit 390 px even with a wide fallback font: the menu takes what is left and clips. */
         #layers { max-width: calc(100vw - 32px); }
         #layers button { padding: 0 6px; flex: none; }
+        /* Five buttons and the Data menu: shorten Monochrome so the menu keeps room for its label. */
+        #layers .wide-only { display: none; }
         #layer-theme { flex: 1 1 0; min-width: 0; padding: 0 4px; text-overflow: ellipsis; }
         #search { top: 116px; }
         /* Above the HUD, left of the control buttons, in two columns to stay short. */
@@ -497,10 +499,11 @@
     </div>
     <div id="layers" class="panel" role="group" aria-label="Map layer">
       <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
-      <button id="layer-mono" aria-pressed="false" title="Monochrome (2)">Monochrome</button>
+      <button id="layer-mono" aria-pressed="false" aria-label="Monochrome" title="Monochrome (2)">Mono<span class="wide-only">chrome</span></button>
       <button id="layer-imagery" aria-pressed="false" title="Satellite imagery (3)">Satellite</button>
       <button id="layer-terrain" aria-pressed="false" title="Terrain: shaded relief and sea floor (4)">Terrain</button>
-      <select id="layer-theme" aria-label="Data layer: color countries by a statistic" title="Color countries by a statistic (5, 6, 7)">
+      <button id="layer-night" aria-pressed="false" title="Night lights (5)">Night</button>
+      <select id="layer-theme" aria-label="Data layer: color countries by a statistic" title="Color countries by a statistic (6, 7, 8)">
         <option value="">Data</option>
         <option value="pop">Population</option>
         <option value="gdp">GDP / capita</option>
