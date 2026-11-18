@@ -14,9 +14,10 @@ uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
 uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
-uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer (satellite or terrain; see view::Layer)
+uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer (satellite, terrain or night lights; see view::Layer)
 uniform sampler2D u_imagery;  // RGBA8 image layer picture, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
+uniform float u_imageEmissive; // 1 = the image is already night (night lights): no key light, glint or night tint
 uniform sampler2D u_ice;      // R8 glacier mask (glaciated areas + ice shelves), half the width of u_map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
@@ -379,8 +380,10 @@ void main() {
         // The photo carries its own land, water and ice. Vector lines stay on
         // top, lighter than on the other layers so they do not hide detail.
         col = imagery;
-        col = mix(col, BORDER_SAT, ln.g * land * 0.55);
-        col = mix(col, COAST, ln.r * 0.22);
+        // Over a night image light lines outshine the cities: draw them fainter.
+        float lineW = 1.0 - 0.5 * u_imageEmissive;
+        col = mix(col, BORDER_SAT, ln.g * land * 0.55 * lineW);
+        col = mix(col, COAST, ln.r * 0.22 * lineW);
         if (u_highlight > 0) {
             // Lighten and warm the country; the photo has no flat color to tint.
             float hl = smoothstep(0.35, 0.65, hlMask) * land * u_hasMap;
@@ -403,7 +406,10 @@ void main() {
 
     // Soft key light from the upper left of the camera plus ocean glint.
     // A flat map is lit evenly (globeW = 0); the morph fades the lighting out.
-    if (globeW > 0.0) {
+    // A night image is its own light: shading it would dim the cities toward
+    // the limb, and the sun would darken it twice.
+    float lit = satellite ? 1.0 - u_imageEmissive : 1.0;
+    if (globeW > 0.0 && lit > 0.0) {
         vec3 rdv = u_mode == 0 ? rd : normalize(n - ro);
         vec3 L = normalize(vec3(-0.45, 0.55, 0.85));
         float diffuse = max(dot(n, L), 0.0);
@@ -416,7 +422,7 @@ void main() {
     // this point; the smooth band spans roughly civil to nautical twilight
     // (about +2 to -10 degrees of sun elevation).
     float sunElev = dot(w, u_sun);
-    float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn;
+    float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn * lit;
     vec3 nightTint = u_layer == 1 ? vec3(0.24, 0.28, 0.42) : vec3(0.22, 0.26, 0.42);
     if (satellite) nightTint = vec3(0.12, 0.15, 0.27);  // no city lights: just dark
     col *= mix(vec3(1.0), nightTint, night);

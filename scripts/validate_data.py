@@ -46,6 +46,7 @@ MAX_TOTAL_BYTES = 64 * 1024 * 1024  # whole data directory; today about 4 MB
 FILE_BUDGETS = {  # logical name -> bytes
     "blue_marble.webp": 2 * 1024 * 1024,
     "terrain.webp": 2 * 1024 * 1024,
+    "night_lights.webp": 2 * 1024 * 1024,
 }
 SHRINK_LIMIT = 0.5  # a file may keep at least this fraction of bytes and features
 
@@ -60,7 +61,11 @@ TSV_SCHEMAS = {
     "labels.tsv": ("MAPSLABELS1", 7, 2, 3),
 }
 # name -> (width, height) the renderer expects
-WEBP_SIZES = {"blue_marble.webp": (4096, 2048), "terrain.webp": (4096, 2048)}
+WEBP_SIZES = {
+    "blue_marble.webp": (4096, 2048),
+    "terrain.webp": (4096, 2048),
+    "night_lights.webp": (4096, 2048),
+}
 
 
 class Bad(ValueError):

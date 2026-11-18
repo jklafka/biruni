@@ -60,6 +60,11 @@ const VIEWS = [
   { name: "terrain-globe", hash: "#20,-20,15000&layer=terrain" },
   { name: "terrain-mid-zoom", hash: "#45,-15,2500&layer=terrain" },
   { name: "terrain-close-zoom", hash: "#46.5,9,400&layer=terrain" },
+  // Night lights (NASA Black Marble), the third image layer. With the sun on
+  // it must look the same as without: the image is already night.
+  { name: "night-globe", hash: "#35,30,15000&layer=night" },
+  { name: "night-mid-zoom", hash: "#47,8.5,1500&layer=night" },
+  { name: "night-sun-on", hash: "#35,30,15000&layer=night&sun=on&t=1718992800" },
   // The sun is pinned with &t=<unix seconds> so these never depend on the
   // clock: 2024-06-21 18:00 UTC, sun over about 90 W.
   { name: "day-night", hash: "#30,0,9000&sun=on&t=1718992800" },
@@ -178,7 +183,7 @@ try {
     // uploaded. The app sets data-layer on the canvas then, and fails loudly
     // (status text) if the download or decode fails.
     const wantLayer = /[&#]layer=([a-z]+)/.exec(view.hash)?.[1];
-    if (wantLayer === "imagery" || wantLayer === "terrain") {
+    if (["imagery", "terrain", "night"].includes(wantLayer)) {
       await page.waitForSelector(`#globe[data-layer="${wantLayer}"][data-imagery="1"]`, {
         state: "attached",
         timeout: 60_000,

@@ -20,6 +20,8 @@ pub enum Layer {
     Imagery,
     /// Natural Earth shaded relief and sea floor (fetched on first use).
     Terrain,
+    /// NASA Black Marble city lights at night (fetched on first use).
+    NightLights,
     /// Countries colored by population (see `thematic`).
     Population,
     /// Countries colored by GDP per capita.
@@ -29,11 +31,12 @@ pub enum Layer {
 }
 
 impl Layer {
-    pub const ALL: [Layer; 7] = [
+    pub const ALL: [Layer; 8] = [
         Layer::Political,
         Layer::Monochrome,
         Layer::Imagery,
         Layer::Terrain,
+        Layer::NightLights,
         Layer::Population,
         Layer::GdpPerCapita,
         Layer::Income,
@@ -56,6 +59,7 @@ impl Layer {
             Layer::Monochrome => "mono",
             Layer::Imagery => "imagery",
             Layer::Terrain => "terrain",
+            Layer::NightLights => "night",
             Layer::Population => "pop",
             Layer::GdpPerCapita => "gdp",
             Layer::Income => "income",
@@ -69,6 +73,7 @@ impl Layer {
             Layer::Monochrome => "Monochrome",
             Layer::Imagery => "Satellite",
             Layer::Terrain => "Terrain",
+            Layer::NightLights => "Night lights",
             Layer::Population => "Population",
             Layer::GdpPerCapita => "GDP per capita",
             Layer::Income => "Income group",
@@ -86,6 +91,7 @@ impl Layer {
         match self {
             Layer::Imagery => Some("blue_marble.webp"),
             Layer::Terrain => Some("terrain.webp"),
+            Layer::NightLights => Some("night_lights.webp"),
             _ => None,
         }
     }
@@ -94,7 +100,14 @@ impl Layer {
     /// instead of a palette. Image layers share one texture, so only one of
     /// them is in GPU memory at a time.
     pub fn is_image(self) -> bool {
-        matches!(self, Layer::Imagery | Layer::Terrain)
+        matches!(self, Layer::Imagery | Layer::Terrain | Layer::NightLights)
+    }
+
+    /// Whether the layer's image is already a night view, so the globe's
+    /// lighting and the day/night shading must not darken it
+    /// (`u_imageEmissive` in `globe.frag`).
+    pub fn is_emissive(self) -> bool {
+        self == Layer::NightLights
     }
 
     /// Value of the `u_layer` uniform in `globe.frag`.
@@ -103,7 +116,7 @@ impl Layer {
             Layer::Political => 0,
             Layer::Monochrome => 1,
             // Image layers draw whatever image `u_imagery` holds.
-            Layer::Imagery | Layer::Terrain => 2,
+            Layer::Imagery | Layer::Terrain | Layer::NightLights => 2,
             // One id per theme, read as `u_layer >= 3` in `globe.frag`.
             Layer::Population => 3,
             Layer::GdpPerCapita => 4,
@@ -677,6 +690,7 @@ mod tests {
             Layer::Monochrome,
             Layer::Imagery,
             Layer::Terrain,
+            Layer::NightLights,
         ] {
             assert!(l.theme().is_none());
             assert!(l.shader_index() < 3);
@@ -1275,7 +1289,8 @@ mod tests {
         );
         assert_eq!(Layer::Monochrome.next(), Layer::Imagery);
         assert_eq!(Layer::Imagery.next(), Layer::Terrain);
-        assert_eq!(Layer::Terrain.next(), Layer::Population);
+        assert_eq!(Layer::Terrain.next(), Layer::NightLights);
+        assert_eq!(Layer::NightLights.next(), Layer::Population);
         assert_eq!(Layer::Income.next(), Layer::Political);
     }
 
@@ -1301,6 +1316,11 @@ mod tests {
             assert!(len > 100_000 && len < 2_000_000, "{name}: {len} bytes");
         }
         assert_eq!(Layer::from_id("terrain"), Some(Layer::Terrain));
+        assert_eq!(Layer::from_id("night"), Some(Layer::NightLights));
+        for l in Layer::ALL {
+            assert_eq!(l.is_emissive(), l == Layer::NightLights, "{l:?}");
+            assert!(!l.is_emissive() || l.is_image(), "only an image glows");
+        }
     }
 
     #[test]

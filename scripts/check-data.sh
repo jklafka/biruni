@@ -26,9 +26,9 @@ for f in "$tmp"/*; do
   fi
 done
 # Hand-processed from pinned downloads (scripts/make_blue_marble.py,
-# scripts/make_terrain.py); CI cannot fetch them, so they are checked for
+# scripts/make_terrain.py, scripts/make_night_lights.py); CI cannot fetch them, so they are checked for
 # shape only (below), not regenerated.
-external=(blue_marble.webp terrain.webp)
+external=(blue_marble.webp night_lights.webp terrain.webp)
 is_external() { local x; for x in "${external[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
 for f in assets/data/*; do

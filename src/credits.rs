@@ -34,15 +34,25 @@ pub const BLUE_MARBLE: Credit = Credit {
     text: "Satellite imagery, with GEBCO bathymetry. NASA Earth Observatory.",
 };
 
+pub const BLACK_MARBLE: Credit = Credit {
+    id: "nasa-black-marble",
+    name: "NASA Earth at Night (Black Marble)",
+    license: "US government work (NASA media guidelines)",
+    license_url: "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+    source_url: "https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/",
+    text: "Night lights, 2016. NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA's Goddard Space Flight Center.",
+};
+
 /// Every dataset the app can show.
-pub const ALL: [&Credit; 2] = [&NATURAL_EARTH, &BLUE_MARBLE];
+pub const ALL: [&Credit; 3] = [&NATURAL_EARTH, &BLUE_MARBLE, &BLACK_MARBLE];
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
 /// every view (map shape, labels, search, statistics, the Terrain layer's
-/// relief); the satellite imagery only shows on the Satellite layer.
+/// relief); each NASA image only shows on its own layer.
 pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
+        .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
         .collect()
 }
 
@@ -65,6 +75,18 @@ mod tests {
                 .iter()
                 .any(|c| c.id == BLUE_MARBLE.id);
             assert_eq!(has, layer == Layer::Imagery, "{layer:?}");
+        }
+    }
+
+    #[test]
+    fn night_lights_add_black_marble_and_only_there() {
+        for layer in Layer::ALL {
+            let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
+            assert_eq!(
+                ids.contains(&BLACK_MARBLE.id),
+                layer == Layer::NightLights,
+                "{layer:?}"
+            );
         }
     }
 
