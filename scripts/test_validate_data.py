@@ -207,6 +207,11 @@ class Validate(unittest.TestCase):
         self.assertProblem(self.problems(files), "expected 4096x2048")
         files["blue_marble.webp"] = b"RIFF" + b"\0" * 40
         self.assertProblem(self.problems(files), "not a WebP")
+        files = self.good()
+        files["terrain.webp"] = webp(4096, 2048)
+        self.assertEqual(self.problems(files), [])
+        files["terrain.webp"] = webp(2048, 1024)
+        self.assertProblem(self.problems(files), "expected 4096x2048")
 
     def test_shrink_beyond_half(self):
         base = self.dir(self.good(), "base")

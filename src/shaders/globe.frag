@@ -14,8 +14,8 @@ uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
 uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
-uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = satellite imagery (see view::Layer)
-uniform sampler2D u_imagery;  // RGBA8 satellite image, equirectangular like u_map
+uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer (satellite or terrain; see view::Layer)
+uniform sampler2D u_imagery;  // RGBA8 image layer picture, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform sampler2D u_ice;      // R8 glacier mask (glaciated areas + ice shelves), half the width of u_map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered

@@ -22,7 +22,7 @@ pub const NATURAL_EARTH: Credit = Credit {
     license: "Public domain",
     license_url: "https://www.naturalearthdata.com/about/terms-of-use/",
     source_url: "https://www.naturalearthdata.com/",
-    text: "Coastlines, borders, countries, places, labels and country statistics. Made with Natural Earth.",
+    text: "Coastlines, borders, countries, places, labels, country statistics and the terrain relief. Made with Natural Earth.",
 };
 
 pub const BLUE_MARBLE: Credit = Credit {
@@ -38,8 +38,8 @@ pub const BLUE_MARBLE: Credit = Credit {
 pub const ALL: [&Credit; 2] = [&NATURAL_EARTH, &BLUE_MARBLE];
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
-/// every view (map shape, labels, search, statistics); the satellite imagery
-/// only shows on the Satellite layer.
+/// every view (map shape, labels, search, statistics, the Terrain layer's
+/// relief); the satellite imagery only shows on the Satellite layer.
 pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
