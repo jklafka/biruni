@@ -103,22 +103,39 @@ def encode(im):
     return buf.getvalue()
 
 
+def padded(level, b):
+    """The level image with a border of b texels: wrapped east-west, the
+    edge rows repeated at the poles. Tiles cut from it overlap their
+    neighbors by b, so bilinear filtering blends across tile edges."""
+    from PIL import Image
+
+    w, h = level.size
+    out = Image.new(level.mode, (w + 2 * b, h + 2 * b))
+    out.paste(level, (b, b))
+    out.paste(level.crop((w - b, 0, w, h)), (0, b))
+    out.paste(level.crop((0, 0, b, h)), (w + b, b))
+    out.paste(out.crop((0, b, w + 2 * b, 2 * b)), (0, 0))
+    out.paste(out.crop((0, h, w + 2 * b, h + b)), (0, h + b))
+    return out
+
+
 def cut(full, max_level, regions=None):
     """{(z, x, y): WebP bytes} for levels MIN_LEVEL..max_level, only the tiles
-    touching `regions` if given."""
+    touching `regions` if given. Each image is TILE_SIZE + 2 * BORDER square."""
     from PIL import Image
 
     tiles = {}
     t = tile_pack.TILE_SIZE
+    b = tile_pack.BORDER
     for z in range(max_level, MIN_LEVEL - 1, -1):
         cols, rows = tile_pack.grid(z)
         wanted = [(x, y) for y in range(rows) for x in range(cols)
                   if regions is None or any(touches(tile_box(z, x, y), r) for r in regions)]
         if not wanted:
             continue
-        level = full.resize(level_size(z), Image.LANCZOS)
+        level = padded(full.resize(level_size(z), Image.LANCZOS), b)
         with ThreadPoolExecutor() as pool:
-            crops = [level.crop((x * t, y * t, (x + 1) * t, (y + 1) * t)) for x, y in wanted]
+            crops = [level.crop((x * t, y * t, (x + 1) * t + 2 * b, (y + 1) * t + 2 * b)) for x, y in wanted]
             for (x, y), data in zip(wanted, pool.map(encode, crops)):
                 tiles[(z, x, y)] = data
         print(f"level {z}: {len(wanted)} tiles", file=sys.stderr)

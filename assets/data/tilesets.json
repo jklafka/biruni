@@ -1,4 +1,35 @@
 {
-  "tilesets": [],
+  "tilesets": [
+    {
+      "format": "webp",
+      "layer": "imagery",
+      "max_level": 5,
+      "min_level": 3,
+      "sha256": "208f7be8d582aedf503ee356807f24cffc94d48ad8f56b4239c3bc0e19144d14",
+      "size": 9621036,
+      "tile_size": 256,
+      "url": "https://biruni-data.jklafka.cloud/files/imagery.208f7be8d582aedf.tiles"
+    },
+    {
+      "format": "webp",
+      "layer": "night",
+      "max_level": 5,
+      "min_level": 3,
+      "sha256": "d741bb546486304e21dd9559c6516425611f0b6f920bca4eaf67f9b567946990",
+      "size": 4177970,
+      "tile_size": 256,
+      "url": "https://biruni-data.jklafka.cloud/files/night.d741bb546486304e.tiles"
+    },
+    {
+      "format": "webp",
+      "layer": "terrain",
+      "max_level": 4,
+      "min_level": 3,
+      "sha256": "ed39fa364ecdf516c8cbb8c046357e5761063519e0a1500ad1eff053ab9e6760",
+      "size": 3233270,
+      "tile_size": 256,
+      "url": "https://biruni-data.jklafka.cloud/files/terrain.ed39fa364ecdf516.tiles"
+    }
+  ],
   "version": 1
 }

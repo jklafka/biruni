@@ -44,7 +44,7 @@ class TilePackTest(unittest.TestCase):
         self.assertEqual(data, FIXTURE.read_bytes(), "regenerate scripts/testdata/tiny.tiles with --write-fixture if the format changed")
         info = tile_pack.check(data)
         self.assertEqual(info, {"min_level": 0, "max_level": 1, "format": "webp",
-                                "tile_size": 4, "count": 10, "present": 9})
+                                "tile_size": 4, "border": 1, "count": 10, "present": 9})
         self.assertEqual(tile_pack.tile(data, 0, 1, 2, 1), b"z1x2y1")
         self.assertEqual(tile_pack.tile(data, 0, 0, 1, 0), b"z0x1y0")
         self.assertIsNone(tile_pack.tile(data, 0, 1, 3, 1))
@@ -82,6 +82,35 @@ class TilePackTest(unittest.TestCase):
         self.assertEqual(info["present"], 1)
         self.assertEqual(tile_pack.tile(data, 3, 5, 33, 9), b"only")
         self.assertEqual(len(data), tile_pack.header_len(3, 5) + 4)
+
+
+try:
+    import PIL  # noqa: F401
+    HAVE_PIL = True
+except ImportError:
+    HAVE_PIL = False
+
+
+@unittest.skipUnless(HAVE_PIL, "make_tiles.py needs Pillow")
+class Padding(unittest.TestCase):
+    def test_border_wraps_longitude_and_repeats_the_poles(self):
+        import make_tiles
+        from PIL import Image
+
+        im = Image.new("RGB", (8, 4))
+        px = im.load()
+        for x in range(8):
+            for y in range(4):
+                px[x, y] = (x * 30, y * 60, 0)
+        p = make_tiles.padded(im, 1)
+        q = p.load()
+        self.assertEqual(p.size, (10, 6))
+        self.assertEqual(q[0, 1], px[7, 0], "west border is the east edge")
+        self.assertEqual(q[9, 2], px[0, 1], "east border is the west edge")
+        self.assertEqual(q[3, 0], px[2, 0], "north border repeats the top row")
+        self.assertEqual(q[3, 5], px[2, 3], "south border repeats the bottom row")
+        self.assertEqual((q[0, 0], q[9, 5]), (px[7, 0], px[0, 3]))
+        self.assertEqual(q[4, 2], px[3, 1], "interior shifted by the border")
 
 
 if __name__ == "__main__":
