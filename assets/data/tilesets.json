@@ -5,30 +5,30 @@
       "layer": "imagery",
       "max_level": 5,
       "min_level": 3,
-      "sha256": "208f7be8d582aedf503ee356807f24cffc94d48ad8f56b4239c3bc0e19144d14",
-      "size": 9621036,
+      "sha256": "0ba3f26f477161db03d933f4b0d845d77b07f04aa3e972d5e35e84104b441814",
+      "size": 10142716,
       "tile_size": 256,
-      "url": "https://biruni-data.jklafka.cloud/files/imagery.208f7be8d582aedf.tiles"
+      "url": "https://biruni-data.jklafka.cloud/files/imagery.0ba3f26f477161db.tiles"
     },
     {
       "format": "webp",
       "layer": "night",
       "max_level": 5,
       "min_level": 3,
-      "sha256": "d741bb546486304e21dd9559c6516425611f0b6f920bca4eaf67f9b567946990",
-      "size": 4177970,
+      "sha256": "56987e100cabf59c75d9aac7f0945043e2b9d9f69502607f80ac988d92648ba7",
+      "size": 4404774,
       "tile_size": 256,
-      "url": "https://biruni-data.jklafka.cloud/files/night.d741bb546486304e.tiles"
+      "url": "https://biruni-data.jklafka.cloud/files/night.56987e100cabf59c.tiles"
     },
     {
       "format": "webp",
       "layer": "terrain",
       "max_level": 4,
       "min_level": 3,
-      "sha256": "ed39fa364ecdf516c8cbb8c046357e5761063519e0a1500ad1eff053ab9e6760",
-      "size": 3233270,
+      "sha256": "6088aa77c446c8baf3785dea69a3afbb525f5bb8f45d215d34af9e892beb46dc",
+      "size": 3403908,
       "tile_size": 256,
-      "url": "https://biruni-data.jklafka.cloud/files/terrain.ed39fa364ecdf516.tiles"
+      "url": "https://biruni-data.jklafka.cloud/files/terrain.6088aa77c446c8ba.tiles"
     }
   ],
   "version": 1
