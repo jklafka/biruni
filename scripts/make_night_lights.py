@@ -33,13 +33,13 @@ WIDTH, HEIGHT, QUALITY = 4096, 2048, 85
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "data", "night_lights.webp")
 
 
-def main():
+def full_image(src=None):
+    """The source at its full 13500x6750 (also used by scripts/make_tiles.py).
+    Fetches the pinned source unless given a path."""
     from PIL import Image
 
     Image.MAX_IMAGE_PIXELS = None  # 91 MP source, from a pinned hash
-    if len(sys.argv) > 1:
-        src = sys.argv[1]
-    else:
+    if src is None:
         try:
             src = data_sources.fetch(SOURCE)
         except (data_sources.DataSourceError, OSError) as e:
@@ -47,6 +47,13 @@ def main():
     im = Image.open(src).convert("RGB")
     if im.size != SOURCE_SIZE:
         sys.exit(f"unexpected source size {im.size}, wanted {SOURCE_SIZE}")
+    return im
+
+
+def main():
+    from PIL import Image
+
+    im = full_image(sys.argv[1] if len(sys.argv) > 1 else None)
     im = im.resize((WIDTH, HEIGHT), Image.LANCZOS)
     im.save(OUT, "WEBP", quality=QUALITY, method=6)
     print(f"wrote {os.path.normpath(OUT)}: {os.path.getsize(OUT)} bytes")

@@ -218,6 +218,39 @@ class Validate(unittest.TestCase):
         files["night_lights.webp"] = webp(4096, 4096)
         self.assertProblem(self.problems(files), "expected 4096x2048")
 
+    def test_tilesets(self):
+        sha = "ab" * 32
+        good = {"layer": "imagery", "url": f"https://r2.example/files/imagery.{sha[:16]}.tiles",
+                "sha256": sha, "size": 9_000_000, "min_level": 3, "max_level": 5,
+                "tile_size": 256, "format": "webp"}
+
+        def doc(*tilesets, **top):
+            return json.dumps(dict({"version": 1, "tilesets": list(tilesets)}, **top)).encode()
+
+        files = self.good()
+        files["tilesets.json"] = doc()
+        self.assertEqual(self.problems(files), [], "an empty list is valid")
+        files["tilesets.json"] = doc(good, dict(good, layer="terrain", max_level=4))
+        self.assertEqual(self.problems(files), [])
+        for bad, text in (
+            (b"{", "not valid JSON"),
+            (doc(good, extra=1), "exactly 'version'"),
+            (doc(good, version=2), "unsupported version"),
+            (doc(dict(good, layer="pop")), "unknown layer"),
+            (doc(good, good), "second tileset"),
+            (doc(dict(good, sha256="AB" * 32)), "sha256"),
+            (doc(dict(good, url="http://r2.example/x.tiles")), "https"),
+            (doc(dict(good, url="https://r2.example/files/imagery.0000000000000000.tiles")), "sha256 prefix"),
+            (doc(dict(good, min_level=6)), "bad levels"),
+            (doc(dict(good, max_level=True)), "integers"),
+            (doc(dict(good, tile_size=512)), "256px WebP"),
+            (doc(dict(good, size=100)), "directory"),
+            (doc({k: v for k, v in good.items() if k != "format"}), "want exactly the keys"),
+        ):
+            with self.subTest(text):
+                files["tilesets.json"] = bad
+                self.assertProblem(self.problems(files), text)
+
     def test_shrink_beyond_half(self):
         base = self.dir(self.good(), "base")
         small = self.good()

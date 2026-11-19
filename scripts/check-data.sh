@@ -13,6 +13,7 @@ python3 scripts/test_hash_data.py > /dev/null 2>&1 || { python3 scripts/test_has
 python3 scripts/test_data_sources.py > /dev/null 2>&1 || { python3 scripts/test_data_sources.py; exit 1; }
 python3 scripts/test_validate_data.py > /dev/null 2>&1 || { python3 scripts/test_validate_data.py; exit 1; }
 python3 scripts/test_publish_data.py > /dev/null 2>&1 || { python3 scripts/test_publish_data.py; exit 1; }
+python3 scripts/test_tile_pack.py > /dev/null 2>&1 || { python3 scripts/test_tile_pack.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -31,9 +32,18 @@ done
 external=(blue_marble.webp night_lights.webp terrain.webp)
 is_external() { local x; for x in "${external[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
+# The tile pack list (docs/tile-streaming.md): written by scripts/make_tiles.py
+# when packs are published to R2, so schema-checked only.
+python3 -c 'import sys; sys.path.insert(0, "scripts"); import validate_data as v
+try:
+    v.check_tilesets(open("assets/data/tilesets.json", "rb").read())
+except v.Bad as e:
+    sys.exit(f"assets/data/tilesets.json: {e}")' || drift+=("tilesets.json (invalid, see above)")
+
 for f in assets/data/*; do
   name="$(basename "$f")"
   is_external "$name" && continue
+  [ "$name" = tilesets.json ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 

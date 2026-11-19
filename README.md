@@ -66,6 +66,10 @@ On pushes to `main` the map data is served from a Cloudflare R2 bucket (`biruni-
 
 Any failure stops the job before the Pages deploy, so a manifest never points at missing files. The manifest ships with the app, so the app and its data switch together. Hashed files are never overwritten, and old ones are never deleted (for now), so pages that are still open keep working. Pull requests, `trunk serve` and the visual tests keep using the relative local data.
 
+### Tile packs
+
+The image layers get sharper at close zoom from **tile packs**: one file per layer holding a pyramid of 256×256 WebP tiles, read with HTTP range requests (design and format: [`docs/tile-streaming.md`](docs/tile-streaming.md)). Packs live only on R2, not in git or on Pages. To build and publish them, run the **Publish tiles** workflow (Actions → Publish tiles → Run workflow, or `gh workflow run publish-tiles.yml`). It builds each pack from the pinned sources with `scripts/make_tiles.py`, uploads the ones R2 lacks, checks they are served with range support and CORS (`publish_data.py check-tilesets`), and attaches the updated `assets/data/tilesets.json`. Commit that file in a pull request. The deploy checks again that every listed pack is served. Locally, `python3 scripts/make_tiles.py build <layer>` writes a pack to `.data-cache/tiles/` (needs Pillow, and NumPy for terrain).
+
 Cloudflare's cache may keep the first response it sees for an R2 file, including its CORS headers, so the scripts send `Origin: https://biruni.jklafka.cloud` on every request. Do the same when checking R2 files by hand (`curl -H 'Origin: https://biruni.jklafka.cloud' ...`).
 
 One-time setup for the repository owner (done): the R2 bucket `biruni-data`; its custom domain `biruni-data.jklafka.cloud`; the zone setting Browser Cache TTL = **Respect Existing Headers** (so R2's `Cache-Control` is kept); and the repository secret `CLOUDFLARE_R2_TOKEN`, an API token with **Account, Workers R2 Storage, Edit**. The R2 steps use that token, not the Pages one.

@@ -12,13 +12,20 @@ deploy.yml runs these on pushes to main, around the wrangler upload:
                            "<hashed name><TAB><content type>"
   rewrite DIR BASE_URL     point DIR/manifest.json at BASE_URL/files/<name>
                            (absolute https URLs) and delete DIR/files
+  check-tilesets FILE      check that every tile pack in FILE (tilesets.json)
+                           is served: a range request for its directory gets
+                           206 with CORS, the full size and a header that
+                           matches the entry (docs/tile-streaming.md).
+                           Retries for about 30 s per pack.
 
 DIR is a built data dir (dist/data): manifest.json plus files/. See
 hash_data.py for the manifest format.
 """
 
 import json
+import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -162,6 +169,55 @@ def fetch_baseline(url, out_dir):
     return True
 
 
+def check_pack_response(entry, status, headers, body):
+    """Problems with the answer to a directory range request for a tileset
+    `entry`; headers is a {lowercase name: value} dict."""
+    import tile_pack
+
+    problems = []
+    if status != 206:
+        problems.append(f"status {status}, want 206 (range support)")
+    if headers.get("access-control-allow-origin") != ORIGIN:
+        problems.append(f"no Access-Control-Allow-Origin for {ORIGIN}")
+    m = re.fullmatch(r"bytes \d+-\d+/(\d+)", headers.get("content-range", ""))
+    if not m or int(m.group(1)) != entry["size"]:
+        problems.append(f"Content-Range {headers.get('content-range')!r}, want a total of {entry['size']}")
+    try:
+        info, _ = tile_pack.read_header(body)
+        if (info["min_level"], info["max_level"]) != (entry["min_level"], entry["max_level"]):
+            problems.append(f"levels {info['min_level']}..{info['max_level']} do not match the entry")
+    except tile_pack.PackError as e:
+        problems.append(f"bad pack header: {e}")
+    return problems
+
+
+def check_tilesets(path, tries=6, delay=5):
+    """Raise ValueError unless every pack in tilesets.json is served."""
+    import tile_pack
+
+    doc = json.loads(Path(path).read_text("utf-8"))
+    for entry in doc["tilesets"]:
+        end = tile_pack.header_len(entry["min_level"], entry["max_level"]) - 1
+        problems = []
+        for attempt in range(tries):
+            if attempt:
+                time.sleep(delay)
+            req = urllib.request.Request(entry["url"], headers={
+                "User-Agent": USER_AGENT, "Origin": ORIGIN, "Range": f"bytes=0-{end}"})
+            try:
+                with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                    headers = {k.lower(): v for k, v in resp.headers.items()}
+                    problems = check_pack_response(entry, resp.status, headers, resp.read(end + 1))
+            except urllib.error.HTTPError as e:
+                problems = [f"HTTP {e.code}"]
+            if not problems:
+                break
+        if problems:
+            raise ValueError(f"{entry['url']}: " + "; ".join(problems))
+        print(f"{entry['url']}: served")
+    return len(doc["tilesets"])
+
+
 def main(argv):
     try:
         if len(argv) == 4 and argv[1] == "fetch-baseline":
@@ -172,6 +228,9 @@ def main(argv):
         elif len(argv) == 4 and argv[1] == "plan":
             for name, ctype in plan(argv[2], argv[3]):
                 print(f"{name}\t{ctype}")
+        elif len(argv) == 3 and argv[1] == "check-tilesets":
+            n = check_tilesets(argv[2])
+            print(f"{n} tile packs served")
         elif len(argv) == 4 and argv[1] == "rewrite":
             files = rewrite(argv[2], argv[3])
             print(f"manifest now points {len(files)} files at {argv[3]}")

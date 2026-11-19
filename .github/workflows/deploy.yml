@@ -12,7 +12,9 @@ name: Deploy
 # hashed files that R2 lacks, check they are served, then rewrite
 # dist/data/manifest.json to absolute R2 URLs and drop dist/data/files. Every
 # step before the Pages deploy fails the job, so a manifest never ships
-# pointing at files that are not there. Pull requests, dev servers and visual
+# pointing at files that are not there. The tile packs listed in
+# assets/data/tilesets.json are uploaded separately (publish-tiles.yml); the
+# deploy only checks that they are served. Pull requests, dev servers and visual
 # tests keep serving the data from the site itself.
 
 on:
@@ -160,6 +162,9 @@ jobs:
             fi
           done
           echo "all data files are served from $R2_BASE_URL"
+      - name: Verify the tile packs are served from R2
+        if: steps.r2.outputs.enabled == 'true'
+        run: python3 scripts/publish_data.py check-tilesets assets/data/tilesets.json
       - name: Point the manifest at R2
         if: steps.r2.outputs.enabled == 'true'
         run: |
