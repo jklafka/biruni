@@ -19,8 +19,9 @@ Checks, one line per problem on stderr, exit status 1 if there are any:
             in src/geo.rs and src/country.rs: supported version, no trailing
             bytes, lon/lat in range, at least one feature), .tsv (UTF-8,
             header line, column count, lat/lon in range, at least one row) and
-            .webp (RIFF header, dimensions). Unknown extensions fail, so a
-            new data type must add a rule here.
+            .webp (RIFF header, dimensions) and tilesets.json (the tile pack
+            list, see check_tilesets). Unknown extensions fail, so a new data
+            type must add a rule here.
   shrink    with --baseline (another built data dir, such as the published
             one), a file (by manifest name) may not disappear or lose more
             than half of its bytes or features unless named in --allow-shrink.
@@ -265,6 +266,59 @@ def check_webp(name, data):
     return 1
 
 
+# Layers that may have a tile pack (src/view.rs Layer::id of the image layers).
+TILESET_LAYERS = {"imagery", "night", "terrain"}
+TILESET_KEYS = {"layer", "url", "sha256", "size", "min_level", "max_level", "tile_size", "format"}
+TILE_SIZE = 256
+MAX_TILE_LEVEL = 10  # scripts/tile_pack.py MAX_LEVEL
+
+
+def check_tilesets(data):
+    """tilesets.json: the tile packs the app streams (docs/tile-streaming.md).
+    An empty list is fine, so it returns None (no feature count): dropping
+    tilesets still trips the byte shrink guard."""
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise Bad("not valid JSON") from None
+    if not isinstance(doc, dict) or set(doc) != {"version", "tilesets"}:
+        raise Bad("want an object with exactly 'version' and 'tilesets'")
+    if doc["version"] != 1:
+        raise Bad(f"unsupported version {doc['version']!r}")
+    if not isinstance(doc["tilesets"], list):
+        raise Bad("'tilesets' is not a list")
+    seen = set()
+    for i, t in enumerate(doc["tilesets"]):
+        where = f"tileset {i}"
+        if not isinstance(t, dict) or set(t) != TILESET_KEYS:
+            raise Bad(f"{where}: want exactly the keys {sorted(TILESET_KEYS)}")
+        if t["layer"] not in TILESET_LAYERS:
+            raise Bad(f"{where}: unknown layer {t['layer']!r}")
+        if t["layer"] in seen:
+            raise Bad(f"{where}: second tileset for {t['layer']!r}")
+        seen.add(t["layer"])
+        sha = t["sha256"]
+        if not (isinstance(sha, str) and len(sha) == 64 and all(c in "0123456789abcdef" for c in sha)):
+            raise Bad(f"{where}: sha256 is not 64 lowercase hex digits")
+        url = t["url"]
+        if not (isinstance(url, str) and url.startswith("https://") and url.endswith(".tiles")):
+            raise Bad(f"{where}: url must be https and end in .tiles")
+        if f".{sha[:HASH_LEN]}.tiles" not in url.rsplit("/", 1)[-1]:
+            raise Bad(f"{where}: the url's file name does not carry the sha256 prefix")
+        lo, hi = t["min_level"], t["max_level"]
+        ints = (lo, hi, t["size"], t["tile_size"])
+        if not all(isinstance(v, int) and not isinstance(v, bool) for v in ints):
+            raise Bad(f"{where}: levels, size and tile_size must be integers")
+        if not 0 <= lo <= hi <= MAX_TILE_LEVEL:
+            raise Bad(f"{where}: bad levels {lo}..{hi}")
+        if t["tile_size"] != TILE_SIZE or t["format"] != "webp":
+            raise Bad(f"{where}: want {TILE_SIZE}px WebP tiles")
+        directory = 16 + 8 * sum(2 ** (2 * z + 1) for z in range(lo, hi + 1))
+        if t["size"] <= directory:
+            raise Bad(f"{where}: size {t['size']} is not more than the directory ({directory} bytes)")
+    return None
+
+
 def check_format(name, data):
     """Features in a file, or raise Bad."""
     ext = Path(name).suffix
@@ -274,6 +328,8 @@ def check_format(name, data):
         return check_tsv(name, data)
     if ext == ".webp":
         return check_webp(name, data)
+    if name == "tilesets.json":
+        return check_tilesets(data)
     raise Bad(f"unknown file type {ext!r}; add a rule to validate_data.py")
 
 

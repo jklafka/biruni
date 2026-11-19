@@ -199,5 +199,34 @@ class CorsConfig(unittest.TestCase):
         self.assertEqual(rule["maxAgeSeconds"], 86400)
 
 
+class CheckPackResponse(unittest.TestCase):
+    PACK = (Path(__file__).parent / "testdata" / "tiny.tiles").read_bytes()
+    ENTRY = {"size": len(PACK), "min_level": 0, "max_level": 1}
+
+    def headers(self, **over):
+        h = {"access-control-allow-origin": pd.ORIGIN,
+             "content-range": f"bytes 0-95/{len(self.PACK)}"}
+        h.update(over)
+        return h
+
+    def test_good_response(self):
+        self.assertEqual(pd.check_pack_response(self.ENTRY, 206, self.headers(), self.PACK[:96]), [])
+
+    def test_problems(self):
+        for status, headers, body, text in (
+            (200, self.headers(), self.PACK, "want 206"),
+            (206, self.headers(**{"access-control-allow-origin": "*"}), self.PACK[:96], "Access-Control"),
+            (206, self.headers(**{"content-range": "bytes 0-95/5"}), self.PACK[:96], "Content-Range"),
+            (206, self.headers(), b"XTIL" + self.PACK[4:96], "bad pack header"),
+            (206, self.headers(), self.PACK[:40], "bad pack header"),
+        ):
+            with self.subTest(text):
+                problems = pd.check_pack_response(self.ENTRY, status, headers, body)
+                self.assertTrue(any(text in p for p in problems), problems)
+        wrong = dict(self.ENTRY, max_level=2)
+        problems = pd.check_pack_response(wrong, 206, self.headers(), self.PACK[:96])
+        self.assertTrue(any("levels" in p for p in problems), problems)
+
+
 if __name__ == "__main__":
     unittest.main()

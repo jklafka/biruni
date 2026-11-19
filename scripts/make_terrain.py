@@ -73,21 +73,30 @@ def composite(hypso, ocean):
     return np.clip(h * factor + 0.5, 0, 255).astype(np.uint8)
 
 
-def main():
+def full_image(hyp_zip=None, ob_zip=None):
+    """The composite at the sources' full 10800x5400 (also used by
+    scripts/make_tiles.py). Fetches the pinned sources unless given paths."""
     from PIL import Image
 
     Image.MAX_IMAGE_PIXELS = None  # 58 MP sources, from a pinned hash
-    if len(sys.argv) == 3:
-        hyp_zip, ob_zip = sys.argv[1], sys.argv[2]
-    elif len(sys.argv) == 1:
+    if hyp_zip is None or ob_zip is None:
         try:
             hyp_zip = data_sources.fetch(HYPSO[0])
             ob_zip = data_sources.fetch(OCEAN[0])
         except (data_sources.DataSourceError, OSError) as e:
             sys.exit(f"error: {e}")
+    return Image.fromarray(composite(read_tif(hyp_zip, HYPSO[1]), read_tif(ob_zip, OCEAN[1])))
+
+
+def main():
+    from PIL import Image
+
+    if len(sys.argv) == 3:
+        out = full_image(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) == 1:
+        out = full_image()
     else:
         sys.exit(__doc__)
-    out = Image.fromarray(composite(read_tif(hyp_zip, HYPSO[1]), read_tif(ob_zip, OCEAN[1])))
     out = out.resize((WIDTH, HEIGHT), Image.LANCZOS)
     out.save(OUT, "WEBP", quality=QUALITY, method=6)
     print(f"wrote {os.path.normpath(OUT)}: {os.path.getsize(OUT)} bytes")
