@@ -29,6 +29,9 @@ mod search_ui;
 mod share;
 mod sun;
 mod thematic;
+mod tile_pack;
+mod tile_stream;
+mod tiles;
 mod view;
 
 use camera::Camera;
@@ -143,11 +146,16 @@ struct App {
     keepout: label_layer::KeepOut,
     overlay: overlay::Overlay,
     measure_panel: overlay::Panel,
+    /// Detail tiles for the image layers (see `tile_stream`).
+    tile_stream: tile_stream::TileStream,
+    /// Last `data-tiles` value, so the attribute is only written on change.
+    tiles_attr: &'static str,
 }
 
 impl App {
     fn context_lost(&mut self) {
         self.renderer.context_lost();
+        self.tile_stream.context_lost();
         self.sync_imagery_attr();
         self.send(Event::CancelInertia);
         self.status.set_text_content(Some("Restoring map…"));
@@ -402,6 +410,93 @@ impl App {
                 a.redraw.mark_render();
             }
             bitmap.close();
+        });
+    }
+
+    /// Choose and request detail tiles for the view about to be drawn, and
+    /// give the renderer a changed page table. See `docs/tile-streaming.md`.
+    fn update_tiles(&mut self, dpr: f64) {
+        if self.renderer.is_lost() {
+            return;
+        }
+        let shown = self.layers_state.shown();
+        let base = if shown.is_image() && self.image_slot == Some(shown) {
+            self.renderer.imagery_level()
+        } else {
+            None
+        };
+        let cam = &self.camera;
+        let plan = self
+            .tile_stream
+            .plan(base.map(|b| (shown.id(), b)), |levels, cap| {
+                tiles::select(cam, dpr, levels, cap)
+            });
+        if let Some(d) = plan.dir {
+            self.fetch_tile_dir(d);
+        }
+        for f in plan.tiles {
+            self.fetch_tile(f);
+        }
+        if let Some(update) = self.tile_stream.take_pages() {
+            let pages = update.as_ref().map(|(l, t)| (*l, t.as_slice()));
+            if let Err(e) = self.renderer.set_tiles(pages) {
+                web_sys::console::error_1(&e);
+            }
+        }
+        // Lets the visual tests wait for the tiles.
+        let status = self.tile_stream.status();
+        if status != self.tiles_attr {
+            self.tiles_attr = status;
+            self.set_globe_attr("data-tiles", status);
+        }
+    }
+
+    fn fetch_tile_dir(&self, d: tile_stream::DirFetch) {
+        let Some(app) = self.me.upgrade() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = match tile_stream::fetch_range(&d.url, 0, d.len).await {
+                Ok(bytes) => tile_pack::Directory::parse(&bytes, d.min, d.max),
+                Err(e) => Err(e.as_string().unwrap_or_else(|| format!("{e:?}"))),
+            };
+            if let Err(e) = &result {
+                let msg = format!("no detail tiles from {}: {e}", d.url);
+                web_sys::console::warn_1(&msg.into());
+            }
+            let mut a = app.borrow_mut();
+            a.tile_stream.dir_loaded(d.set, result);
+            a.redraw.mark_render();
+        });
+    }
+
+    fn fetch_tile(&self, f: tile_stream::TileFetch) {
+        let Some(app) = self.me.upgrade() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let bitmap = match tile_stream::fetch_range(&f.url, f.offset, f.len).await {
+                Ok(bytes) => tile_stream::decode_tile(&bytes).await,
+                Err(e) => Err(e),
+            };
+            let mut a = app.borrow_mut();
+            let failed = match bitmap {
+                Ok(bitmap) => {
+                    let uploaded = match a.tile_stream.tile_arrived(&f) {
+                        Some(slot) => a.renderer.upload_tile(slot, &bitmap).map(|_| ()),
+                        None => Ok(()),
+                    };
+                    bitmap.close();
+                    uploaded.err()
+                }
+                Err(e) => Some(e),
+            };
+            if let Some(e) = failed {
+                let msg = format!(
+                    "tile {:?} failed: {}",
+                    f.id,
+                    e.as_string().unwrap_or_else(|| format!("{e:?}"))
+                );
+                web_sys::console::warn_1(&msg.into());
+                a.tile_stream.tile_failed(&f);
+            }
+            a.redraw.mark_render();
         });
     }
 
@@ -771,6 +866,7 @@ impl App {
             self.labels.update(&self.camera, dt, pw, ph, dpr);
         }
         if draw {
+            self.update_tiles(dpr);
             self.renderer
                 .draw(&self.camera, self.morph.blend(), pw, ph, dpr, scale);
             self.drawn_scale = scale;
@@ -1072,6 +1168,7 @@ fn start() -> Result<(), JsValue> {
     let labels = label_layer::LabelLayer::new(element(&doc, "labels")?)?;
     let measure_panel = overlay::Panel::new(&doc)?;
 
+    let renderer_tile_capacity = renderer.tile_capacity();
     let app = Rc::new(RefCell::new(App {
         window: window.clone(),
         canvas: canvas.clone(),
@@ -1134,6 +1231,8 @@ fn start() -> Result<(), JsValue> {
         keepout: label_layer::KeepOut::new(&doc)?,
         overlay,
         measure_panel,
+        tile_stream: tile_stream::TileStream::new(renderer_tile_capacity),
+        tiles_attr: "",
     }));
 
     {
@@ -1732,6 +1831,21 @@ fn start() -> Result<(), JsValue> {
         }));
     }
     window.request_animation_frame(raf.borrow().as_ref().unwrap().as_ref().unchecked_ref())?;
+
+    // The tile pack list; without it the image layers show only their bases.
+    {
+        let app = app.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            match tile_stream::load_tilesets().await {
+                Ok(sets) => {
+                    let mut a = app.borrow_mut();
+                    a.tile_stream.set_tilesets(sets);
+                    a.redraw.mark_render();
+                }
+                Err(e) => web_sys::console::warn_1(&e),
+            }
+        });
+    }
 
     // Load and rasterize the map data in the background.
     let map_width = app.borrow().renderer.map_width();

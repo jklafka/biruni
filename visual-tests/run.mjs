@@ -29,7 +29,7 @@ const VIEWS = [
   // Same view as mid-zoom, but the WebGL context is lost and restored through
   // the ?debug=ctxloss key before the screenshot. It must match mid-zoom, and
   // recovery must not start a Worker or download anything again.
-  { name: "ctxloss-restored", hash: "#38.5,22.5,1500", query: "?debug=ctxloss", loseContext: true },
+  { name: "ctxloss-restored", hash: "#38.5,22.5,1500", query: "?debug=ctxloss", loseContext: true, reference: "mid-zoom" },
   { name: "close-zoom", hash: "#47,8.5,400" },
   { name: "antimeridian", hash: "#-10,175,9000" },
   { name: "phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 } },
@@ -55,6 +55,19 @@ const VIEWS = [
   { name: "imagery-close-zoom", hash: "#47,8.5,400&layer=imagery" },
   { name: "imagery-robinson", hash: "#0,0,19000&proj=robinson&layer=imagery" },
   { name: "imagery-day-night", hash: "#30,0,9000&layer=imagery&sun=on&t=1718992800" },
+  // Detail tiles (docs/tile-streaming.md) from the sparse fixture pack
+  // fixtures/imagery.tiles, which holds the Alps and Fiji across the
+  // antimeridian. imagery-close-zoom above shows them too. Then the same
+  // view after a lost and restored context: the tiles come back.
+  { name: "imagery-tiles-seam", hash: "#-17.5,179.5,700&layer=imagery" },
+  { name: "imagery-tiles-flat", hash: "#46.5,8.5,500&proj=equirect&layer=imagery" },
+  {
+    name: "imagery-tiles-ctxloss",
+    hash: "#47,8.5,400&layer=imagery",
+    query: "?debug=ctxloss",
+    loseContext: true,
+    reference: "imagery-close-zoom",
+  },
   // Terrain (Natural Earth relief and sea floor): the second image layer,
   // fetched from data/terrain.webp into the same texture as the satellite image.
   { name: "terrain-globe", hash: "#20,-20,15000&layer=terrain" },
@@ -92,6 +105,35 @@ const MIME = {
   ".webp": "image/webp",
   ".svg": "image/svg+xml",
 };
+
+// Tile packs stream from R2 in production (assets/data/tilesets.json). The
+// tests answer those range requests from fixtures/<layer>.tiles instead, and
+// with 404 for a layer without a fixture (the app then shows only the base),
+// so screenshots never depend on the network.
+async function routeTilePacks(page) {
+  await page.route(/\.tiles$/, async (route) => {
+    const layer = /\/([a-z]+)\.[0-9a-f]{16}\.tiles$/.exec(route.request().url())?.[1];
+    const file = layer && join(here, "fixtures", `${layer}.tiles`);
+    const cors = { "access-control-allow-origin": "*" };
+    if (!file || !existsSync(file)) {
+      await route.fulfill({ status: 404, headers: cors, body: "no fixture" });
+      return;
+    }
+    const body = await readFile(file);
+    const m = /^bytes=(\d+)-(\d+)$/.exec(route.request().headers()["range"] ?? "");
+    if (!m) {
+      await route.fulfill({ status: 200, headers: cors, body });
+      return;
+    }
+    const start = Number(m[1]);
+    const end = Math.min(Number(m[2]), body.length - 1);
+    await route.fulfill({
+      status: 206,
+      headers: { ...cors, "content-range": `bytes ${start}-${end}/${body.length}` },
+      body: body.subarray(start, end + 1),
+    });
+  });
+}
 
 function serve() {
   const server = createServer(async (req, res) => {
@@ -160,6 +202,7 @@ try {
     // and that position is (0, 0) if the mouse never moved. (0, 0) lands on
     // the globe and would hover-highlight a country.
     await page.mouse.move(-20, -20);
+    await routeTilePacks(page);
     const requests = [];
     let workers = 0;
     page.on("request", (r) => requests.push(r.url()));
@@ -188,6 +231,11 @@ try {
         state: "attached",
         timeout: 60_000,
       });
+      // Then for the detail tiles this view wants (or none).
+      await page.waitForSelector('#globe[data-tiles="settled"], #globe[data-tiles="off"]', {
+        state: "attached",
+        timeout: 60_000,
+      });
     }
     if (["pop", "gdp", "income"].includes(wantLayer)) {
       await page.waitForSelector(`#globe[data-layer="${wantLayer}"]`, {
@@ -213,14 +261,24 @@ try {
       if (await page.locator("#loading.error").count() || (await lost())) {
         throw new Error(`${view.name}: context was not restored`);
       }
+      if (wantLayer) {
+        // The image is decoded again from kept bytes, and tiles are
+        // fetched again (from the HTTP cache in a browser).
+        await page.waitForSelector(`#globe[data-imagery="1"]`, { state: "attached", timeout: 30_000 });
+        await page.waitForSelector('#globe[data-tiles="settled"], #globe[data-tiles="off"]', {
+          state: "attached",
+          timeout: 30_000,
+        });
+      }
       // Let the re-render reach the screen.
       await page.evaluate(
         () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
       );
       await page.waitForTimeout(1000);
-      if (requests.length !== before.requests || workers !== before.workers) {
+      const again = requests.slice(before.requests).filter((u) => !u.endsWith(".tiles"));
+      if (again.length || workers !== before.workers) {
         console.error(
-          `FAIL ${view.name}: recovery re-downloaded or started a worker: ${requests.slice(before.requests)} workers +${workers - before.workers}`,
+          `FAIL ${view.name}: recovery re-downloaded or started a worker: ${again} workers +${workers - before.workers}`,
         );
         failed = true;
       }
@@ -253,15 +311,15 @@ try {
     if (problems.length) console.warn(`${view.name}: page errors:\n  ${problems.join("\n  ")}`);
 
     shots[view.name] = actual;
-    if (view.loseContext) {
+    if (view.reference) {
       // Recovery must reproduce the no-loss render, not just match a baseline.
-      const ref = shots["mid-zoom"];
+      const ref = shots[view.reference];
       const d = new PNG({ width: actual.width, height: actual.height });
       const n = pixelmatch(ref.data, actual.data, d.data, actual.width, actual.height, {
         threshold: PIXEL_THRESHOLD,
       });
       const ok = n <= actual.width * actual.height * 0.0005;
-      console.log(`${ok ? "ok  " : "FAIL"} ${view.name} vs mid-zoom (no loss): ${n} px differ`);
+      console.log(`${ok ? "ok  " : "FAIL"} ${view.name} vs ${view.reference} (no loss): ${n} px differ`);
       if (!ok) failed = true;
     }
     await writeFile(join(actualDir, `${view.name}.png`), shot);

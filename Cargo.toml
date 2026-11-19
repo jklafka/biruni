@@ -28,6 +28,7 @@ features = [
   "CssStyleDeclaration",
   "DomRect",
   "Response",
+  "RequestInit",
   "WebGl2RenderingContext",
   "WebGlBuffer",
   "WebGlFramebuffer",

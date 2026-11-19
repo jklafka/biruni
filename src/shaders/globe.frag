@@ -18,6 +18,10 @@ uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer 
 uniform sampler2D u_imagery;  // RGBA8 image layer picture, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform float u_imageEmissive; // 1 = the image is already night (night lights): no key light, glint or night tint
+uniform highp sampler2DArray u_tiles; // detail tiles of the image layer, 258x258 RGBA8 (256 + border), one per array layer (docs/tile-streaming.md)
+uniform highp usampler2D u_pages;     // page table: mip k = pyramid level M - k; RG = slot, B = level of the finest resident tile (0 = none)
+uniform float u_tilesOn;              // 1 when the shown image layer streams tiles
+uniform vec4 u_tileLevels;            // x = base level B, y = first tile level, z = finest level M, w = LOD bias (src/tiles.rs)
 uniform sampler2D u_ice;      // R8 glacier mask (glaciated areas + ice shelves), half the width of u_map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
 uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
@@ -37,6 +41,26 @@ in vec2 v_ll;                 // mode 2: latitude, longitude relative to the cen
 in float v_front;             // mode 2: > 0 where the surface is visible
 
 out vec4 outColor;
+
+// The image layer at pyramid level z (src/tiles.rs): the finest resident
+// tile at z or coarser, else the base picture. Only texelFetch and textureLod,
+// so it may run in non-uniform control flow. fract(u) puts both longitude
+// parameterizations and repeating flat maps on the same tile.
+vec3 tileSample(float z, vec2 uv, vec3 base) {
+    if (z < u_tileLevels.y) {
+        return base;
+    }
+    vec2 p = vec2(fract(uv.x), clamp(uv.y, 0.0, 0.999999));
+    uvec4 e = texelFetch(u_pages, ivec2(p * vec2(exp2(z + 1.0), exp2(z))), int(u_tileLevels.z - z));
+    if (e.b == 0u) {
+        return base;
+    }
+    float zr = float(e.b);
+    // Each 256-texel tile is stored with a 1-texel border from its neighbors
+    // (258 square, src/tiles.rs TILE_BORDER), so filtering crosses tile edges.
+    vec2 local = (fract(p * vec2(exp2(zr + 1.0), exp2(zr))) * 256.0 + 1.0) / 258.0;
+    return textureLod(u_tiles, vec3(local, float(e.r + 256u * e.g)), 0.0).rgb;
+}
 
 const float PI = 3.141592653589793;
 const float MERC_MAX = 1.4844222297453324;   // Mercator stops at 85.0511 degrees
@@ -235,6 +259,21 @@ void main() {
     // layer, so the quad stays on one control path.
     vec3 imagery = textureGrad(u_imagery, uv, duvdx, duvdy).rgb;
     bool satellite = u_layer == 2 && u_hasImagery > 0.5;
+    // Detail tiles where the base picture is magnified: trilinear between the
+    // two pyramid levels around d, where one texel covers one pixel. Same
+    // formula as tiles::detail_level.
+    if (satellite && u_tilesOn > 0.5) {
+        float tw = 512.0 * exp2(u_tileLevels.z);
+        vec2 ts = vec2(tw, 0.5 * tw);
+        float rho = max(length(duvdx * ts), length(duvdy * ts));
+        float d = u_tileLevels.z - log2(max(rho, 1e-12)) - u_tileLevels.w;
+        if (d > u_tileLevels.x) {
+            float zf = min(ceil(d), u_tileLevels.z);
+            float wc = clamp(zf - d, 0.0, 1.0);
+            vec3 fine = tileSample(zf, uv, imagery);
+            imagery = wc > 0.0 ? mix(fine, tileSample(zf - 1.0, uv, imagery), wc) : fine;
+        }
+    }
     // Vector coastlines (R) and borders (G), drawn at constant pixel width.
     vec2 ln = texelFetch(u_lines, ivec2(gl_FragCoord.xy), 0).rg;
 

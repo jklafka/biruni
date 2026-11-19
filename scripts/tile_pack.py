@@ -9,8 +9,10 @@ keep the three in step. Little-endian:
     5   1   min level
     6   1   max level
     7   1   tile format (1 = WebP)
-    8   2   tile size (256)
-    10  2   reserved (0)
+    8   2   tile size (256): texels of the world each tile covers
+    10  2   border (1): extra texels on each side, copied from the neighbors
+            (wrapping in longitude, repeating the edge at the poles), so a
+            stored tile image is size + 2 * border square
     12  4   tile count N, the sum of 2^(2z+1) over the levels
     16  8N  directory: u32 offset, u32 length per tile (length 0 = absent)
     ...     tile bytes
@@ -26,6 +28,7 @@ VERSION = 1
 FORMAT_WEBP = 1
 FORMATS = {FORMAT_WEBP: "webp"}
 TILE_SIZE = 256
+BORDER = 1
 HEADER = struct.Struct("<4sBBBBHHI")
 ENTRY = struct.Struct("<II")
 MAX_LEVEL = 10  # 2^21 tiles; far beyond any source we have
@@ -62,7 +65,7 @@ def check_levels(min_level, max_level):
         raise PackError(f"bad levels {min_level}..{max_level}")
 
 
-def write(min_level, max_level, tiles, tile_size=TILE_SIZE, fmt=FORMAT_WEBP):
+def write(min_level, max_level, tiles, tile_size=TILE_SIZE, fmt=FORMAT_WEBP, border=BORDER):
     """Pack bytes for `tiles`, a dict {(z, x, y): encoded bytes}. Missing
     tiles get length 0."""
     check_levels(min_level, max_level)
@@ -83,7 +86,7 @@ def write(min_level, max_level, tiles, tile_size=TILE_SIZE, fmt=FORMAT_WEBP):
         raise PackError(f"tiles outside the pyramid: {sorted(extra)[:3]}")
     if offset >= 2**32:
         raise PackError("pack over 4 GiB")
-    head = HEADER.pack(MAGIC, VERSION, min_level, max_level, fmt, tile_size, 0, n)
+    head = HEADER.pack(MAGIC, VERSION, min_level, max_level, fmt, tile_size, border, n)
     return head + b"".join(entries) + b"".join(body)
 
 
@@ -91,7 +94,7 @@ def read_header(data):
     """Parse the header and directory. Returns (info dict, [(offset, length)])."""
     if len(data) < HEADER.size:
         raise PackError("truncated header")
-    magic, version, lo, hi, fmt, size, _reserved, n = HEADER.unpack_from(data)
+    magic, version, lo, hi, fmt, size, border, n = HEADER.unpack_from(data)
     if magic != MAGIC:
         raise PackError(f"bad magic {magic!r}")
     if version != VERSION:
@@ -107,7 +110,8 @@ def read_header(data):
     if len(data) < end:
         raise PackError("truncated directory")
     entries = [ENTRY.unpack_from(data, HEADER.size + i * ENTRY.size) for i in range(n)]
-    info = {"min_level": lo, "max_level": hi, "format": FORMATS[fmt], "tile_size": size, "count": n}
+    info = {"min_level": lo, "max_level": hi, "format": FORMATS[fmt], "tile_size": size,
+            "border": border, "count": n}
     return info, entries
 
 

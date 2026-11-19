@@ -1,6 +1,6 @@
 # Tile streaming for image layers
 
-Status: design (bead `maps-wc7.1`). The first implementation is `maps-wc7.2`.
+Status: implemented for Satellite, Terrain and Night lights (`src/tiles.rs`, `src/tile_stream.rs`, `src/tile_pack.rs`).
 
 ## Problem
 
@@ -70,10 +70,16 @@ Layout, little-endian:
 | 6 | 1 | max level `M` |
 | 7 | 1 | tile format: 1 = WebP |
 | 8 | 2 | tile size (256) |
-| 10 | 2 | reserved, 0 |
+| 10 | 2 | border (1): texels copied from each neighbor on every side |
 | 12 | 4 | tile count `N` = Σ `2^(2z+1)` over the levels |
 | 16 | 8·N | directory: `u32` offset, `u32` length for each tile |
 | … | | tile bytes |
+
+A stored tile image is 258×258: its 256 texels plus a 1-texel border taken
+from its neighbors (wrapping in longitude, repeating the edge row at the
+poles). Without it, a tile clamps at its edge, and at the finest level, where
+tiles are magnified 10× or more at close zoom, every tile edge shows as a
+line. With it, bilinear filtering blends across edges as in one big texture.
 
 The directory and the tile bytes are both ordered by level, then row, then
 column. So a row of tiles is one contiguous byte range, and requests for
@@ -128,25 +134,26 @@ d   = M - log2(rho) - bias                                          continuous l
 The sample wants the tile at `zf = ceil(d)` and its parent at `zf − 1`, both
 clamped to `[B+1, M]`; nothing if `d ≤ B`. The union over all samples is the
 wanted set, ordered coarse levels first, then by distance from the screen
-center. If it exceeds 80% of the cache, raise `bias` by 1 and select again
-(at most three times). This keeps the poles, where equirectangular tiles are
-narrow on the ground, and very large screens within budget.
+center, and cut to 80% of the cache. A crowded view (a whole globe on a large
+high-DPI screen, or the poles, where equirectangular tiles are narrow on the
+ground) so keeps the coarse and central tiles, and the shader shows the rest
+from resident parents or the base. `bias` is a fixed constant
+(`tiles::LOD_BIAS`, 0), shared with the shader.
 
 The shader computes `d` with the same formula. It never needs the CPU's
 choice: it looks up whatever is resident.
 
 ## GPU cache
 
-- **Tile array:** a `TEXTURE_2D_ARRAY`, 256×256 RGBA8, one tile per layer,
+- **Tile array:** a `TEXTURE_2D_ARRAY`, 258×258 RGBA8, one tile per layer,
   `LINEAR` filtering without mipmaps, `CLAMP_TO_EDGE`. Created when an image
-  layer first needs a tile. Capacity: 96 tiles (24 MB) on desktops and 32
-  (8 MB) on the small tier, from `choose_budget`.
+  layer first needs a tile. Capacity: 96 tiles (24.4 MB) on desktops and
+  32 (8.1 MB) on the small tier, from `choose_budget`.
   - Why no mipmaps: tiles are only sampled at most 2× minified (see below),
     the same range trilinear filtering samples a mip level in.
   - Why an array, not an atlas: each layer clamps at its own edges, so
-    neighbors in the cache never bleed into each other. A tile edge clamps
-    instead of blending with the next tile. That is a half-texel step at 1–2
-    device pixels per texel, which is not visible.
+    neighbors in the cache never bleed into each other; the stored border
+    supplies the texels across each edge.
 - **Page table:** an `RGBA8UI` texture with one mip level per pyramid level
   `B+1..M`. Mip `k` is pyramid level `M − k`, `2^(M+1−k)×2^(M−k)` cells (64×32
   at level 5, 11 KB for the whole chain). The cell for tile `(z, x, y)` holds

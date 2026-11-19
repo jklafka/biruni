@@ -60,6 +60,11 @@ pub struct TextureBudget {
     /// Satellite imagery width (height is half). RGBA8 with a full mip
     /// chain, allocated only when the Imagery layer is first selected.
     pub imagery_width: u32,
+    /// Detail tile slots for the image layers (258x258 RGBA8 each: 256 plus
+    /// a border, no mipmaps; see `docs/tile-streaming.md`), allocated when
+    /// the first tile arrives: 96 (24.4 MB) on desktops, 32 (8.1 MB) on the
+    /// small tier.
+    pub tile_slots: u32,
 }
 
 /// Devices with at most this much RAM take the small tier.
@@ -119,10 +124,10 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
                 || d.device_memory_gb.is_some_and(|m| m <= LOW_MEMORY_GB)
         }
     };
-    let (map, ids, imagery) = if low {
-        (4096, 2048, 2048)
+    let (map, ids, imagery, tile_slots) = if low {
+        (4096, 2048, 2048, 32)
     } else {
-        (8192, 4096, 4096)
+        (8192, 4096, 4096, 96)
     };
     // Largest power of two the GPU supports (at least 1024).
     let cap = if d.max_texture_size >= 1024 {
@@ -135,7 +140,14 @@ pub fn choose_budget(d: &DeviceInfo, forced: Option<TierOverride>) -> TextureBud
         ids_width: (ids as u32).min(cap) as usize,
         ice_width: map.min(cap) / 2,
         imagery_width: imagery.min(cap),
+        tile_slots,
     }
+}
+
+/// GPU bytes for the detail tile array.
+pub fn tile_bytes(b: &TextureBudget) -> u64 {
+    let t = crate::tiles::TILE_STORED as u64;
+    b.tile_slots as u64 * t * t * 4
 }
 
 /// GPU bytes for the satellite imagery (RGBA8, full mip chain), which exists
@@ -223,6 +235,10 @@ struct Uniforms {
     imagery: Option<WebGlUniformLocation>,
     has_imagery: Option<WebGlUniformLocation>,
     image_emissive: Option<WebGlUniformLocation>,
+    tiles: Option<WebGlUniformLocation>,
+    pages: Option<WebGlUniformLocation>,
+    tiles_on: Option<WebGlUniformLocation>,
+    tile_levels: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
     ice: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
@@ -264,6 +280,10 @@ impl Uniforms {
             imagery: u("u_imagery"),
             has_imagery: u("u_hasImagery"),
             image_emissive: u("u_imageEmissive"),
+            tiles: u("u_tiles"),
+            pages: u("u_pages"),
+            tiles_on: u("u_tilesOn"),
+            tile_levels: u("u_tileLevels"),
             ids: u("u_ids"),
             ice: u("u_ice"),
             highlight: u("u_highlight"),
@@ -449,6 +469,10 @@ struct Resources {
     ice: WebGlTexture,
     /// Satellite imagery: a 1x1 placeholder until the layer's file is decoded.
     imagery: WebGlTexture,
+    /// Detail tiles (RGBA8 array) and their page table (RGBA8UI): 1x1
+    /// placeholders until the first tile, so the samplers are always complete.
+    tiles: WebGlTexture,
+    pages: WebGlTexture,
 }
 
 impl Resources {
@@ -550,6 +574,33 @@ impl Resources {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
 
+        let tiles = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(&tiles));
+        gl.tex_image_3d_with_opt_u8_array(
+            GL::TEXTURE_2D_ARRAY,
+            0,
+            GL::RGBA8 as i32,
+            1,
+            1,
+            1,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&[0, 0, 0, 255]),
+        )?;
+        gl.tex_parameteri(
+            GL::TEXTURE_2D_ARRAY,
+            GL::TEXTURE_MIN_FILTER,
+            GL::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            GL::TEXTURE_2D_ARRAY,
+            GL::TEXTURE_MAG_FILTER,
+            GL::NEAREST as i32,
+        );
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, None);
+        let pages = create_page_texture(gl, 1, 1, 1)?;
+
         Ok(Self {
             line_pass,
             space,
@@ -562,8 +613,45 @@ impl Resources {
             ids,
             ice,
             imagery,
+            tiles,
+            pages,
         })
     }
+}
+
+/// An empty page table texture (RGBA8UI, `levels` mips, nearest filtering,
+/// as integer textures require), all zero: no tile resident.
+fn create_page_texture(gl: &GL, w: i32, h: i32, levels: i32) -> Result<WebGlTexture, JsValue> {
+    let tex = gl.create_texture().ok_or("failed to create texture")?;
+    gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+    gl.tex_storage_2d(GL::TEXTURE_2D, levels, GL::RGBA8UI, w, h);
+    gl.tex_parameteri(
+        GL::TEXTURE_2D,
+        GL::TEXTURE_MIN_FILTER,
+        GL::NEAREST_MIPMAP_NEAREST as i32,
+    );
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAX_LEVEL, levels - 1);
+    gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+    let (mut lw, mut lh) = (w, h);
+    for level in 0..levels {
+        let zeros = vec![0u8; (lw * lh * 4) as usize];
+        gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            level,
+            0,
+            0,
+            lw,
+            lh,
+            GL::RGBA_INTEGER,
+            GL::UNSIGNED_BYTE,
+            Some(&zeros),
+        )?;
+        lw = (lw / 2).max(1);
+        lh = (lh / 2).max(1);
+    }
+    gl.bind_texture(GL::TEXTURE_2D, None);
+    Ok(tex)
 }
 
 /// Tracks whether the WebGL context is usable. Browser-free so it can be
@@ -779,6 +867,15 @@ pub struct Renderer {
     /// uploaded) and the size of the image in it, if any.
     imagery: WebGlTexture,
     imagery_size: Option<(u32, u32)>,
+    /// Detail tile array (placeholder until the first tile) and how many
+    /// slots it has (0 for the placeholder).
+    tiles: WebGlTexture,
+    tile_array_slots: u32,
+    /// Page table texture and the levels it was allocated for.
+    pages: WebGlTexture,
+    page_levels: Option<crate::tiles::Levels>,
+    /// Levels the shader streams for the shown layer, or `None` for no tiles.
+    tile_levels: Option<crate::tiles::Levels>,
     layer: Layer,
     /// World-space direction to the sun, or `None` when the terminator is off.
     sun: Option<[f32; 3]>,
@@ -848,6 +945,11 @@ impl Renderer {
             has_map: false,
             imagery: r.imagery,
             imagery_size: None,
+            tiles: r.tiles,
+            tile_array_slots: 0,
+            pages: r.pages,
+            page_levels: None,
+            tile_levels: None,
             layer: Layer::default(),
             sun: None,
             ctx: ContextState::default(),
@@ -900,6 +1002,158 @@ impl Renderer {
 
     pub fn is_lost(&self) -> bool {
         self.ctx.is_lost()
+    }
+
+    /// Number of detail tile slots on this device.
+    pub fn tile_capacity(&self) -> usize {
+        self.budget.tile_slots as usize
+    }
+
+    /// Pyramid level of the image layer picture in GPU memory, if any.
+    pub fn imagery_level(&self) -> Option<u8> {
+        self.imagery_size.map(|(w, _)| crate::tiles::base_level(w))
+    }
+
+    /// Write a decoded tile (`TILE_STORED` square) into slot `slot` of the tile array,
+    /// allocating the array on first use. Returns false (doing nothing)
+    /// while the context is lost.
+    pub fn upload_tile(
+        &mut self,
+        slot: u16,
+        bitmap: &web_sys::ImageBitmap,
+    ) -> Result<bool, JsValue> {
+        if self.gl.is_context_lost() || self.ctx.is_lost() {
+            return Ok(false);
+        }
+        let t = crate::tiles::TILE_STORED;
+        if bitmap.width() != t || bitmap.height() != t {
+            return Err(format!(
+                "tile is {}x{}, not {t}x{t}",
+                bitmap.width(),
+                bitmap.height()
+            )
+            .into());
+        }
+        if u32::from(slot) >= self.budget.tile_slots {
+            return Err(format!("tile slot {slot} out of range").into());
+        }
+        let gl = &self.gl;
+        if self.tile_array_slots == 0 {
+            let tex = gl.create_texture().ok_or("failed to create texture")?;
+            gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(&tex));
+            gl.tex_storage_3d(
+                GL::TEXTURE_2D_ARRAY,
+                1,
+                GL::RGBA8,
+                t as i32,
+                t as i32,
+                self.budget.tile_slots as i32,
+            );
+            gl.tex_parameteri(
+                GL::TEXTURE_2D_ARRAY,
+                GL::TEXTURE_MIN_FILTER,
+                GL::LINEAR as i32,
+            );
+            gl.tex_parameteri(
+                GL::TEXTURE_2D_ARRAY,
+                GL::TEXTURE_MAG_FILTER,
+                GL::LINEAR as i32,
+            );
+            gl.tex_parameteri(
+                GL::TEXTURE_2D_ARRAY,
+                GL::TEXTURE_WRAP_S,
+                GL::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameteri(
+                GL::TEXTURE_2D_ARRAY,
+                GL::TEXTURE_WRAP_T,
+                GL::CLAMP_TO_EDGE as i32,
+            );
+            gl.delete_texture(Some(&self.tiles));
+            self.tiles = tex;
+            self.tile_array_slots = self.budget.tile_slots;
+            web_sys::console::log_1(
+                &format!(
+                    "tile array: {} slots, {:.1} MB",
+                    self.tile_array_slots,
+                    tile_bytes(&self.budget) as f64 / 1048576.0
+                )
+                .into(),
+            );
+        }
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(&self.tiles));
+        gl.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 0);
+        gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        let result = gl.tex_sub_image_3d_with_image_bitmap(
+            GL::TEXTURE_2D_ARRAY,
+            0,
+            0,
+            0,
+            i32::from(slot),
+            t as i32,
+            t as i32,
+            1,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            bitmap,
+        );
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, None);
+        result.map(|()| true)
+    }
+
+    /// Replace the page table (see `tiles::page_table`; `table[i]` is level
+    /// `levels.first + i`) and stream those levels for the shown layer.
+    /// `None` turns tiles off. Does nothing while the context is lost.
+    pub fn set_tiles(
+        &mut self,
+        tiles: Option<(crate::tiles::Levels, &[Vec<[u8; 4]>])>,
+    ) -> Result<(), JsValue> {
+        if self.gl.is_context_lost() || self.ctx.is_lost() {
+            return Ok(());
+        }
+        let Some((levels, table)) = tiles else {
+            self.tile_levels = None;
+            return Ok(());
+        };
+        let gl = &self.gl;
+        let count = (levels.max - levels.first + 1) as usize;
+        if table.len() != count {
+            return Err("page table has the wrong number of levels".into());
+        }
+        let same = self
+            .page_levels
+            .is_some_and(|p| (p.first, p.max) == (levels.first, levels.max));
+        if !same {
+            let (w, h) = crate::tiles::grid(levels.max);
+            let tex = create_page_texture(gl, w as i32, h as i32, count as i32)?;
+            gl.delete_texture(Some(&self.pages));
+            self.pages = tex;
+            self.page_levels = Some(levels);
+        }
+        gl.bind_texture(GL::TEXTURE_2D, Some(&self.pages));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        for (i, cells) in table.iter().enumerate() {
+            let z = levels.first + i as u8;
+            let (w, h) = crate::tiles::grid(z);
+            if cells.len() != (w * h) as usize {
+                gl.bind_texture(GL::TEXTURE_2D, None);
+                return Err(format!("page table level {z} has the wrong size").into());
+            }
+            gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+                GL::TEXTURE_2D,
+                (levels.max - z) as i32,
+                0,
+                0,
+                w as i32,
+                h as i32,
+                GL::RGBA_INTEGER,
+                GL::UNSIGNED_BYTE,
+                Some(cells.as_flattened()),
+            )?;
+        }
+        gl.bind_texture(GL::TEXTURE_2D, None);
+        self.tile_levels = Some(levels);
+        Ok(())
     }
 
     /// Upload a decoded image layer picture as an RGBA8 texture with mipmaps,
@@ -1037,6 +1291,12 @@ impl Renderer {
         self.imagery = r.imagery;
         // The caller decodes the imagery again from its encoded bytes.
         self.imagery_size = None;
+        // Tiles are fetched again as the next frames want them.
+        self.tiles = r.tiles;
+        self.tile_array_slots = 0;
+        self.pages = r.pages;
+        self.page_levels = None;
+        self.tile_levels = None;
         self.has_map = false;
         // Buffers and the render target died with the old context.
         self.lines = None;
@@ -1529,6 +1789,26 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE4);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.ice));
         gl.uniform1i(u.ice.as_ref(), 4);
+        // Always bound, so the sampler types never share a unit with another.
+        gl.active_texture(GL::TEXTURE5);
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(&self.tiles));
+        gl.uniform1i(u.tiles.as_ref(), 5);
+        gl.active_texture(GL::TEXTURE6);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&self.pages));
+        gl.uniform1i(u.pages.as_ref(), 6);
+        let tiles = self
+            .tile_levels
+            .filter(|_| self.layer.is_image() && self.imagery_size.is_some());
+        gl.uniform1f(u.tiles_on.as_ref(), if tiles.is_some() { 1.0 } else { 0.0 });
+        if let Some(l) = tiles {
+            gl.uniform4f(
+                u.tile_levels.as_ref(),
+                l.base as f32,
+                l.first as f32,
+                l.max as f32,
+                crate::tiles::LOD_BIAS as f32,
+            );
+        }
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
         // Fills fade out as the view zooms in (see `political_fill_amount`).
@@ -1871,6 +2151,7 @@ mod tests {
             ids_width: 4096,
             ice_width: 4096,
             imagery_width: 4096,
+            tile_slots: 96,
         });
         assert!((map as f64 / MB - 42.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 8.0);
@@ -1879,6 +2160,7 @@ mod tests {
             ids_width: 2048,
             ice_width: 2048,
             imagery_width: 2048,
+            tile_slots: 32,
         });
         assert!((map as f64 / MB - 10.7).abs() < 0.1);
         assert_eq!(ids as f64 / MB, 2.0);
@@ -1916,6 +2198,18 @@ mod tests {
         assert_eq!(forced.imagery_width, 2048);
         let small = choose_budget(&dev(1024, None, false), Some(TierOverride::High));
         assert_eq!(small.imagery_width, 1024);
+    }
+
+    #[test]
+    fn tile_budget_per_tier() {
+        let high = choose_budget(&dev(16384, Some(8.0), false), None);
+        assert_eq!(high.tile_slots, 96);
+        assert!((tile_bytes(&high) as f64 / MB - 24.37).abs() < 0.01);
+        let low = choose_budget(&dev(16384, Some(2.0), true), None);
+        assert_eq!(low.tile_slots, 32);
+        assert!((tile_bytes(&low) as f64 / MB - 8.12).abs() < 0.01);
+        // WebGL2 guarantees 256 array layers, and slots fit the page table's 16 bits.
+        assert!(high.tile_slots <= 256);
     }
 
     #[test]
@@ -1984,6 +2278,10 @@ mod tests {
             "u_dpr",
             "u_layer",
             "u_imagery",
+            "u_tiles",
+            "u_pages",
+            "u_tilesOn",
+            "u_tileLevels",
             "u_hasImagery",
             "u_imageEmissive",
             "u_ids",
