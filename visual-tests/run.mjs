@@ -97,8 +97,14 @@ const VIEWS = [
   { name: "sky-south", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90" },
   { name: "sky-north", hash: "#40,-74,800&t=1735700400&view=sky&look=20,45,80" },
   { name: "sky-zoom", hash: "#40,-74,800&t=1735700400&view=sky&look=175,32,20" },
-  // From Sydney with a 150-degree field and no constellation figures.
-  { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735700400&view=sky&look=180,60,150&figures=off" },
+  // Dusk on 2025-01-03 in New York: the crescent Moon between Venus and
+  // Saturn; and 2 pm on the 2024 June solstice: a day sky, the Sun beside
+  // Venus (just past superior conjunction), stars gone.
+  { name: "sky-dusk", hash: "#40.7,-74,800&t=1735945200&view=sky&look=225,15,70" },
+  { name: "sky-day", hash: "#40,-74,800&t=1718992800&view=sky&look=180,40,100" },
+  // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
+  // field and no constellation figures.
+  { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
   { name: "sky-phone", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90", viewport: { width: 390, height: 844 } },
   {
     name: "sky-ctxloss",

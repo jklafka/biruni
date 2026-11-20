@@ -21,8 +21,8 @@
 //! about 4,700 km of it, which shifts a planet seen from Earth by under 3
 //! arcseconds. The Moon needs its own theory.
 
-// Used by the sky and solar system views (beads maps-4nv.8, maps-ztx.3);
-// until then only the tests call it.
+// The sky view uses the Sun and planet positions (`sky_bodies`); the rest
+// waits for the solar system view (bead maps-ztx.3).
 #![cfg_attr(not(test), allow(dead_code))]
 
 use std::f64::consts::PI;

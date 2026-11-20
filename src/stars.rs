@@ -161,10 +161,17 @@ const LABEL_MARGIN: f32 = 3.5;
 const MAX_LABELS: usize = 30;
 
 /// Name labels for the brightest named stars in view, above the horizon
-/// and clear of each other: (x, y, name) at the star, CSS pixels.
-pub fn labels<'a>(cat: &'a Catalog, cam: &SkyCamera, eq_to_hor: &Mat3) -> Vec<(f64, f64, &'a str)> {
-    let limit = limiting_magnitude(cam.fov) - LABEL_MARGIN;
-    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
+/// and clear of each other and of `avoid`: (x, y, name) at the star, CSS
+/// pixels. `mag_limit` is the faintest magnitude drawn.
+pub fn labels<'a>(
+    cat: &'a Catalog,
+    cam: &SkyCamera,
+    eq_to_hor: &Mat3,
+    mag_limit: f32,
+    avoid: &[Rect],
+) -> Vec<(f64, f64, &'a str)> {
+    let limit = mag_limit - LABEL_MARGIN;
+    let mut placed: Vec<Rect> = avoid.to_vec();
     let mut out = Vec::new();
     for (i, name) in &cat.names {
         let s = &cat.stars[*i];
@@ -172,7 +179,8 @@ pub fn labels<'a>(cat: &'a Catalog, cam: &SkyCamera, eq_to_hor: &Mat3) -> Vec<(f
             break; // names are in star order, brightest first
         }
         let h = mul(eq_to_hor, radec_vec(s.ra, s.dec));
-        if h[1] < 0.0 {
+        // Not on the horizon line itself (about 1.7 degrees up).
+        if h[1] < 0.03 {
             continue;
         }
         let Some((x, y)) = cam.project(h) else {
@@ -343,7 +351,11 @@ mod tests {
         let h = mul(&m, radec_vec(0.0, 0.0));
         assert!(h[1] > 0.999);
         let cam = SkyCamera::new(PI, 89.0f64.to_radians(), 100f64.to_radians());
-        let names: Vec<&str> = labels(&cat, &cam, &m).iter().map(|l| l.2).collect();
+        let limit = limiting_magnitude(cam.fov);
+        let names: Vec<&str> = labels(&cat, &cam, &m, limit, &[])
+            .iter()
+            .map(|l| l.2)
+            .collect();
         assert_eq!(
             names,
             vec!["Bright", "Other"],

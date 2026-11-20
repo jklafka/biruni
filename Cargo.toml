@@ -22,6 +22,7 @@ features = [
   "HtmlElement",
   "HtmlSelectElement",
   "HtmlCanvasElement",
+  "CanvasGradient",
   "CanvasRenderingContext2d",
   "Path2d",
   "CanvasWindingRule",

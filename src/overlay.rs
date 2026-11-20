@@ -21,6 +21,12 @@ pub struct SkyLabels<'a> {
     /// Constellation lines: (thin, screen polyline).
     pub lines: &'a [(bool, Vec<(f64, f64)>)],
     pub figures: &'a [(f64, f64, &'a str)],
+    /// Sun, Moon and planets, and how much daylight there is (the Moon's
+    /// dark side is only dark at night).
+    pub bodies: &'a [crate::sky_bodies::OnScreen],
+    /// Where each body's name starts (`sky_bodies::label_spots`).
+    pub body_labels: &'a [Option<(f64, f64)>],
+    pub daylight: f64,
 }
 
 pub struct Overlay {
@@ -66,6 +72,9 @@ impl Overlay {
             stars,
             lines,
             figures,
+            bodies,
+            body_labels,
+            daylight,
         } = *l;
         if (px, py) != (self.canvas.width(), self.canvas.height()) {
             self.canvas.set_width(px);
@@ -74,8 +83,11 @@ impl Overlay {
         let ctx = &self.ctx;
         let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         ctx.clear_rect(0.0, 0.0, css.0, css.1);
-        self.has_content =
-            !(horizon.is_empty() && stars.is_empty() && lines.is_empty() && figures.is_empty());
+        self.has_content = !(horizon.is_empty()
+            && stars.is_empty()
+            && lines.is_empty()
+            && figures.is_empty()
+            && bodies.is_empty());
         ctx.set_line_cap("round");
         ctx.set_line_width(1.0);
         for thin in [true, false] {
@@ -120,6 +132,18 @@ impl Overlay {
         for (x, y, text) in stars {
             let _ = ctx.stroke_text(text, *x + 7.0, *y);
             let _ = ctx.fill_text(text, *x + 7.0, *y);
+        }
+        for b in bodies {
+            draw_body(ctx, b, daylight);
+        }
+        ctx.set_font("600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+        ctx.set_line_width(3.0);
+        for (b, spot) in bodies.iter().zip(body_labels) {
+            if let Some((x, y)) = spot {
+                ctx.set_fill_style_str(b.color);
+                let _ = ctx.stroke_text(b.name, *x, *y);
+                let _ = ctx.fill_text(b.name, *x, *y);
+            }
         }
     }
 
@@ -277,6 +301,70 @@ impl Panel {
                     let _ = self.legs.append_child(&li);
                 }
             }
+        }
+    }
+}
+
+/// The Sun as a glowing disk, the Moon with its phase (lit side towards
+/// `sun_angle`), a planet as a colored dot.
+fn draw_body(ctx: &CanvasRenderingContext2d, b: &crate::sky_bodies::OnScreen, daylight: f64) {
+    use crate::sky_bodies::Kind;
+    use std::f64::consts::{FRAC_PI_2, PI, TAU};
+    match b.kind {
+        Kind::Sun => {
+            if let Ok(g) = ctx.create_radial_gradient(b.x, b.y, b.r * 0.8, b.x, b.y, b.r * 4.0) {
+                let _ = g.add_color_stop(0.0, "rgba(255,240,200,0.55)");
+                let _ = g.add_color_stop(1.0, "rgba(255,240,200,0)");
+                ctx.set_fill_style_canvas_gradient(&g);
+                ctx.begin_path();
+                let _ = ctx.arc(b.x, b.y, b.r * 4.0, 0.0, TAU);
+                ctx.fill();
+            }
+            ctx.set_fill_style_str(b.color);
+            ctx.begin_path();
+            let _ = ctx.arc(b.x, b.y, b.r, 0.0, TAU);
+            ctx.fill();
+        }
+        Kind::Moon => {
+            // The dark side hides the stars behind it at night; by day it
+            // is the sky's color, so leave it out.
+            let dark = 1.0 - daylight;
+            if dark > 0.0 {
+                ctx.set_fill_style_str(&format!("rgba(26,29,36,{dark:.3})"));
+                ctx.begin_path();
+                let _ = ctx.arc(b.x, b.y, b.r, 0.0, TAU);
+                ctx.fill();
+            }
+            // Lit part: the half facing the Sun, closed by the terminator,
+            // an ellipse whose half-width is r times |2 lit - 1|.
+            let k = 2.0 * b.lit - 1.0;
+            ctx.save();
+            let _ = ctx.translate(b.x, b.y);
+            let _ = ctx.rotate(b.sun_angle);
+            ctx.set_fill_style_str(b.color);
+            ctx.begin_path();
+            let _ = ctx.arc(0.0, 0.0, b.r, -FRAC_PI_2, FRAC_PI_2);
+            let rx = (b.r * k.abs()).max(0.01);
+            // Gibbous: the terminator bulges into the dark half; crescent:
+            // it stays on the lit half.
+            let _ = ctx.ellipse_with_anticlockwise(
+                0.0,
+                0.0,
+                rx,
+                b.r,
+                0.0,
+                FRAC_PI_2,
+                PI + FRAC_PI_2,
+                k < 0.0,
+            );
+            ctx.fill();
+            ctx.restore();
+        }
+        Kind::Planet => {
+            ctx.set_fill_style_str(b.color);
+            ctx.begin_path();
+            let _ = ctx.arc(b.x, b.y, b.r, 0.0, TAU);
+            ctx.fill();
         }
     }
 }
