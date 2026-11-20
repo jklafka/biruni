@@ -60,7 +60,7 @@ The site is hosted on [Cloudflare Pages](https://pages.cloudflare.com). Cloudfla
 On pushes to `main` the map data is served from a Cloudflare R2 bucket (`biruni-data`, public at `https://biruni-data.jklafka.cloud`) instead of from Pages. After the build, the deploy job (only if the `CLOUDFLARE_R2_TOKEN` secret is set; otherwise the data stays on Pages):
 
 1. validates `dist/data` against the data currently live (`scripts/validate_data.py --baseline`, the baseline fetched by `scripts/publish_data.py fetch-baseline`),
-2. sets the bucket's CORS rules from `scripts/r2-cors.json` (GET and HEAD from the site and the local dev server),
+2. sets the bucket's CORS rules from `scripts/r2-cors.json` (GET and HEAD from any origin: the data is public and needs no credentials, and R2 cannot match the per-deploy preview subdomains `<hash>.biruni.pages.dev` by wildcard),
 3. uploads each content-hashed file that the bucket lacks (`publish_data.py plan`, then `wrangler r2 object put`, immutable cache headers) and checks that each one is served with the right size and CORS header,
 4. rewrites `dist/data/manifest.json` to absolute R2 URLs, drops `dist/data/files`, and only then runs `pages deploy`.
 

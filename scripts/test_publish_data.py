@@ -194,8 +194,9 @@ class CorsConfig(unittest.TestCase):
         cfg = json.loads((Path(__file__).parent / "r2-cors.json").read_text())
         (rule,) = cfg["rules"]
         self.assertEqual(rule["allowed"]["methods"], ["GET", "HEAD"])
-        self.assertIn("https://biruni.jklafka.cloud", rule["allowed"]["origins"])
-        self.assertNotIn("*", rule["allowed"]["origins"])
+        # Public, credential-free data: any origin, so PR previews
+        # (<hash>.biruni.pages.dev, which R2 cannot match by wildcard) work.
+        self.assertEqual(rule["allowed"]["origins"], ["*"])
         self.assertEqual(rule["maxAgeSeconds"], 86400)
 
 
@@ -211,11 +212,14 @@ class CheckPackResponse(unittest.TestCase):
 
     def test_good_response(self):
         self.assertEqual(pd.check_pack_response(self.ENTRY, 206, self.headers(), self.PACK[:96]), [])
+        star = self.headers(**{"access-control-allow-origin": "*"})
+        self.assertEqual(pd.check_pack_response(self.ENTRY, 206, star, self.PACK[:96]), [])
 
     def test_problems(self):
         for status, headers, body, text in (
             (200, self.headers(), self.PACK, "want 206"),
-            (206, self.headers(**{"access-control-allow-origin": "*"}), self.PACK[:96], "Access-Control"),
+            (206, self.headers(**{"access-control-allow-origin": "https://x.example"}), self.PACK[:96], "Access-Control"),
+            (206, {"content-range": f"bytes 0-95/{len(self.PACK)}"}, self.PACK[:96], "Access-Control"),
             (206, self.headers(**{"content-range": "bytes 0-95/5"}), self.PACK[:96], "Content-Range"),
             (206, self.headers(), b"XTIL" + self.PACK[4:96], "bad pack header"),
             (206, self.headers(), self.PACK[:40], "bad pack header"),
