@@ -39,7 +39,7 @@ pub async fn decode(bytes: &[u8], width: u32) -> Result<ImageBitmap, JsValue> {
         .await
         .map_err(|e| {
             JsValue::from_str(&format!(
-                "could not decode the satellite image: {}",
+                "could not decode the image: {}",
                 e.as_string().unwrap_or_else(|| format!("{e:?}"))
             ))
         })?

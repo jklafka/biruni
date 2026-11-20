@@ -8,7 +8,7 @@ use crate::render::{compile, link, VERT_SRC};
 use crate::sky::{to_gl, Mat3};
 use wasm_bindgen::JsValue;
 use web_sys::{
-    WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlUniformLocation,
+    WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlTexture, WebGlUniformLocation,
     WebGlVertexArrayObject,
 };
 
@@ -29,6 +29,8 @@ pub struct SkyFrame {
     pub grid_step: f64,
     /// 0 at night, 1 in full day.
     pub daylight: f64,
+    /// How strongly the Milky Way image is added (when loaded).
+    pub milky_way: f64,
     /// Equatorial -> camera, and the zenith in equatorial space.
     pub eq_to_cam: Mat3,
     pub zenith: [f64; 3],
@@ -50,7 +52,7 @@ struct StarProgram {
 
 struct StarBuffer {
     vao: WebGlVertexArrayObject,
-    _buffer: WebGlBuffer,
+    buffer: WebGlBuffer,
     len: usize,
 }
 
@@ -65,6 +67,11 @@ pub struct SkyPass {
     dpr: Option<WebGlUniformLocation>,
     grid_step: Option<WebGlUniformLocation>,
     daylight: Option<WebGlUniformLocation>,
+    milky_way_tex: Option<WebGlUniformLocation>,
+    milky_way_on: Option<WebGlUniformLocation>,
+    milky_way_texel: Option<WebGlUniformLocation>,
+    /// The Milky Way texture and its width, once uploaded.
+    milky_way: Option<(WebGlTexture, u32)>,
     stars: StarProgram,
     star_buffer: Option<StarBuffer>,
 }
@@ -103,8 +110,73 @@ impl SkyPass {
             dpr: ku("u_dpr"),
             grid_step: ku("u_gridStep"),
             daylight: ku("u_daylight"),
+            milky_way_tex: ku("u_milkyWay"),
+            milky_way_on: ku("u_milkyWayOn"),
+            milky_way_texel: ku("u_milkyWayTexel"),
+            milky_way: None,
             program,
         })
+    }
+
+    /// Whether the Milky Way image is on the GPU.
+    pub fn has_milky_way(&self) -> bool {
+        self.milky_way.is_some()
+    }
+
+    /// Upload the Milky Way image (RGBA8, mipmapped, wrapping in RA) to
+    /// texture unit 7, which no other pass uses.
+    pub fn upload_milky_way(
+        &mut self,
+        gl: &GL,
+        bitmap: &web_sys::ImageBitmap,
+    ) -> Result<(), JsValue> {
+        let (w, h) = (bitmap.width(), bitmap.height());
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.active_texture(GL::TEXTURE7);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.tex_storage_2d(
+            GL::TEXTURE_2D,
+            crate::imagery::mip_levels(w, h),
+            GL::RGBA8,
+            w as i32,
+            h as i32,
+        );
+        gl.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 0);
+        gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        let uploaded = gl.tex_sub_image_2d_with_u32_and_u32_and_image_bitmap(
+            GL::TEXTURE_2D,
+            0,
+            0,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            bitmap,
+        );
+        if let Err(e) = uploaded {
+            gl.delete_texture(Some(&tex));
+            gl.active_texture(GL::TEXTURE0);
+            return Err(e);
+        }
+        gl.generate_mipmap(GL::TEXTURE_2D);
+        gl.tex_parameteri(
+            GL::TEXTURE_2D,
+            GL::TEXTURE_MIN_FILTER,
+            GL::LINEAR_MIPMAP_LINEAR as i32,
+        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+        gl.active_texture(GL::TEXTURE0);
+        self.milky_way = Some((tex, w));
+        Ok(())
+    }
+
+    /// Drop the star buffer, so new vertices can be uploaded.
+    pub fn clear_stars(&mut self, gl: &GL) {
+        if let Some(b) = self.star_buffer.take() {
+            gl.delete_vertex_array(Some(&b.vao));
+            gl.delete_buffer(Some(&b.buffer));
+        }
     }
 
     /// Whether the star vertices are on the GPU.
@@ -135,7 +207,7 @@ impl SkyPass {
         gl.bind_vertex_array(None);
         self.star_buffer = Some(StarBuffer {
             vao,
-            _buffer: buffer,
+            buffer,
             len: data.len() / STRIDE,
         });
         Ok(())
@@ -156,6 +228,20 @@ impl SkyPass {
         gl.uniform1f(self.dpr.as_ref(), f.dpr as f32);
         gl.uniform1f(self.grid_step.as_ref(), f.grid_step as f32);
         gl.uniform1f(self.daylight.as_ref(), f.daylight as f32);
+        match &self.milky_way {
+            Some((tex, w)) => {
+                gl.active_texture(GL::TEXTURE7);
+                gl.bind_texture(GL::TEXTURE_2D, Some(tex));
+                gl.active_texture(GL::TEXTURE0);
+                gl.uniform1f(self.milky_way_on.as_ref(), f.milky_way as f32);
+                let texel = std::f64::consts::TAU / *w as f64;
+                gl.uniform1f(self.milky_way_texel.as_ref(), texel as f32);
+            }
+            None => gl.uniform1f(self.milky_way_on.as_ref(), 0.0),
+        }
+        // The sampler always points at unit 7 (nothing else is bound there
+        // before the image arrives, and the strength is then 0).
+        gl.uniform1i(self.milky_way_tex.as_ref(), 7);
         gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
 
         let Some(buf) = &self.star_buffer else {

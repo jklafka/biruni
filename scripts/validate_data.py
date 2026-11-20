@@ -70,6 +70,7 @@ WEBP_SIZES = {
     "blue_marble.webp": (4096, 2048),
     "terrain.webp": (4096, 2048),
     "night_lights.webp": (4096, 2048),
+    "milky_way.webp": (2048, 1024),
 }
 
 

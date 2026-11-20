@@ -102,6 +102,9 @@ const VIEWS = [
   // Venus (just past superior conjunction), stars gone.
   { name: "sky-dusk", hash: "#40.7,-74,800&t=1735945200&view=sky&look=225,15,70" },
   { name: "sky-day", hash: "#40,-74,800&t=1718992800&view=sky&look=180,40,100" },
+  // Midnight on 2024-07-15 in New York: the summer Milky Way from
+  // Sagittarius up through Cygnus, without figures.
+  { name: "sky-milky-way", hash: "#40,-74,800&t=1721016000&view=sky&look=170,40,110&figures=off" },
   // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
   // field and no constellation figures.
   { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
@@ -247,6 +250,7 @@ try {
       await page.waitForSelector("#globe[data-sky]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-figures]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector("#globe[data-milky-way]", { state: "attached", timeout: 30_000 });
     } else {
       // Labels load after the map; the app flags the canvas once they are drawn.
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
