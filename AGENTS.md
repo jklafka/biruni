@@ -13,6 +13,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/camera.rs` | Orbit camera math: picking, projection, trackball panning, bearing/north-up lock, zoom anchoring |
 | `src/projection.rs` | Flat map projections (forward/inverse math), the `Projection` enum and the globe <-> flat morph timeline |
 | `src/geodesic.rs` | WGS84 inverse geodesic distance (Vincenty, with Karney-style bisection near the antipode). Measure lengths use it; the drawn path and the scale bar stay spherical |
+| `src/sky.rs`, `src/sky_render.rs`, `src/shaders/sky.frag` | The sky view: browser-free sky camera (azimuth, altitude, field of view), equatorial and horizontal coordinates, the stereographic projection, gestures and the `&view=sky&look=` hash; its WebGL pass; and the background shader (sky, ground, horizon, RA/Dec grid) |
 | `src/ephemeris.rs` | Browser-free planet positions from JPL's approximate Keplerian elements (Standish and Williams), 3000 BC to 3000 AD; tests compare against JPL Horizons. Not yet used by a view |
 | `src/view.rs` | HUD text formatting and the `#lat,lon,alt_km[,bearing]&layer=&proj=` URL hash |
 | `src/geo.rs` | Decodes the compact binary map layers (`decode_shapes`); rasterizes the land mask into the map texture with Canvas 2D, in the worker when possible |
@@ -115,6 +116,14 @@ Don't weaken or skip a check to get a PR through. Fix the cause. If a check real
 - The texture is equirectangular: `u = lon/360 + 0.5`, `v = 0.5 − lat/180`, with row 0 at the north.
 
 If you change one side, change the other in the same PR, and extend the round-trip tests in `camera.rs`.
+
+The sky view (`src/sky.rs`, `src/shaders/sky.frag`) has its own conventions, documented at the top of `sky.rs` and tested there:
+
+- Equatorial space (J2000 RA/Dec) mirrors world space: +Y is the north celestial pole, RA 0h is on +Z, RA 6h on +X.
+- Horizontal space: +Y is the zenith, north is on −Z and east on +X (right-handed, so `sky::eq_to_horizon` is a rotation). Azimuth runs from north through east.
+- The sky camera looks down −Z with no roll (the zenith is up the screen); its view is an azimuth, altitude and field of view across the shorter axis.
+- The projection is stereographic about the view center: a direction at angle `a` lands at `tan(a/2) / tan(fov/4)` half-short-axes from the center. `SkyCamera::project` / `pick` and `sky.frag` must agree.
+- The observer stands at the Earth camera's center at the time scrubber's time. Catalog positions are J2000 and not precessed (about 0.36° off by 2026).
 
 Flat projections follow the same discipline, in `src/projection.rs` (forward and inverse) and the GLSL in `globe.frag` (inverse), `morph.vert` and `line.vert` (forward):
 

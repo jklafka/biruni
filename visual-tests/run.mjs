@@ -90,6 +90,19 @@ const VIEWS = [
   { name: "credits-open", hash: "#38.5,22.5,1500&layer=imagery", openCredits: true },
   { name: "credits-phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 }, openCredits: true },
   { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
+  // The sky view from New York at a pinned time: due south (the celestial
+  // equator arcs across), due north (the pole at the center, 40 degrees up),
+  // a phone, and a context restore that must match the first.
+  { name: "sky-south", hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100" },
+  { name: "sky-north", hash: "#40,-74,800&t=1718992800&view=sky&look=0,40,90" },
+  { name: "sky-phone", hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100", viewport: { width: 390, height: 844 } },
+  {
+    name: "sky-ctxloss",
+    hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100",
+    query: "?debug=ctxloss",
+    loseContext: true,
+    reference: "sky-south",
+  },
 ];
 
 const shots = {};
@@ -218,10 +231,15 @@ try {
     if (await page.locator("#loading.error").count()) {
       throw new Error(`${view.name}: map failed to load: ${await page.locator("#loading").innerText()}`);
     }
-    // Labels load after the map; the app flags the canvas once they are drawn.
-    await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
-    // Country data (hover, political fills) loads last; the app flags the canvas.
-    await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
+    if (/[&#]view=sky/.test(view.hash)) {
+      // The sky draws no Earth labels or countries; it flags its first frame.
+      await page.waitForSelector("#globe[data-sky]", { state: "attached", timeout: 30_000 });
+    } else {
+      // Labels load after the map; the app flags the canvas once they are drawn.
+      await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
+      // Country data (hover, political fills) loads last; the app flags the canvas.
+      await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
+    }
     // A data layer is shown only once its file is fetched, decoded and
     // uploaded. The app sets data-layer on the canvas then, and fails loudly
     // (status text) if the download or decode fails.

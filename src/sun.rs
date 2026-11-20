@@ -31,13 +31,21 @@ pub fn subsolar_point(unix_secs: f64) -> Option<Subsolar> {
     let eps = (23.439 - 0.000_000_4 * n).to_radians();
     let lat = (eps.sin() * lambda.sin()).asin();
     let ra = (eps.cos() * lambda.sin()).atan2(lambda.cos());
-    let gmst = (280.460_618_37 + 360.985_647_366_29 * n)
-        .rem_euclid(360.0)
-        .to_radians();
+    let gmst = gmst(unix_secs);
     Some(Subsolar {
         lat,
         lon: wrap_pi(ra - gmst),
     })
+}
+
+/// Greenwich mean sidereal time at a Unix time, in radians in `[0, 2 pi)`:
+/// the right ascension on the Greenwich meridian (the linear term of the
+/// IAU 1982 expression, within about 0.1 s of time this century).
+pub fn gmst(unix_secs: f64) -> f64 {
+    let n = (unix_secs - J2000_UNIX) / 86_400.0;
+    (280.460_618_37 + 360.985_647_366_29 * n)
+        .rem_euclid(360.0)
+        .to_radians()
 }
 
 /// Wrap an angle to `(-pi, pi]`.

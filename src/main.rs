@@ -27,6 +27,8 @@ mod scrub_ui;
 mod search;
 mod search_ui;
 mod share;
+mod sky;
+mod sky_render;
 mod sun;
 mod thematic;
 mod tile_pack;
@@ -150,6 +152,18 @@ struct App {
     tile_stream: tile_stream::TileStream,
     /// Last `data-tiles` value, so the attribute is only written on change.
     tiles_attr: &'static str,
+    /// The sky view is shown instead of the Earth (`&view=sky`). The
+    /// observer stands at the Earth camera's center.
+    sky_on: bool,
+    sky_cam: sky::SkyCamera,
+    sky_gestures: sky::Gestures,
+    /// Earth and Sky buttons.
+    view_buttons: [HtmlElement; 2],
+    title_hint: HtmlElement,
+    /// Labels of the first three HUD rows, which differ per view.
+    hud_labels: [HtmlElement; 3],
+    /// `data-sky` is set on the canvas (after the first sky frame).
+    sky_attr: bool,
 }
 
 impl App {
@@ -558,8 +572,8 @@ impl App {
             None
         };
         self.renderer.set_sun(dir);
-        self.scrub_ui.show(self.sun_on);
-        if self.sun_on {
+        self.scrub_ui.show(self.time_shown());
+        if self.time_shown() {
             self.scrub_ui
                 .sync(t, self.sun_pin.is_none(), self.playing, self.player.mode);
         }
@@ -569,7 +583,13 @@ impl App {
         self.redraw.mark_render();
     }
 
-    /// The time the terminator shows: the pin, or the clock.
+    /// The time scrubber is shown: the terminator is on, or the sky view
+    /// (which always depends on the time).
+    fn time_shown(&self) -> bool {
+        self.sun_on || self.sky_on
+    }
+
+    /// The time the terminator and the sky show: the pin, or the clock.
     fn sun_time(&self) -> f64 {
         self.sun_pin.unwrap_or_else(|| js_sys::Date::now() / 1000.0)
     }
@@ -590,7 +610,7 @@ impl App {
 
     /// Step the pinned time (or the clock, when live) by `delta` seconds.
     fn scrub_by(&mut self, delta: f64) {
-        if self.sun_on {
+        if self.time_shown() {
             self.scrub_to(scrub::shift(self.sun_time(), delta));
         }
     }
@@ -604,7 +624,7 @@ impl App {
     }
 
     fn set_playing(&mut self, play: bool) {
-        let play = play && self.sun_on;
+        let play = play && self.time_shown();
         if play && !self.playing {
             let reduced = self
                 .window
@@ -629,7 +649,7 @@ impl App {
 
     fn toggle_sun(&mut self) {
         self.sun_on = !self.sun_on;
-        self.playing = self.playing && self.sun_on;
+        self.playing = self.playing && self.time_shown();
         self.refresh_sun();
         self.hash_stale = true;
     }
@@ -644,12 +664,114 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
+        if self.sky_on {
+            let base = page.split('#').next().unwrap_or("");
+            return format!("{base}{}", self.view_hash());
+        }
         share_url(
             &page,
             &self.camera,
             self.layers_state.wanted(),
             self.sun_view(),
         )
+    }
+
+    /// The URL hash for the current view. The sky adds its look direction,
+    /// and a pinned time even with the terminator off, since the sky
+    /// depends on it.
+    fn view_hash(&self) -> String {
+        let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
+        if self.sky_on {
+            if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
+                hash.push_str(&format!("&t={t}"));
+            }
+            hash.push_str(&sky::format_hash(&self.sky_cam));
+        }
+        hash
+    }
+
+    /// Switch between the Earth and the sky view.
+    fn set_view(&mut self, sky: bool) {
+        self.sky_on = sky;
+        let doc = self.window.document();
+        if let Some(body) = doc.as_ref().and_then(|d| d.body()) {
+            let _ = body.class_list().toggle_with_force("view-sky", sky);
+        }
+        for (i, b) in self.view_buttons.iter().enumerate() {
+            let pressed = (i == 1) == sky;
+            let _ = b.set_attribute("aria-pressed", if pressed { "true" } else { "false" });
+        }
+        let (hint, labels, aria) = if sky {
+            (
+                "Drag to look around · scroll or pinch to zoom",
+                ["Cursor", "Looking", "Field"],
+                "Sky view. Drag to look around, scroll to zoom.",
+            )
+        } else {
+            (
+                "Drag to rotate · scroll or pinch to zoom · double-click to fly in",
+                ["Cursor", "Center", "Altitude"],
+                "Interactive globe. Drag to rotate, scroll to zoom.",
+            )
+        };
+        self.title_hint.set_text_content(Some(hint));
+        for (el, text) in self.hud_labels.iter().zip(labels) {
+            el.set_text_content(Some(text));
+        }
+        let _ = self.canvas.set_attribute("aria-label", aria);
+        self.labels.clear();
+        self.overlay.clear();
+        if sky {
+            self.send(Event::CancelInertia);
+            if self.measure.active {
+                self.toggle_measure();
+            }
+            self.select(None);
+            self.set_proj_menu(false);
+        } else {
+            self.sky_gestures = sky::Gestures::default();
+        }
+        self.playing = self.playing && self.time_shown();
+        self.refresh_sun();
+        self.redraw.mark_render();
+        self.redraw.mark_hud();
+        self.hash_stale = true;
+    }
+
+    /// One sky frame: the background pass and the horizon labels.
+    fn draw_sky(&mut self, pw: u32, ph: u32, dpr: f64) {
+        let obs = sky::Observer {
+            lat: self.camera.lat,
+            lon: self.camera.lon,
+            unix_secs: self.sun_time(),
+        };
+        let cam = self.sky_cam;
+        let frame = sky_render::SkyFrame {
+            width: pw,
+            height: ph,
+            half_short: 0.5 * pw.min(ph) as f64,
+            tan_quarter: cam.tan_quarter(),
+            cam_to_hor: cam.basis(),
+            hor_to_eq: sky::transpose(&obs.eq_to_horizon()),
+            dpr,
+            grid_step: sky::grid_step(cam.fov),
+        };
+        if let Err(e) = self.renderer.draw_sky(&frame) {
+            web_sys::console::error_1(&e);
+        }
+        let labels = sky::horizon_labels(&cam);
+        self.overlay
+            .draw_sky(&labels, (cam.width, cam.height), pw, ph, dpr);
+        if !self.sky_attr && !self.renderer.is_lost() {
+            self.sky_attr = true;
+            self.set_globe_attr("data-sky", "ready");
+        }
+    }
+
+    /// The sky view changed: redraw, and rewrite the hash once it settles.
+    fn sky_moved(&mut self) {
+        self.redraw.mark_render();
+        self.redraw.mark_hud();
     }
 
     /// Enter or leave measure mode. Leaving clears the path.
@@ -835,6 +957,23 @@ impl App {
                 self.refresh_sun();
             }
         }
+        if self.sky_on {
+            self.sky_cam.width = cw;
+            self.sky_cam.height = ch;
+            let (draw, hud) = self.redraw.take();
+            if draw {
+                self.draw_sky(pw, ph, dpr);
+                self.hash_stale = true;
+            }
+            if hud {
+                self.update_hud();
+            }
+            let scrubbing = now_ms - self.last_scrub_ms < SCRUB_HASH_DELAY_MS;
+            if self.hash_stale && !self.playing && !self.sky_gestures.active() && !scrubbing {
+                self.write_hash();
+            }
+            return;
+        }
         let tick = self.send(Event::Tick { dt });
         let animating = tick.render || self.playing;
         if let Some((x, y)) = tick.single_tap {
@@ -892,18 +1031,47 @@ impl App {
         // A slider drag changes the pin on every input event: wait until it pauses.
         let scrubbing = now_ms - self.last_scrub_ms < SCRUB_HASH_DELAY_MS;
         if self.hash_stale && !animating && !self.controls.dragging() && !scrubbing {
-            self.hash_stale = false;
-            let hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
-            if hash != self.last_hash {
-                if let Ok(history) = self.window.history() {
-                    let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&hash));
-                }
-                self.last_hash = hash;
+            self.write_hash();
+        }
+    }
+
+    /// Replace the URL hash with the current view, if it changed.
+    fn write_hash(&mut self) {
+        self.hash_stale = false;
+        let hash = self.view_hash();
+        if hash != self.last_hash {
+            if let Ok(history) = self.window.history() {
+                let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&hash));
             }
+            self.last_hash = hash;
         }
     }
 
     fn update_hud(&mut self) {
+        if self.sky_on {
+            let to_eq = sky::transpose(
+                &sky::Observer {
+                    lat: self.camera.lat,
+                    lon: self.camera.lon,
+                    unix_secs: self.sun_time(),
+                }
+                .eq_to_horizon(),
+            );
+            let cursor = self
+                .cursor
+                .and_then(|(x, y)| self.sky_cam.pick(x, y))
+                .map(|h| {
+                    let (ra, dec) = sky::vec_radec(sky::mul(&to_eq, h));
+                    sky::format_radec(ra, dec)
+                })
+                .unwrap_or_else(|| "—".into());
+            self.hud_cursor.set_text_content(Some(&cursor));
+            self.hud_center
+                .set_text_content(Some(&sky::format_look(&self.sky_cam)));
+            self.hud_alt
+                .set_text_content(Some(&format!("{:.1}°", self.sky_cam.fov.to_degrees())));
+            return;
+        }
         self.measure_panel.update(&self.measure, self.units);
         let cursor = self
             .cursor
@@ -971,6 +1139,13 @@ impl App {
         if e.pointer_type() == "mouse" && e.button() != 0 {
             return;
         }
+        if self.sky_on {
+            let _ = self.canvas.set_pointer_capture(e.pointer_id());
+            self.sky_gestures
+                .down(e.pointer_id(), e.client_x() as f64, e.client_y() as f64);
+            let _ = self.canvas.class_list().add_1("dragging");
+            return;
+        }
         if !self.proj_menu.hidden() {
             self.set_proj_menu(false);
         }
@@ -1017,6 +1192,15 @@ impl App {
         self.coarse_pointer = !self.mouse_hover;
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
+        if self.sky_on {
+            if self
+                .sky_gestures
+                .moved(&mut self.sky_cam, e.pointer_id(), x, y)
+            {
+                self.sky_moved();
+            }
+            return;
+        }
         if self.measure.owns(e.pointer_id()) {
             // Dragging a measure point: the view stays put.
             if self.measure.drag(&self.camera, e.pointer_id(), x, y) {
@@ -1038,6 +1222,14 @@ impl App {
     }
 
     fn pointer_up(&mut self, e: &PointerEvent) {
+        if self.sky_on {
+            self.sky_gestures.up(e.pointer_id());
+            if !self.sky_gestures.active() {
+                let _ = self.canvas.class_list().remove_1("dragging");
+                self.hash_stale = true;
+            }
+            return;
+        }
         let t = self.now();
         if self.measure.owns(e.pointer_id()) {
             let r = self
@@ -1167,6 +1359,9 @@ fn start() -> Result<(), JsValue> {
         .hash()
         .map(|h| SunView::from_hash(&h))
         .unwrap_or_default();
+    let initial_hash = window.location().hash().unwrap_or_default();
+    let initial_sky = sky::parse_hash_view(&initial_hash);
+    let initial_look = sky::parse_hash_look(&initial_hash);
     let mut layer_buttons = Vec::new();
     for layer in Layer::ALL.into_iter().filter(|l| l.theme().is_none()) {
         let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
@@ -1244,6 +1439,17 @@ fn start() -> Result<(), JsValue> {
         measure_panel,
         tile_stream: tile_stream::TileStream::new(renderer_tile_capacity),
         tiles_attr: "",
+        sky_on: false,
+        sky_cam: initial_look.unwrap_or_default(),
+        sky_gestures: sky::Gestures::default(),
+        view_buttons: [element(&doc, "view-earth")?, element(&doc, "view-sky")?],
+        title_hint: element(&doc, "title-hint")?,
+        hud_labels: [
+            element(&doc, "hud-l-cursor")?,
+            element(&doc, "hud-l-center")?,
+            element(&doc, "hud-l-alt")?,
+        ],
+        sky_attr: false,
     }));
 
     {
@@ -1251,6 +1457,9 @@ fn start() -> Result<(), JsValue> {
         a.me = Rc::downgrade(&app);
         // The URL layer takes the same path as a click.
         a.select_layer(initial_layer);
+        if initial_sky {
+            a.set_view(true);
+        }
     }
     app.borrow_mut().refresh_sun();
     {
@@ -1284,7 +1493,7 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         let tick = Closure::<dyn FnMut()>::new(move || {
             let mut a = app.borrow_mut();
-            if a.sun_on && a.sun_pin.is_none() {
+            if a.time_shown() && a.sun_pin.is_none() {
                 a.refresh_sun();
             }
         });
@@ -1411,7 +1620,15 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(target, "wheel", false, move |e: WheelEvent| {
             e.prevent_default();
-            app.borrow_mut().send(Event::Wheel {
+            let mut a = app.borrow_mut();
+            if a.sky_on {
+                let f = sky::wheel_factor(e.delta_y(), e.delta_mode(), e.ctrl_key());
+                let at = (e.client_x() as f64, e.client_y() as f64);
+                a.sky_cam.zoom(f, Some(at));
+                a.sky_moved();
+                return;
+            }
+            a.send(Event::Wheel {
                 dy: e.delta_y(),
                 x: e.client_x() as f64,
                 y: e.client_y() as f64,
@@ -1424,6 +1641,13 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(target, "dblclick", true, move |e: MouseEvent| {
             let mut a = app.borrow_mut();
+            if a.sky_on {
+                let factor = if e.shift_key() { 2.0 } else { 0.5 };
+                let at = (e.client_x() as f64, e.client_y() as f64);
+                a.sky_cam.zoom(factor, Some(at));
+                a.sky_moved();
+                return;
+            }
             if a.measure.active {
                 return; // the taps already placed points
             }
@@ -1513,6 +1737,66 @@ fn start() -> Result<(), JsValue> {
                     return;
                 }
                 if e.target().is_some_and(|t| a.credits.contains(&t)) {
+                    return;
+                }
+                let plain = !(e.ctrl_key() || e.meta_key() || e.alt_key());
+                if plain && (e.key() == "v" || e.key() == "V") {
+                    let sky = !a.sky_on;
+                    a.set_view(sky);
+                    return;
+                }
+                if a.sky_on {
+                    let cam = &mut a.sky_cam;
+                    match e.key().as_str() {
+                        "ArrowLeft" => cam.nudge(-1.0, 0.0),
+                        "ArrowRight" => cam.nudge(1.0, 0.0),
+                        "ArrowUp" => cam.nudge(0.0, 1.0),
+                        "ArrowDown" => cam.nudge(0.0, -1.0),
+                        "+" | "=" => cam.zoom(0.6, None),
+                        "-" | "_" => cam.zoom(1.0 / 0.6, None),
+                        "r" | "R" if plain => {
+                            *cam = sky::SkyCamera {
+                                width: cam.width,
+                                height: cam.height,
+                                ..sky::SkyCamera::default()
+                            }
+                        }
+                        _ => {
+                            // Keys the sky shares with the Earth view.
+                            match e.key().as_str() {
+                                "s" | "S" if plain => {
+                                    let (ui, url) = (a.share_ui.clone(), a.current_share_url());
+                                    drop(a);
+                                    share::share(&ui, url);
+                                }
+                                "," | "." | "<" | ">" if plain => {
+                                    let key = e.key();
+                                    let step = if e.shift_key() || key == "<" || key == ">" {
+                                        scrub::DAY
+                                    } else {
+                                        scrub::HOUR
+                                    };
+                                    a.scrub_by(if key == "," || key == "<" {
+                                        -step
+                                    } else {
+                                        step
+                                    });
+                                }
+                                "t" | "T" if plain => {
+                                    let playing = a.playing;
+                                    a.set_playing(!playing);
+                                }
+                                "`" => {
+                                    a.renderer.debug_toggle_context_loss();
+                                }
+                                _ => {}
+                            }
+                            return;
+                        }
+                    };
+                    e.prevent_default();
+                    a.hash_stale = true;
+                    a.sky_moved();
                     return;
                 }
                 // Measure editing keys. Shift+arrows nudge the selected point;
@@ -1660,7 +1944,7 @@ fn start() -> Result<(), JsValue> {
                     // Time scrubber (terminator on): , and . step an hour back and
                     // forward, Shift (< and >) a day; T plays and pauses.
                     "," | "." | "<" | ">"
-                        if a.sun_on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                        if a.time_shown() && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
                     {
                         let key = e.key();
                         let step = if e.shift_key() || key == "<" || key == ">" {
@@ -1674,7 +1958,9 @@ fn start() -> Result<(), JsValue> {
                             step
                         });
                     }
-                    "t" | "T" if a.sun_on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                    "t" | "T"
+                        if a.time_shown() && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                    {
                         let playing = a.playing;
                         a.set_playing(!playing);
                     }
@@ -1753,6 +2039,20 @@ fn start() -> Result<(), JsValue> {
                 a.sun_pin = sun.pin;
                 a.playing = false;
                 a.refresh_sun();
+                let sky = sky::parse_hash_view(&hash);
+                if let Some(look) = sky::parse_hash_look(&hash) {
+                    let (w, h) = (a.sky_cam.width, a.sky_cam.height);
+                    a.sky_cam = sky::SkyCamera {
+                        width: w,
+                        height: h,
+                        ..look
+                    };
+                }
+                if sky != a.sky_on {
+                    a.set_view(sky);
+                } else {
+                    a.sky_moved();
+                }
                 if let Some(c) = parse_view_hash(&hash) {
                     a.send(Event::FlyTo {
                         lat: c.lat,
@@ -1766,7 +2066,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 8] = [
+    let buttons: [(&str, Action); 10] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -1778,20 +2078,42 @@ fn start() -> Result<(), JsValue> {
             }
         }),
         ("zoom-in", |a| {
+            if a.sky_on {
+                a.sky_cam.zoom(0.5, None);
+                a.hash_stale = true;
+                return a.sky_moved();
+            }
             a.send(Event::Zoom {
                 factor: 0.5,
                 toward: None,
             });
         }),
         ("zoom-out", |a| {
+            if a.sky_on {
+                a.sky_cam.zoom(2.0, None);
+                a.hash_stale = true;
+                return a.sky_moved();
+            }
             a.send(Event::Zoom {
                 factor: 2.0,
                 toward: None,
             });
         }),
         ("reset", |a| {
+            if a.sky_on {
+                let (width, height) = (a.sky_cam.width, a.sky_cam.height);
+                a.sky_cam = sky::SkyCamera {
+                    width,
+                    height,
+                    ..sky::SkyCamera::default()
+                };
+                a.hash_stale = true;
+                return a.sky_moved();
+            }
             a.send(Event::Reset);
         }),
+        ("view-earth", |a| a.set_view(false)),
+        ("view-sky", |a| a.set_view(true)),
         ("ci-close", |a| a.select(None)),
     ];
     for (id, action) in buttons {
