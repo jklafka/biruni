@@ -3,22 +3,22 @@
     {
       "format": "webp",
       "layer": "imagery",
-      "max_level": 5,
+      "max_level": 7,
       "min_level": 3,
-      "sha256": "0ba3f26f477161db03d933f4b0d845d77b07f04aa3e972d5e35e84104b441814",
-      "size": 10142716,
+      "sha256": "aa9eb381fb5f6fe0b8e2427a0912f62c2cd5d85794bca6d7cac6e91a04d14d0d",
+      "size": 117174606,
       "tile_size": 256,
-      "url": "https://biruni-data.jklafka.cloud/files/imagery.0ba3f26f477161db.tiles"
+      "url": "https://biruni-data.jklafka.cloud/files/imagery.aa9eb381fb5f6fe0.tiles"
     },
     {
       "format": "webp",
       "layer": "night",
-      "max_level": 5,
+      "max_level": 7,
       "min_level": 3,
-      "sha256": "56987e100cabf59c75d9aac7f0945043e2b9d9f69502607f80ac988d92648ba7",
-      "size": 4404774,
+      "sha256": "700115c5a613f3bde094884cbc84667d02ae624383296b1d070ce355aa05bdad",
+      "size": 44350930,
       "tile_size": 256,
-      "url": "https://biruni-data.jklafka.cloud/files/night.56987e100cabf59c.tiles"
+      "url": "https://biruni-data.jklafka.cloud/files/night.700115c5a613f3bd.tiles"
     },
     {
       "format": "webp",

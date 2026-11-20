@@ -431,7 +431,7 @@ impl App {
             .plan(base.map(|b| (shown.id(), b)), |levels, cap| {
                 tiles::select(cam, dpr, levels, cap)
             });
-        if let Some(d) = plan.dir {
+        for d in plan.dirs {
             self.fetch_tile_dir(d);
         }
         for f in plan.tiles {
@@ -454,16 +454,27 @@ impl App {
     fn fetch_tile_dir(&self, d: tile_stream::DirFetch) {
         let Some(app) = self.me.upgrade() else { return };
         wasm_bindgen_futures::spawn_local(async move {
-            let result = match tile_stream::fetch_range(&d.url, 0, d.len).await {
-                Ok(bytes) => tile_pack::Directory::parse(&bytes, d.min, d.max),
-                Err(e) => Err(e.as_string().unwrap_or_else(|| format!("{e:?}"))),
+            let bytes = tile_stream::fetch_range(&d.url, d.offset, d.len)
+                .await
+                .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")));
+            let mut a = app.borrow_mut();
+            let error = match d.page {
+                None => {
+                    let dir = bytes
+                        .and_then(|b| tile_pack::Directory::parse(&b, d.min, d.max, d.entries));
+                    let error = dir.as_ref().err().cloned();
+                    a.tile_stream.dir_loaded(d.set, dir);
+                    error.map(|e| format!("no detail tiles from {}: {e}", d.url))
+                }
+                Some(page) => a
+                    .tile_stream
+                    .page_loaded(d.set, page, bytes)
+                    .err()
+                    .map(|e| format!("{}: directory page {page}: {e}", d.url)),
             };
-            if let Err(e) = &result {
-                let msg = format!("no detail tiles from {}: {e}", d.url);
+            if let Some(msg) = error {
                 web_sys::console::warn_1(&msg.into());
             }
-            let mut a = app.borrow_mut();
-            a.tile_stream.dir_loaded(d.set, result);
             a.redraw.mark_render();
         });
     }

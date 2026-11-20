@@ -10,6 +10,70 @@
       "license": "nasa-black-marble"
     },
     {
+      "name": "nasa-black-marble-2016-500m-a1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_A1.jpg",
+      "version": "2016",
+      "sha256": "f9e9a0fc1c6227bfb174639e5ff70d4f081810b4c72834a1ccdb9687150436f2",
+      "size": 30825698,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-a2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_A2.jpg",
+      "version": "2016",
+      "sha256": "ed5c047b606caca73a829c912c8388db07ecfa6670baf1358fd9e538ef773428",
+      "size": 7830664,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-b1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_B1.jpg",
+      "version": "2016",
+      "sha256": "d0ef6a0b15032d277235d59c336e82c6fbe9693cfa26aaa72fec92962574d11e",
+      "size": 29472401,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-b2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_B2.jpg",
+      "version": "2016",
+      "sha256": "f56f36e2b76993b34dcf83163d8c8a23255251031597337833c9eb2400c5aa9b",
+      "size": 21337236,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-c1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_C1.jpg",
+      "version": "2016",
+      "sha256": "446fcc72755ebc3625f96d39f2bcb247016038b74c90c655a65991e6de71b3b5",
+      "size": 59097456,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-c2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_C2.jpg",
+      "version": "2016",
+      "sha256": "f52cb69c0eadb2efa0868472cca59ac5461df5c4a0ce27846bff1e60cbafbe44",
+      "size": 13553256,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-d1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_D1.jpg",
+      "version": "2016",
+      "sha256": "449fdd6b2f6eec087f56b5a0dcee5ab3213ea0ade75ec746f38cea76f3acd442",
+      "size": 39122860,
+      "license": "nasa-black-marble"
+    },
+    {
+      "name": "nasa-black-marble-2016-500m-d2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_D2.jpg",
+      "version": "2016",
+      "sha256": "295a0b58aefc581ee3bcc8e513ce4e1a475057ab3de9dc94ccf5c0fe39be9972",
+      "size": 14400257,
+      "license": "nasa-black-marble"
+    },
+    {
       "name": "nasa-blue-marble-200407",
       "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x5400x2700.jpg",
       "version": "2004-07",
@@ -23,6 +87,70 @@
       "version": "2004-07",
       "sha256": "d225f1f35a6448a4d1d8f6de6e48f3433e470085b70a35800e64f384f269a7b0",
       "size": 27201049,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-a1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.A1.jpg",
+      "version": "2004-07",
+      "sha256": "cda310b5a180c7a7da95a605bc3a3a3fa082ecf870e0d9ea48994813216bcb70",
+      "size": 54085715,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-a2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.A2.jpg",
+      "version": "2004-07",
+      "sha256": "1f0b66979774a6a5704d6e597024e80b9e1fe71ab64ca871d195763ae625ad02",
+      "size": 24327568,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-b1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.B1.jpg",
+      "version": "2004-07",
+      "sha256": "15d8ceb55676e6b3e7fdcd72217d1edd665b5e7f7396c606e7b98c427b28558e",
+      "size": 54665612,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-b2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.B2.jpg",
+      "version": "2004-07",
+      "sha256": "37ce4c49ff093781eb1da10c14876cea317dfdf4d93af44d8e0c3b394bcd86d7",
+      "size": 46982733,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-c1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.C1.jpg",
+      "version": "2004-07",
+      "sha256": "ee8490ab1eb35d620d8d1ad8e69b3234c0b050e4eddb80e7232a2d165e475aa0",
+      "size": 87763762,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-c2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.C2.jpg",
+      "version": "2004-07",
+      "sha256": "3237e61c6ed8eaab15d7cdf797b6de3ee5c62314aa05381478b76dabcba2660b",
+      "size": 39543838,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-d1",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.D1.jpg",
+      "version": "2004-07",
+      "sha256": "47480a4e98289d830adc689c32356771a83cd55a003cdbf32db7ade2a6609b56",
+      "size": 68470337,
+      "license": "nasa-bmng"
+    },
+    {
+      "name": "nasa-blue-marble-200407-500m-d2",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x21600x21600.D2.jpg",
+      "version": "2004-07",
+      "sha256": "6883c2d0141b8165e0c336a3df7535bd494d56e75b0d1bce6d25719644237ea5",
+      "size": 43643468,
       "license": "nasa-bmng"
     },
     {

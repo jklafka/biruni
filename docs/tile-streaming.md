@@ -46,13 +46,25 @@ level that does not upsample the source by more than 1.25×:
 
 | Layer | Source | M | Pack |
 | --- | --- | --- | --- |
-| Satellite | Blue Marble NG 2004-07, 21600×10800 (`nasa-blue-marble-200407-21600`) | 5 | 9.6 MB, 2688 tiles |
-| Night lights | Black Marble 2016 3 km, 13500×6750 | 5 | 4.2 MB, 2688 tiles |
+| Satellite | Blue Marble NG 2004-07 500 m, 86400×43200 in 8 source tiles (`nasa-blue-marble-200407-500m-a1`..`d2`) | 7 | about 117 MB, 43648 tiles |
+| Night lights | Black Marble 2016 500 m, 86400×43200 in 8 source tiles (`nasa-black-marble-2016-500m-a1`..`d2`) | 7 | about 44 MB, 43648 tiles |
 | Terrain | Natural Earth 1:50m hypso + ocean bottom, 10800×5400 | 4 | 3.2 MB, 640 tiles |
 
-That is 4× sharper than today for Satellite and Night lights and 2× for
-Terrain. Deeper levels need better sources (Blue Marble NG 500 m is 86400
-wide, which is level 7). The format and renderer support them unchanged.
+That is 16× sharper than the base for Satellite and Night lights and 2× for
+Terrain. Satellite's levels 3..7 take 0.6, 2.2, 7.3, 24.4 and 76.8 MiB, but
+a view reads only its own tiles.
+
+NASA publishes the 500 m mosaics as eight 21600×21600 JPEGs, A1 to D2:
+letters run west to east from −180°, 1 is north of the equator and 2 south.
+Each covers 90°×90°, and from level 1 on, tile edges fall on source tile
+edges, so `make_tiles.py` builds one source tile at a time: it pads the tile
+with 128 px from its neighbors (wrapping east-west, repeating the edge row
+past the poles) and cuts every level's tiles from that with a Lanczos
+resample of just the tile's box. This gives the same tiles as resampling the
+whole world at once (`test_tile_pack.py` checks it), while memory holds one
+source tile instead of a 6.4 GB level 7. Before cutting, each source tile is
+compared with its place in the pinned world image the base picture comes
+from, so a misnamed or misplaced tile fails the build.
 
 ## Tile packs
 
@@ -86,9 +98,13 @@ column. So a row of tiles is one contiguous byte range, and requests for
 neighbors can be coalesced. Length 0 means the tile is absent; the renderer
 falls back to a coarser level. Sparse packs (test fixtures) use this.
 
-The app reads the header and directory with one range request (its length
-follows from the levels in `tilesets.json`), then each tile with its own range
-request. A server that ignores `Range` and answers 200 still works, because
+The directory of levels 3..7 is 349 KB, too much to read before the first
+tile. So the app reads it in pages of 4096 entries (32 KB): the header and
+the first page in one range request, which covers levels 3..5 and part of 6,
+then each later page when a wanted tile needs it (at most 2 at once). Because
+entries are ordered by level and row, a level 7 page is a band 16 rows (22.5°)
+tall, and a close view needs one or two. A failed page makes its tiles absent.
+Each tile then comes with its own range request. A server that ignores `Range` and answers 200 still works, because
 the reader slices the full body. Cloudflare caches the whole object and
 serves ranges from the cache.
 
@@ -202,9 +218,11 @@ imagery = mix(detail(zf), detail(zc), wc)
 `src/tile_stream.rs`, with a browser-free core and the `fetch` and decode glue
 around it:
 
-- When an image layer is shown and it has a tileset, fetch the pack directory
-  once (`Range: bytes=0-(16+8N−1)`), and check the magic, version, levels and
-  count against `tilesets.json`. On failure, log it once and keep the base.
+- When an image layer is shown and it has a tileset, fetch the header and the
+  first directory page once (`Range: bytes=0-(16+8·min(N, 4096)−1)`), and check
+  the magic, version, levels and count against `tilesets.json`. On failure, log
+  it once and keep the base. Later directory pages are fetched when a wanted
+  tile falls in them.
 - Each frame in which the camera changed: select, then start fetches for wanted
   tiles that are neither resident nor in flight. At most 6 run at once, coarse
   and central first. Queued tiles that are no longer wanted are dropped before
@@ -239,9 +257,8 @@ around it:
 
 ## Follow-ups
 
-- Better sources: Blue Marble NG 500 m (level 7) and Black Marble 500 m.
-  This needs the pack build to stream from source tiles instead of holding
-  the world in memory.
+- Terrain stops at level 4 (Natural Earth 1:50m). Natural Earth's 1:10m
+  rasters (21600 wide) would give level 5.
 - Coalesce range requests for neighboring tiles in a row.
 - The same machinery for planet surfaces (`maps-ztx.6`). HiPS sky tiles
   (`maps-4nv.7`) need a HEALPix page table, not this equirectangular one.

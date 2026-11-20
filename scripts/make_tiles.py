@@ -5,9 +5,14 @@ See docs/tile-streaming.md for the pyramid, the pack format (scripts/tile_pack.p
 and how packs are published. Each tileset is cut from the full-resolution
 pinned source of its layer:
 
-  imagery  Blue Marble NG 2004-07, 21600x10800 (nasa-blue-marble-200407-21600)  levels 3-5
-  night    Black Marble 2016, 13500x6750 (scripts/make_night_lights.py)          levels 3-5
+  imagery  Blue Marble NG 2004-07, 500 m: 8 tiles of 21600x21600
+           (nasa-blue-marble-200407-500m-a1..d2)                                 levels 3-7
+  night    Black Marble 2016, 500 m: 8 tiles of 21600x21600
+           (nasa-black-marble-2016-500m-a1..d2)                                  levels 3-7
   terrain  Natural Earth hypso + ocean bottom, 10800x5400 (make_terrain.py)      levels 3-4
+
+The 500 m tiles are checked against the pinned world images the bases are
+built from (placement and color), then cut one at a time.
 
     python3 scripts/make_tiles.py build imagery [--tilesets PATH]
         Write .data-cache/tiles/imagery.<sha16>.tiles and point the layer's
@@ -43,24 +48,44 @@ QUALITY = 80
 TILESETS_VERSION = 1
 
 
-def imagery_image():
+def pinned_image(name, size):
     from PIL import Image
 
-    Image.MAX_IMAGE_PIXELS = None  # 233 MP source, from a pinned hash
+    Image.MAX_IMAGE_PIXELS = None  # large sources, from a pinned hash
     try:
-        src = data_sources.fetch("nasa-blue-marble-200407-21600")
+        src = data_sources.fetch(name)
     except (data_sources.DataSourceError, OSError) as e:
         sys.exit(f"error: {e}")
-    im = Image.open(src).convert("RGB")
-    if im.size != (21600, 10800):
-        sys.exit(f"unexpected source size {im.size}, wanted 21600x10800")
+    im = Image.open(src)
+    im = im if im.mode == "RGB" else im.convert("RGB")
+    im.load()
+    if im.size != size:
+        sys.exit(f"{name}: unexpected size {im.size}, wanted {size[0]}x{size[1]}")
     return im
 
 
-def night_image():
-    import make_night_lights
+class Source:
+    """A full-resolution layer image, split into cols x rows equal source
+    tiles that each cover 360/cols by 180/rows degrees (column 0 from
+    longitude -180, row 0 at the north). `load(c, r)` returns one tile;
+    `world()` optionally returns a whole-world image at any size to check
+    the tiles' placement against."""
 
-    return make_night_lights.full_image()
+    def __init__(self, cols, rows, load, world=None):
+        self.cols, self.rows, self.load, self.world = cols, rows, load, world
+
+
+def marble(prefix, world_name, world_size):
+    """NASA's 500 m mosaics: eight 21600x21600 tiles named A1..D2, letters
+    west to east from -180, 1 north and 2 south of the equator."""
+    def load(c, r):
+        return pinned_image(f"{prefix}-{'abcd'[c]}{r + 1}", (21600, 21600))
+
+    return Source(4, 2, load, lambda: pinned_image(world_name, world_size))
+
+
+def whole(make):
+    return Source(1, 1, lambda c, r: make())
 
 
 def terrain_image():
@@ -69,18 +94,26 @@ def terrain_image():
     return make_terrain.full_image()
 
 
-# Layer id (src/view.rs Layer::id) -> (full-resolution image, max level).
-# The max level is the deepest that upsamples the source by at most 1.25x.
+# Layer id (src/view.rs Layer::id) -> (source, max level). The max level is
+# the deepest that upsamples the source by at most 1.25x: 86400 texels around
+# the world give level 7 (65536), whose next level would upsample 1.5x.
 TILESETS = {
-    "imagery": (imagery_image, 5),
-    "night": (night_image, 5),
-    "terrain": (terrain_image, 4),
+    "imagery": (lambda: marble("nasa-blue-marble-200407-500m",
+                               "nasa-blue-marble-200407-21600", (21600, 10800)), 7),
+    "night": (lambda: marble("nasa-black-marble-2016-500m",
+                             "nasa-black-marble-2016", (13500, 6750)), 7),
+    "terrain": (lambda: whole(terrain_image), 4),
 }
 
-
-def level_size(z):
-    cols, rows = tile_pack.grid(z)
-    return cols * tile_pack.TILE_SIZE, rows * tile_pack.TILE_SIZE
+# Source pixels added around each source tile from its neighbors before
+# cutting: enough for the border texel plus the Lanczos filter (3 texels
+# each side) at MIN_LEVEL, so tiles cut from one source tile match those
+# cut from the whole world resampled at once.
+MARGIN = 128
+LANCZOS_SUPPORT = 3
+# Mean difference (0-255) allowed between a source tile and its place in the
+# world image; a misplaced tile differs by tens.
+PLACEMENT_TOLERANCE = 4
 
 
 def tile_box(z, x, y):
@@ -89,6 +122,13 @@ def tile_box(z, x, y):
     west = -180 + 360 * x / cols
     north = 90 - 180 * y / rows
     return north - 180 / rows, west, north, west + 360 / cols
+
+
+def source_box(src, c, r):
+    """(south, west, north, east) degrees of source tile (c, r)."""
+    west = -180 + 360 * c / src.cols
+    north = 90 - 180 * r / src.rows
+    return north - 180 / src.rows, west, north, west + 360 / src.cols
 
 
 def touches(box, region):
@@ -103,42 +143,113 @@ def encode(im):
     return buf.getvalue()
 
 
-def padded(level, b):
-    """The level image with a border of b texels: wrapped east-west, the
-    edge rows repeated at the poles. Tiles cut from it overlap their
-    neighbors by b, so bilinear filtering blends across tile edges."""
+def strips(im, m):
+    """The m-pixel edges of a source tile: left, right, top, bottom."""
+    w, h = im.size
+    return {"left": im.crop((0, 0, m, h)), "right": im.crop((w - m, 0, w, h)),
+            "top": im.crop((0, 0, w, m)), "bottom": im.crop((0, h - m, w, h))}
+
+
+def padded(src, c, r, im, edges, m):
+    """Source tile (c, r) with m pixels of its neighbors around it, wrapping
+    east-west; beyond the poles the edge row is repeated. `edges[(c, r)]`
+    holds each tile's strips()."""
     from PIL import Image
 
-    w, h = level.size
-    out = Image.new(level.mode, (w + 2 * b, h + 2 * b))
-    out.paste(level, (b, b))
-    out.paste(level.crop((w - b, 0, w, h)), (0, b))
-    out.paste(level.crop((0, 0, b, h)), (w + b, b))
-    out.paste(out.crop((0, b, w + 2 * b, 2 * b)), (0, 0))
-    out.paste(out.crop((0, h, w + 2 * b, h + b)), (0, h + b))
+    w, h = im.size
+    out = Image.new(im.mode, (w + 2 * m, h + 2 * m))
+    xs = {-1: (w - m, w, 0), 0: (0, w, m), 1: (0, m, m + w)}  # crop x0, x1, paste x
+    for dr in (-1, 0, 1):
+        rr = r + dr
+        if not 0 <= rr < src.rows:
+            continue
+        for dc in (-1, 0, 1):
+            cc = (c + dc) % src.cols
+            x0, x1, px = xs[dc]
+            if dr == 0:
+                piece = im if dc == 0 else edges[(cc, rr)]["right" if dc < 0 else "left"]
+                if dc != 0:
+                    x0, x1 = 0, m
+                py = m
+            else:
+                piece = edges[(cc, rr)]["bottom" if dr < 0 else "top"]
+                py = 0 if dr < 0 else m + h
+            out.paste(piece.crop((x0, 0, x1, piece.size[1])), (px, py))
+    if r == 0:
+        out.paste(out.crop((0, m, w + 2 * m, m + 1)).resize((w + 2 * m, m)), (0, 0))
+    if r == src.rows - 1:
+        out.paste(out.crop((0, m + h - 1, w + 2 * m, m + h)).resize((w + 2 * m, m)), (0, m + h))
     return out
 
 
-def cut(full, max_level, regions=None):
+def check_placement(src, c, r, im, world):
+    from PIL import Image, ImageChops, ImageStat
+
+    W, H = world.size
+    s, w, n, e = source_box(src, c, r)
+    box = ((w + 180) / 360 * W, (90 - n) / 180 * H, (e + 180) / 360 * W, (90 - s) / 180 * H)
+    want = world.resize((256, 256), Image.BOX, box=box)
+    diff = ImageStat.Stat(ImageChops.difference(im.resize((256, 256), Image.BOX), want)).mean
+    if max(diff) > PLACEMENT_TOLERANCE:
+        sys.exit(f"source tile ({c}, {r}) does not match its place in the world image "
+                 f"(mean difference {max(diff):.1f})")
+
+
+def cut(src, max_level, regions=None):
     """{(z, x, y): WebP bytes} for levels MIN_LEVEL..max_level, only the tiles
-    touching `regions` if given. Each image is TILE_SIZE + 2 * BORDER square."""
+    touching `regions` if given. Each image is TILE_SIZE + 2 * BORDER square.
+    Works one source tile at a time, so memory holds one source tile (plus
+    neighbors' edges), never the world at the finest level."""
     from PIL import Image
 
-    tiles = {}
     t = tile_pack.TILE_SIZE
     b = tile_pack.BORDER
-    for z in range(max_level, MIN_LEVEL - 1, -1):
-        cols, rows = tile_pack.grid(z)
-        wanted = [(x, y) for y in range(rows) for x in range(cols)
-                  if regions is None or any(touches(tile_box(z, x, y), r) for r in regions)]
-        if not wanted:
+    m = MARGIN
+    cells = [(c, r) for r in range(src.rows) for c in range(src.cols)]
+    if src.cols * src.rows == 1:
+        only = src.load(0, 0)
+        load = lambda c, r: only  # noqa: E731
+    else:
+        load = src.load
+    world = src.world() if src.world else None
+    edges = {}
+    for c, r in cells:
+        im = load(c, r)
+        if world is not None:
+            check_placement(src, c, r, im, world)
+        edges[(c, r)] = strips(im, m)
+        del im
+    del world
+    tiles = {}
+    for c, r in cells:
+        if regions is not None and not any(touches(source_box(src, c, r), g) for g in regions):
             continue
-        level = padded(full.resize(level_size(z), Image.LANCZOS), b)
-        with ThreadPoolExecutor() as pool:
-            crops = [level.crop((x * t, y * t, (x + 1) * t + 2 * b, (y + 1) * t + 2 * b)) for x, y in wanted]
-            for (x, y), data in zip(wanted, pool.map(encode, crops)):
-                tiles[(z, x, y)] = data
-        print(f"level {z}: {len(wanted)} tiles", file=sys.stderr)
+        im = load(c, r)
+        w, h = im.size
+        pad = padded(src, c, r, im, edges, m)
+        del im
+        for z in range(max_level, MIN_LEVEL - 1, -1):
+            cols, rows = tile_pack.grid(z)
+            if cols % src.cols or rows % src.rows:
+                sys.exit(f"level {z} does not split evenly into {src.cols}x{src.rows} source tiles")
+            tc, tr = cols // src.cols, rows // src.rows
+            sx, sy = w / (tc * t), h / (tr * t)
+            if (b + LANCZOS_SUPPORT) * max(sx, sy) > m:
+                sys.exit(f"MARGIN {m} is too small for level {z}")
+            wanted = [(lx, ly) for ly in range(tr) for lx in range(tc)
+                      if regions is None
+                      or any(touches(tile_box(z, c * tc + lx, r * tr + ly), g) for g in regions)]
+
+            def one(p):
+                lx, ly = p
+                box = (m + (lx * t - b) * sx, m + (ly * t - b) * sy,
+                       m + ((lx + 1) * t + b) * sx, m + ((ly + 1) * t + b) * sy)
+                return encode(pad.resize((t + 2 * b, t + 2 * b), Image.LANCZOS, box=box))
+
+            with ThreadPoolExecutor() as pool:
+                for (lx, ly), data in zip(wanted, pool.map(one, wanted)):
+                    tiles[(z, c * tc + lx, r * tr + ly)] = data
+        print(f"source tile ({c}, {r}): {len(tiles)} tiles so far", file=sys.stderr)
     return tiles
 
 
