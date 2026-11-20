@@ -150,7 +150,7 @@ jobs:
             for _ in 1 2 3 4 5 6; do
               got="$(curl -s -o /dev/null -H "Origin: $origin" -D "$RUNNER_TEMP/h" \
                 -w '%{http_code} %{size_download}' "$R2_BASE_URL/files/$name" || true)"
-              if [ "$got" = "200 $want" ] && grep -qi "^access-control-allow-origin: $origin" "$RUNNER_TEMP/h"; then
+              if [ "$got" = "200 $want" ] && grep -qiE "^access-control-allow-origin: (\*|$origin)" "$RUNNER_TEMP/h"; then
                 ok=true
                 break
               fi

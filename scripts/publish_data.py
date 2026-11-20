@@ -90,6 +90,8 @@ def file_url(base_url, name):
 # sees for an R2 file, CORS headers included; a request without Origin could
 # store a copy without Access-Control-Allow-Origin that browsers then get.
 ORIGIN = "https://biruni.jklafka.cloud"
+# r2-cors.json allows every origin ("*"); R2 may answer with "*" or echo ORIGIN.
+ALLOWED_ORIGIN_HEADERS = ("*", ORIGIN)
 
 
 def request(url, method="GET"):
@@ -177,7 +179,7 @@ def check_pack_response(entry, status, headers, body):
     problems = []
     if status != 206:
         problems.append(f"status {status}, want 206 (range support)")
-    if headers.get("access-control-allow-origin") != ORIGIN:
+    if headers.get("access-control-allow-origin") not in ALLOWED_ORIGIN_HEADERS:
         problems.append(f"no Access-Control-Allow-Origin for {ORIGIN}")
     m = re.fullmatch(r"bytes \d+-\d+/(\d+)", headers.get("content-range", ""))
     if not m or int(m.group(1)) != entry["size"]:
