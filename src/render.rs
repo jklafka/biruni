@@ -903,6 +903,8 @@ pub struct Renderer {
     lose_ext: Option<web_sys::WebglLoseContext>,
     /// The sky view's pass, built the first time the sky is drawn.
     sky: Option<crate::sky_render::SkyPass>,
+    /// Star vertices, kept so a restored context can upload them again.
+    stars: Option<std::rc::Rc<Vec<f32>>>,
 }
 
 impl Renderer {
@@ -963,6 +965,7 @@ impl Renderer {
             budget,
             lose_ext,
             sky: None,
+            stars: None,
         })
     }
 
@@ -1278,10 +1281,20 @@ impl Renderer {
         if self.sky.is_none() {
             self.sky = Some(crate::sky_render::SkyPass::create(&self.gl)?);
         }
-        if let Some(pass) = &self.sky {
+        if let Some(pass) = &mut self.sky {
+            if let (false, Some(stars)) = (pass.has_stars(), &self.stars) {
+                pass.upload_stars(&self.gl, stars)?;
+            }
             pass.draw(&self.gl, frame);
         }
         Ok(())
+    }
+
+    /// Star vertices for the sky view (`stars::vertices`), uploaded at the
+    /// next sky frame.
+    pub fn set_stars(&mut self, data: std::rc::Rc<Vec<f32>>) {
+        self.stars = Some(data);
+        self.sky = None; // rebuilt with the stars on the next sky frame
     }
 
     /// The context came back: rebuild every GL object and, if the map data

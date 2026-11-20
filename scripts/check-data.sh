@@ -14,6 +14,7 @@ python3 scripts/test_data_sources.py > /dev/null 2>&1 || { python3 scripts/test_
 python3 scripts/test_validate_data.py > /dev/null 2>&1 || { python3 scripts/test_validate_data.py; exit 1; }
 python3 scripts/test_publish_data.py > /dev/null 2>&1 || { python3 scripts/test_publish_data.py; exit 1; }
 python3 scripts/test_tile_pack.py > /dev/null 2>&1 || { python3 scripts/test_tile_pack.py; exit 1; }
+python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test_convert_stars.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -44,6 +45,7 @@ for f in assets/data/*; do
   name="$(basename "$f")"
   is_external "$name" && continue
   [ "$name" = tilesets.json ] && continue
+  [ "$name" = stars.bin ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 
@@ -67,6 +69,28 @@ PY
   [ "$dims" = "4096 2048" ] || drift+=("$name is not a lossy 4096x2048 WebP (got: $dims)")
   [ "$size" -lt 2097152 ] || drift+=("$name is $size bytes, over the 2 MB budget")
 done
+
+# The star catalog (scripts/convert_stars.py) comes from the pinned HYG
+# download, which CI does not fetch: check that it decodes and looks sane.
+python3 - <<'PY' || drift+=("stars.bin (see above; rebuild with scripts/convert_stars.py)")
+import sys
+sys.path.insert(0, "scripts")
+import convert_stars as cs
+data = open("assets/data/stars.bin", "rb").read()
+stars = cs.decode(data)
+names = sum(1 for s in stars if s[4])
+problems = []
+if not 30000 <= len(stars) <= 60000:
+    problems.append(f"{len(stars)} stars")
+if names < 300:
+    problems.append(f"only {names} names")
+if len(data) > 1 << 20:
+    problems.append(f"{len(data)} bytes, over 1 MB")
+if any(s[2] > cs.MAG_LIMIT + 0.05 for s in stars):
+    problems.append("stars fainter than the limit")
+if problems:
+    sys.exit("assets/data/stars.bin: " + ", ".join(problems))
+PY
 
 if [ ${#drift[@]} -gt 0 ]; then
   echo "error: assets/data/ is out of date with data-src/ and scripts/convert_geojson.py:" >&2

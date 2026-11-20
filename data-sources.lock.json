@@ -2,6 +2,14 @@
   "version": 1,
   "sources": [
     {
+      "name": "hyg-v44",
+      "url": "https://codeberg.org/astronexus/hyg/media/commit/53e3df311869e813ace5f1ad2ec4ce909f13256c/data/hyg/CURRENT/hyg_v44.csv.gz",
+      "version": "4.4 (codeberg astronexus/hyg 53e3df3)",
+      "sha256": "00b349893b9a53106dd488d8371e8d2fa586043e500bb3cdb8bff3931682197d",
+      "size": 13636362,
+      "license": "hyg"
+    },
+    {
       "name": "nasa-black-marble-2016",
       "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
       "version": "2016",

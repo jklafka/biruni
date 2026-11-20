@@ -29,6 +29,7 @@ mod search_ui;
 mod share;
 mod sky;
 mod sky_render;
+mod stars;
 mod sun;
 mod thematic;
 mod tile_pack;
@@ -164,6 +165,9 @@ struct App {
     hud_labels: [HtmlElement; 3],
     /// `data-sky` is set on the canvas (after the first sky frame).
     sky_attr: bool,
+    /// The star catalog, once loaded (fetched the first time the sky opens).
+    stars: Option<Rc<stars::Catalog>>,
+    stars_requested: bool,
 }
 
 impl App {
@@ -722,6 +726,12 @@ impl App {
         self.labels.clear();
         self.overlay.clear();
         if sky {
+            self.credits.show_sky();
+            self.load_stars();
+        } else {
+            self.credits.show_layer(self.layers_state.shown());
+        }
+        if sky {
             self.send(Event::CancelInertia);
             if self.measure.active {
                 self.toggle_measure();
@@ -738,7 +748,32 @@ impl App {
         self.hash_stale = true;
     }
 
-    /// One sky frame: the background pass and the horizon labels.
+    /// Fetch and decode the star catalog, once.
+    fn load_stars(&mut self) {
+        if std::mem::replace(&mut self.stars_requested, true) {
+            return;
+        }
+        let Some(app) = self.me.upgrade() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let cat = match data::fetch("stars.bin").await {
+                Ok(bytes) => stars::decode(&bytes).map_err(JsValue::from),
+                Err(e) => Err(e),
+            };
+            match cat {
+                Ok(cat) => {
+                    let mut a = app.borrow_mut();
+                    a.renderer.set_stars(Rc::new(stars::vertices(&cat)));
+                    a.stars = Some(Rc::new(cat));
+                    a.redraw.mark_render();
+                    // Lets the visual tests wait for the stars.
+                    a.set_globe_attr("data-stars", "1");
+                }
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        });
+    }
+
+    /// One sky frame: the background and stars, and the labels.
     fn draw_sky(&mut self, pw: u32, ph: u32, dpr: f64) {
         let obs = sky::Observer {
             lat: self.camera.lat,
@@ -746,6 +781,12 @@ impl App {
             unix_secs: self.sun_time(),
         };
         let cam = self.sky_cam;
+        let eq_to_hor = obs.eq_to_horizon();
+        let mag_limit = stars::limiting_magnitude(cam.fov);
+        let star_count = self
+            .stars
+            .as_ref()
+            .map_or(0, |c| stars::count_brighter(c, mag_limit));
         let frame = sky_render::SkyFrame {
             width: pw,
             height: ph,
@@ -755,13 +796,22 @@ impl App {
             hor_to_eq: sky::transpose(&obs.eq_to_horizon()),
             dpr,
             grid_step: sky::grid_step(cam.fov),
+            eq_to_cam: sky::matmul(&sky::transpose(&cam.basis()), &eq_to_hor),
+            zenith: sky::mul(&sky::transpose(&eq_to_hor), [0.0, 1.0, 0.0]),
+            mag_limit,
+            star_count,
         };
         if let Err(e) = self.renderer.draw_sky(&frame) {
             web_sys::console::error_1(&e);
         }
-        let labels = sky::horizon_labels(&cam);
+        let horizon = sky::horizon_labels(&cam);
+        let names = self
+            .stars
+            .as_ref()
+            .map(|c| stars::labels(c, &cam, &eq_to_hor))
+            .unwrap_or_default();
         self.overlay
-            .draw_sky(&labels, (cam.width, cam.height), pw, ph, dpr);
+            .draw_sky(&horizon, &names, (cam.width, cam.height), pw, ph, dpr);
         if !self.sky_attr && !self.renderer.is_lost() {
             self.sky_attr = true;
             self.set_globe_attr("data-sky", "ready");
@@ -1450,6 +1500,8 @@ fn start() -> Result<(), JsValue> {
             element(&doc, "hud-l-alt")?,
         ],
         sky_attr: false,
+        stars: None,
+        stars_requested: false,
     }));
 
     {

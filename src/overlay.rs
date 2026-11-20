@@ -46,11 +46,13 @@ impl Overlay {
         }
     }
 
-    /// Draw the sky view's labels: text centered just above each point
-    /// (CSS pixels), replacing whatever was there.
+    /// Draw the sky view's labels, replacing whatever was there: compass
+    /// points centered just above their place on the horizon, and star
+    /// names to the right of their star (CSS pixels).
     pub fn draw_sky(
         &mut self,
-        labels: &[(f64, f64, &str)],
+        horizon: &[(f64, f64, &str)],
+        stars: &[(f64, f64, &str)],
         css: (f64, f64),
         px: u32,
         py: u32,
@@ -63,16 +65,24 @@ impl Overlay {
         let ctx = &self.ctx;
         let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         ctx.clear_rect(0.0, 0.0, css.0, css.1);
-        self.has_content = !labels.is_empty();
+        self.has_content = !(horizon.is_empty() && stars.is_empty());
+        ctx.set_line_width(3.0);
+        ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
         ctx.set_font("600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
         ctx.set_text_align("center");
         ctx.set_text_baseline("bottom");
-        ctx.set_line_width(3.0);
-        ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
         ctx.set_fill_style_str("#c9d3e6");
-        for (x, y, text) in labels {
+        for (x, y, text) in horizon {
             let _ = ctx.stroke_text(text, *x, *y - 4.0);
             let _ = ctx.fill_text(text, *x, *y - 4.0);
+        }
+        ctx.set_font("12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+        ctx.set_text_align("left");
+        ctx.set_text_baseline("middle");
+        ctx.set_fill_style_str("#9fb0cc");
+        for (x, y, text) in stars {
+            let _ = ctx.stroke_text(text, *x + 7.0, *y);
+            let _ = ctx.fill_text(text, *x + 7.0, *y);
         }
     }
 

@@ -17,7 +17,9 @@ Checks, one line per problem on stderr, exit status 1 if there are any:
             within MAX_TOTAL_BYTES, and the per-file budgets in FILE_BUDGETS.
   format    each file decodes by its extension: .bin (MAPD or MAPC, the formats
             in src/geo.rs and src/country.rs: supported version, no trailing
-            bytes, lon/lat in range, at least one feature), .tsv (UTF-8,
+            bytes, lon/lat in range, at least one feature; or STAR, the star
+            catalog of scripts/convert_stars.py: positions in range, sorted
+            brightest first), .tsv (UTF-8,
             header line, column count, lat/lon in range, at least one row) and
             .webp (RIFF header, dimensions) and tilesets.json (the tile pack
             list, see check_tilesets). Unknown extensions fail, so a new data
@@ -33,6 +35,7 @@ The decoders mirror src/geo.rs `decode_shapes` and src/country.rs
 import argparse
 import hashlib
 import json
+import math
 import struct
 import sys
 from pathlib import Path
@@ -194,9 +197,31 @@ def decode_countries(data):
     return count
 
 
+def decode_stars(data):
+    """STAR star catalog (scripts/convert_stars.py, src/stars.rs). Returns
+    the star count."""
+    import convert_stars
+
+    try:
+        stars = convert_stars.decode(data)
+    except (ValueError, UnicodeDecodeError, struct.error) as e:
+        raise Bad(f"star catalog: {e}")
+    if not stars:
+        raise Bad("star catalog: no stars")
+    for ra, dec, mag, _ci, _name in stars:
+        if not (0 <= ra < 2 * math.pi + 1e-9 and abs(dec) <= math.pi / 2 + 1e-9):
+            raise Bad("star catalog: position out of range")
+    mags = [s[2] for s in stars]
+    if mags != sorted(mags):
+        raise Bad("star catalog: not sorted brightest first")
+    return len(stars)
+
+
 def decode_bin(data):
     if data[:4] == b"MAPC":
         return decode_countries(data)
+    if data[:4] == b"STAR":
+        return decode_stars(data)
     return decode_shapes(data)
 
 

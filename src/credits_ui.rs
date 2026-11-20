@@ -41,8 +41,17 @@ impl CreditsPanel {
 
     /// Rebuild the list for the shown layer.
     pub fn show_layer(&self, layer: Layer) {
+        self.show(credits::visible_credits(layer));
+    }
+
+    /// Rebuild the list for the sky view.
+    pub fn show_sky(&self) {
+        self.show(credits::sky_credits());
+    }
+
+    fn show(&self, list: Vec<&'static credits::Credit>) {
         self.list.set_text_content(None);
-        for c in credits::visible_credits(layer) {
+        for c in list {
             if let Err(e) = self.add_entry(c) {
                 web_sys::console::error_1(&e);
             }

@@ -104,7 +104,6 @@ fn wrap_pi(a: f64) -> f64 {
 }
 
 /// Unit vector of right ascension and declination (radians).
-#[cfg_attr(not(test), allow(dead_code))] // the star layer uses it next
 pub fn radec_vec(ra: f64, dec: f64) -> [f64; 3] {
     [dec.cos() * ra.sin(), dec.sin(), dec.cos() * ra.cos()]
 }
