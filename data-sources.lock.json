@@ -162,6 +162,14 @@
       "license": "nasa-bmng"
     },
     {
+      "name": "nasa-svs-milkyway-2020-4k",
+      "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_4k.exr",
+      "version": "Deep Star Maps 2020 (SVS 4851)",
+      "sha256": "2eb802d6e68d170b410f766c7fec07f7518619f6b6708fdc81e9302d93e74fdb",
+      "size": 36436668,
+      "license": "nasa-svs-deep-star-maps"
+    },
+    {
       "name": "ne-50m-hypso-relief-water",
       "url": "https://naciscdn.org/naturalearth/50m/raster/HYP_50M_SR_W.zip",
       "version": "2.0.0",

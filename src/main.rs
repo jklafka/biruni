@@ -66,6 +66,10 @@ type FrameLoop = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 const SCALE_MAX_PX: f64 = 100.0;
 /// How often the terminator follows the clock, in milliseconds.
 const SUN_REFRESH_MS: i32 = 60_000;
+/// Width of the sky view's Milky Way image (`scripts/make_milky_way.py`),
+/// and how strongly it is added to the night sky.
+const MILKY_WAY_WIDTH: u32 = 2048;
+const MILKY_WAY_STRENGTH: f64 = 0.3;
 /// The URL hash waits this long after the last time-scrubber change.
 const SCRUB_HASH_DELAY_MS: f64 = 250.0;
 
@@ -175,6 +179,10 @@ struct App {
     figures: Option<Rc<Vec<constellations::Constellation>>>,
     show_figures: bool,
     figures_button: HtmlElement,
+    /// The Milky Way image, still encoded (decoded again after a context
+    /// loss), and whether a decode is under way.
+    milky_way: Option<Rc<Vec<u8>>>,
+    milky_way_decoding: bool,
 }
 
 impl App {
@@ -775,6 +783,17 @@ impl App {
         }
         let Some(app) = self.me.upgrade() else { return };
         let figures_app = app.clone();
+        let milky_way_app = app.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            match data::fetch("milky_way.webp").await {
+                Ok(bytes) => {
+                    let mut a = milky_way_app.borrow_mut();
+                    a.milky_way = Some(Rc::new(bytes));
+                    a.decode_milky_way();
+                }
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        });
         wasm_bindgen_futures::spawn_local(async move {
             let figs = match data::fetch("constellations.bin").await {
                 Ok(bytes) => constellations::decode(&bytes).map_err(JsValue::from),
@@ -803,6 +822,33 @@ impl App {
                     a.redraw.mark_render();
                     // Lets the visual tests wait for the stars.
                     a.set_globe_attr("data-stars", "1");
+                }
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        });
+    }
+
+    /// Decode the Milky Way image and hand it to the renderer (again after a
+    /// lost context).
+    fn decode_milky_way(&mut self) {
+        let (Some(bytes), Some(app)) = (self.milky_way.clone(), self.me.upgrade()) else {
+            return;
+        };
+        if std::mem::replace(&mut self.milky_way_decoding, true) {
+            return;
+        }
+        wasm_bindgen_futures::spawn_local(async move {
+            let bitmap = imagery::decode(&bytes, MILKY_WAY_WIDTH).await;
+            let mut a = app.borrow_mut();
+            a.milky_way_decoding = false;
+            match bitmap {
+                Ok(b) => {
+                    if let Err(e) = a.renderer.upload_milky_way(&b) {
+                        web_sys::console::error_1(&e);
+                    }
+                    b.close();
+                    a.redraw.mark_render();
+                    a.set_globe_attr("data-milky-way", "1");
                 }
                 Err(e) => web_sys::console::error_1(&e),
             }
@@ -840,6 +886,7 @@ impl App {
             dpr,
             grid_step: sky::grid_step(cam.fov),
             daylight,
+            milky_way: MILKY_WAY_STRENGTH,
             eq_to_cam: sky::matmul(&sky::transpose(&cam.basis()), &eq_to_hor),
             zenith: sky::mul(&sky::transpose(&eq_to_hor), [0.0, 1.0, 0.0]),
             mag_limit,
@@ -892,6 +939,9 @@ impl App {
         if !self.sky_attr && !self.renderer.is_lost() {
             self.sky_attr = true;
             self.set_globe_attr("data-sky", "ready");
+        }
+        if self.renderer.sky_wants_milky_way() {
+            self.decode_milky_way();
         }
     }
 
@@ -1582,6 +1632,8 @@ fn start() -> Result<(), JsValue> {
         figures: None,
         show_figures: !initial_hash.contains("&figures=off"),
         figures_button: element(&doc, "figures-toggle")?,
+        milky_way: None,
+        milky_way_decoding: false,
     }));
 
     {

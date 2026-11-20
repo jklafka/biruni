@@ -1290,11 +1290,35 @@ impl Renderer {
         Ok(())
     }
 
+    /// Whether the sky view is waiting for the Milky Way image (its pass
+    /// exists without it, e.g. after a context restore).
+    pub fn sky_wants_milky_way(&self) -> bool {
+        self.sky.as_ref().is_some_and(|p| !p.has_milky_way()) && !self.ctx.is_lost()
+    }
+
+    /// Upload the sky view's Milky Way image.
+    pub fn upload_milky_way(&mut self, bitmap: &web_sys::ImageBitmap) -> Result<(), JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(());
+        }
+        if self.sky.is_none() {
+            self.sky = Some(crate::sky_render::SkyPass::create(&self.gl)?);
+        }
+        match &mut self.sky {
+            Some(pass) => pass.upload_milky_way(&self.gl, bitmap),
+            None => Ok(()),
+        }
+    }
+
     /// Star vertices for the sky view (`stars::vertices`), uploaded at the
     /// next sky frame.
     pub fn set_stars(&mut self, data: std::rc::Rc<Vec<f32>>) {
         self.stars = Some(data);
-        self.sky = None; // rebuilt with the stars on the next sky frame
+        // The next sky frame uploads them; the pass and its other
+        // resources (the Milky Way) stay.
+        if let Some(pass) = &mut self.sky {
+            pass.clear_stars(&self.gl);
+        }
     }
 
     /// The context came back: rebuild every GL object and, if the map data

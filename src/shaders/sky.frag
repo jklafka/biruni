@@ -13,6 +13,9 @@ uniform mat3 u_horToEq;       // horizontal -> equatorial J2000
 uniform float u_dpr;
 uniform float u_gridStep;     // radians between grid lines, 0 for no grid
 uniform float u_daylight;     // 0 at night, 1 in full day (sky_bodies::daylight)
+uniform sampler2D u_milkyWay; // equirectangular RA/Dec (scripts/make_milky_way.py)
+uniform float u_milkyWayOn;   // strength, 0 until the image is loaded
+uniform float u_milkyWayTexel; // radians per texel of the image's level 0
 
 out vec4 outColor;
 
@@ -46,6 +49,15 @@ void main() {
 
     float alt = asin(clamp(hor.y, -1.0, 1.0));
     vec3 col = SKY + GLOW * exp(-max(alt, 0.0) / 0.12);
+    if (u_milkyWayOn > 0.0) {
+        // u = 0.5 - RA / 2pi, v = 0.5 - Dec / pi; the level of detail is
+        // computed, not taken from derivatives, so the RA wrap has no seam.
+        float ra = atan(eq.x, eq.z);
+        float dec = asin(clamp(eq.y, -1.0, 1.0));
+        vec2 uv = vec2(fract(0.5 - ra / (2.0 * PI)), 0.5 - dec / PI);
+        float lod = max(log2(radPerPx / u_milkyWayTexel), 0.0);
+        col += textureLod(u_milkyWay, uv, lod).rgb * u_milkyWayOn * (1.0 - u_daylight);
+    }
     vec3 day = mix(DAY_ZENITH, DAY_HORIZON, exp(-max(alt, 0.0) / 0.25));
     col = mix(col, day, u_daylight);
 
