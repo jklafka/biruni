@@ -1,6 +1,7 @@
 //! Maps — an interactive globe written in Rust and compiled to WebAssembly.
 
 mod camera;
+mod constellations;
 mod controls;
 mod country;
 mod country_cycle;
@@ -168,6 +169,10 @@ struct App {
     /// The star catalog, once loaded (fetched the first time the sky opens).
     stars: Option<Rc<stars::Catalog>>,
     stars_requested: bool,
+    /// Constellation figures (loaded with the stars) and whether they show.
+    figures: Option<Rc<Vec<constellations::Constellation>>>,
+    show_figures: bool,
+    figures_button: HtmlElement,
 }
 
 impl App {
@@ -690,6 +695,9 @@ impl App {
                 hash.push_str(&format!("&t={t}"));
             }
             hash.push_str(&sky::format_hash(&self.sky_cam));
+            if !self.show_figures {
+                hash.push_str("&figures=off");
+            }
         }
         hash
     }
@@ -748,12 +756,38 @@ impl App {
         self.hash_stale = true;
     }
 
-    /// Fetch and decode the star catalog, once.
+    /// Show or hide the constellation figures.
+    fn set_figures(&mut self, on: bool) {
+        self.show_figures = on;
+        let _ = self
+            .figures_button
+            .set_attribute("aria-pressed", if on { "true" } else { "false" });
+        self.redraw.mark_render();
+        self.hash_stale = true;
+    }
+
+    /// Fetch and decode the star catalog and the constellation figures, once.
     fn load_stars(&mut self) {
         if std::mem::replace(&mut self.stars_requested, true) {
             return;
         }
         let Some(app) = self.me.upgrade() else { return };
+        let figures_app = app.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let figs = match data::fetch("constellations.bin").await {
+                Ok(bytes) => constellations::decode(&bytes).map_err(JsValue::from),
+                Err(e) => Err(e),
+            };
+            match figs {
+                Ok(figs) => {
+                    let mut a = figures_app.borrow_mut();
+                    a.figures = Some(Rc::new(figs));
+                    a.redraw.mark_render();
+                    a.set_globe_attr("data-figures", "1");
+                }
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        });
         wasm_bindgen_futures::spawn_local(async move {
             let cat = match data::fetch("stars.bin").await {
                 Ok(bytes) => stars::decode(&bytes).map_err(JsValue::from),
@@ -810,8 +844,31 @@ impl App {
             .as_ref()
             .map(|c| stars::labels(c, &cam, &eq_to_hor))
             .unwrap_or_default();
-        self.overlay
-            .draw_sky(&horizon, &names, (cam.width, cam.height), pw, ph, dpr);
+        let (lines, figure_names) = match (&self.figures, self.show_figures) {
+            (Some(f), true) => {
+                let taken: Vec<stars::Rect> = names
+                    .iter()
+                    .map(|(x, y, n)| stars::label_rect(*x, *y, n))
+                    .collect();
+                (
+                    constellations::screen_lines(f, &cam, &eq_to_hor),
+                    constellations::labels(f, &cam, &eq_to_hor, &taken),
+                )
+            }
+            _ => (Vec::new(), Vec::new()),
+        };
+        self.overlay.draw_sky(
+            &overlay::SkyLabels {
+                horizon: &horizon,
+                stars: &names,
+                lines: &lines,
+                figures: &figure_names,
+            },
+            (cam.width, cam.height),
+            pw,
+            ph,
+            dpr,
+        );
         if !self.sky_attr && !self.renderer.is_lost() {
             self.sky_attr = true;
             self.set_globe_attr("data-sky", "ready");
@@ -1502,6 +1559,9 @@ fn start() -> Result<(), JsValue> {
         sky_attr: false,
         stars: None,
         stars_requested: false,
+        figures: None,
+        show_figures: !initial_hash.contains("&figures=off"),
+        figures_button: element(&doc, "figures-toggle")?,
     }));
 
     {
@@ -1509,6 +1569,8 @@ fn start() -> Result<(), JsValue> {
         a.me = Rc::downgrade(&app);
         // The URL layer takes the same path as a click.
         a.select_layer(initial_layer);
+        let figures = a.show_figures;
+        a.set_figures(figures); // labels the button
         if initial_sky {
             a.set_view(true);
         }
@@ -1814,8 +1876,12 @@ fn start() -> Result<(), JsValue> {
                             }
                         }
                         _ => {
-                            // Keys the sky shares with the Earth view.
+                            // Keys the sky shares with the Earth view, and C.
                             match e.key().as_str() {
+                                "c" | "C" if plain => {
+                                    let on = !a.show_figures;
+                                    a.set_figures(on);
+                                }
                                 "s" | "S" if plain => {
                                     let (ui, url) = (a.share_ui.clone(), a.current_share_url());
                                     drop(a);
@@ -2100,6 +2166,7 @@ fn start() -> Result<(), JsValue> {
                         ..look
                     };
                 }
+                a.set_figures(!hash.contains("&figures=off"));
                 if sky != a.sky_on {
                     a.set_view(sky);
                 } else {
@@ -2118,7 +2185,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 10] = [
+    let buttons: [(&str, Action); 11] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2163,6 +2230,10 @@ fn start() -> Result<(), JsValue> {
                 return a.sky_moved();
             }
             a.send(Event::Reset);
+        }),
+        ("figures-toggle", |a| {
+            let on = !a.show_figures;
+            a.set_figures(on)
         }),
         ("view-earth", |a| a.set_view(false)),
         ("view-sky", |a| a.set_view(true)),

@@ -97,6 +97,8 @@ const VIEWS = [
   { name: "sky-south", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90" },
   { name: "sky-north", hash: "#40,-74,800&t=1735700400&view=sky&look=20,45,80" },
   { name: "sky-zoom", hash: "#40,-74,800&t=1735700400&view=sky&look=175,32,20" },
+  // From Sydney with a 150-degree field and no constellation figures.
+  { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735700400&view=sky&look=180,60,150&figures=off" },
   { name: "sky-phone", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90", viewport: { width: 390, height: 844 } },
   {
     name: "sky-ctxloss",
@@ -238,6 +240,7 @@ try {
       // frame and the star catalog's arrival.
       await page.waitForSelector("#globe[data-sky]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector("#globe[data-figures]", { state: "attached", timeout: 30_000 });
     } else {
       // Labels load after the map; the app flags the canvas once they are drawn.
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });

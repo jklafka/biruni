@@ -13,6 +13,16 @@ use crate::view::Units;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, Document, HtmlCanvasElement, HtmlElement};
 
+/// What the sky view's overlay shows (see [`Overlay::draw_sky`]).
+#[derive(Clone, Copy)]
+pub struct SkyLabels<'a> {
+    pub horizon: &'a [(f64, f64, &'a str)],
+    pub stars: &'a [(f64, f64, &'a str)],
+    /// Constellation lines: (thin, screen polyline).
+    pub lines: &'a [(bool, Vec<(f64, f64)>)],
+    pub figures: &'a [(f64, f64, &'a str)],
+}
+
 pub struct Overlay {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
@@ -46,18 +56,17 @@ impl Overlay {
         }
     }
 
-    /// Draw the sky view's labels, replacing whatever was there: compass
-    /// points centered just above their place on the horizon, and star
-    /// names to the right of their star (CSS pixels).
-    pub fn draw_sky(
-        &mut self,
-        horizon: &[(f64, f64, &str)],
-        stars: &[(f64, f64, &str)],
-        css: (f64, f64),
-        px: u32,
-        py: u32,
-        dpr: f64,
-    ) {
+    /// Draw the sky view's overlay, replacing whatever was there:
+    /// constellation lines and names, compass points centered just above
+    /// their place on the horizon, and star names to the right of their star
+    /// (CSS pixels).
+    pub fn draw_sky(&mut self, l: &SkyLabels, css: (f64, f64), px: u32, py: u32, dpr: f64) {
+        let SkyLabels {
+            horizon,
+            stars,
+            lines,
+            figures,
+        } = *l;
         if (px, py) != (self.canvas.width(), self.canvas.height()) {
             self.canvas.set_width(px);
             self.canvas.set_height(py);
@@ -65,7 +74,35 @@ impl Overlay {
         let ctx = &self.ctx;
         let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         ctx.clear_rect(0.0, 0.0, css.0, css.1);
-        self.has_content = !(horizon.is_empty() && stars.is_empty());
+        self.has_content =
+            !(horizon.is_empty() && stars.is_empty() && lines.is_empty() && figures.is_empty());
+        ctx.set_line_cap("round");
+        ctx.set_line_width(1.0);
+        for thin in [true, false] {
+            ctx.set_stroke_style_str(if thin {
+                "rgba(110,140,200,0.28)"
+            } else {
+                "rgba(120,155,220,0.55)"
+            });
+            ctx.begin_path();
+            for (_, run) in lines.iter().filter(|(t, _)| *t == thin) {
+                for (i, (x, y)) in run.iter().enumerate() {
+                    if i == 0 {
+                        ctx.move_to(*x, *y);
+                    } else {
+                        ctx.line_to(*x, *y);
+                    }
+                }
+            }
+            ctx.stroke();
+        }
+        ctx.set_font("500 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+        ctx.set_text_align("center");
+        ctx.set_text_baseline("middle");
+        ctx.set_fill_style_str("rgba(140,170,225,0.8)");
+        for (x, y, text) in figures {
+            let _ = ctx.fill_text(&text.to_uppercase(), *x, *y);
+        }
         ctx.set_line_width(3.0);
         ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
         ctx.set_font("600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
