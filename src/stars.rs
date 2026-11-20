@@ -141,6 +141,20 @@ pub fn vertices(cat: &Catalog) -> Vec<f32> {
     out
 }
 
+/// Screen box (x0, y0, x1, y1) of a star name drawn to the right of the
+/// star at `(x, y)`.
+pub fn label_rect(x: f64, y: f64, name: &str) -> Rect {
+    let w = 7.0 * name.chars().count() as f64;
+    (x + 6.0, y - 8.0, x + 8.0 + w, y + 8.0)
+}
+
+/// An axis-aligned screen box: x0, y0, x1, y1.
+pub type Rect = (f64, f64, f64, f64);
+
+pub fn overlaps(a: &Rect, b: &Rect) -> bool {
+    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
+}
+
 /// Brightest stars get names: those at least this many magnitudes brighter
 /// than the view's limit.
 const LABEL_MARGIN: f32 = 3.5;
@@ -167,13 +181,8 @@ pub fn labels<'a>(cat: &'a Catalog, cam: &SkyCamera, eq_to_hor: &Mat3) -> Vec<(f
         if !(0.0..cam.width).contains(&x) || !(0.0..cam.height).contains(&y) {
             continue;
         }
-        // The label sits to the right of the star.
-        let w = 7.0 * name.chars().count() as f64;
-        let r = (x + 6.0, y - 8.0, x + 8.0 + w, y + 8.0);
-        if placed
-            .iter()
-            .any(|p| r.0 < p.2 && p.0 < r.2 && r.1 < p.3 && p.1 < r.3)
-        {
+        let r = label_rect(x, y, name);
+        if placed.iter().any(|p| overlaps(&r, p)) {
             continue;
         }
         placed.push(r);

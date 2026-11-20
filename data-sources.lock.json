@@ -176,6 +176,14 @@
       "sha256": "7339ee90615232596bbfd67f20c09bbefaef596ab0fdddc45dcb56edc3b98710",
       "size": 50875258,
       "license": "natural-earth"
+    },
+    {
+      "name": "stellarium-western",
+      "url": "https://raw.githubusercontent.com/Stellarium/stellarium-skycultures/2d80ce70984c14bba7da2d31a0f9b27e292861c9/western/index.json",
+      "version": "stellarium-skycultures 2d80ce7",
+      "sha256": "a861accd345249a185a5ecfc2a516f34291c0aa52f4bb8d8337ffc53e9cef6b9",
+      "size": 107520,
+      "license": "stellarium-skycultures"
     }
   ]
 }

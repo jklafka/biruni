@@ -19,7 +19,8 @@ Checks, one line per problem on stderr, exit status 1 if there are any:
             in src/geo.rs and src/country.rs: supported version, no trailing
             bytes, lon/lat in range, at least one feature; or STAR, the star
             catalog of scripts/convert_stars.py: positions in range, sorted
-            brightest first), .tsv (UTF-8,
+            brightest first; or CNST, the constellation figures of
+            scripts/convert_constellations.py), .tsv (UTF-8,
             header line, column count, lat/lon in range, at least one row) and
             .webp (RIFF header, dimensions) and tilesets.json (the tile pack
             list, see check_tilesets). Unknown extensions fail, so a new data
@@ -217,11 +218,31 @@ def decode_stars(data):
     return len(stars)
 
 
+def decode_constellations(data):
+    """CNST constellation figures (scripts/convert_constellations.py,
+    src/constellations.rs). Returns the constellation count."""
+    import convert_constellations
+
+    try:
+        figs = convert_constellations.decode(data)
+    except ValueError as e:
+        raise Bad(f"constellations: {e}")
+    if not figs:
+        raise Bad("constellations: none")
+    for abbr, _name, label, lines in figs:
+        points = [label] + [p for _f, ps in lines for p in ps]
+        if not all(0 <= ra < 2 * math.pi + 1e-9 and abs(dec) <= math.pi / 2 + 1e-9 for ra, dec in points):
+            raise Bad(f"constellations: {abbr} position out of range")
+    return len(figs)
+
+
 def decode_bin(data):
     if data[:4] == b"MAPC":
         return decode_countries(data)
     if data[:4] == b"STAR":
         return decode_stars(data)
+    if data[:4] == b"CNST":
+        return decode_constellations(data)
     return decode_shapes(data)
 
 

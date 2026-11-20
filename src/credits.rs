@@ -52,12 +52,27 @@ pub const HYG: Credit = Credit {
     text: "Stars of the sky view (positions, brightness, colors, names), v4.4 by David Nash (astronexus). Our converted star file is offered under the same license.",
 };
 
+pub const STELLARIUM: Credit = Credit {
+    id: "stellarium-skycultures",
+    name: "Stellarium sky cultures (western)",
+    license: "CC BY-SA",
+    license_url: "https://creativecommons.org/licenses/by-sa/4.0/",
+    source_url: "https://github.com/Stellarium/stellarium-skycultures",
+    text: "Constellation figures and names of the sky view. Our converted figure file (with HYG positions) is offered under CC BY-SA 4.0.",
+};
+
 /// Every dataset the app can show.
-pub const ALL: [&Credit; 4] = [&NATURAL_EARTH, &BLUE_MARBLE, &BLACK_MARBLE, &HYG];
+pub const ALL: [&Credit; 5] = [
+    &NATURAL_EARTH,
+    &BLUE_MARBLE,
+    &BLACK_MARBLE,
+    &HYG,
+    &STELLARIUM,
+];
 
 /// The credits of the sky view.
 pub fn sky_credits() -> Vec<&'static Credit> {
-    vec![&HYG]
+    vec![&HYG, &STELLARIUM]
 }
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
@@ -67,7 +82,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
-        .filter(|c| c.id != HYG.id)
+        .filter(|c| c.id != HYG.id && c.id != STELLARIUM.id)
         .collect()
 }
 
@@ -109,10 +124,11 @@ mod tests {
     fn the_sky_credits_its_stars_and_the_earth_does_not() {
         assert_eq!(
             sky_credits().iter().map(|c| c.id).collect::<Vec<_>>(),
-            ["hyg"]
+            ["hyg", "stellarium-skycultures"]
         );
         for layer in Layer::ALL {
-            assert!(visible_credits(layer).iter().all(|c| c.id != HYG.id));
+            let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
+            assert!(!ids.contains(&HYG.id) && !ids.contains(&STELLARIUM.id));
         }
     }
 

@@ -15,6 +15,7 @@ python3 scripts/test_validate_data.py > /dev/null 2>&1 || { python3 scripts/test
 python3 scripts/test_publish_data.py > /dev/null 2>&1 || { python3 scripts/test_publish_data.py; exit 1; }
 python3 scripts/test_tile_pack.py > /dev/null 2>&1 || { python3 scripts/test_tile_pack.py; exit 1; }
 python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test_convert_stars.py; exit 1; }
+python3 scripts/test_convert_constellations.py > /dev/null 2>&1 || { python3 scripts/test_convert_constellations.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -46,6 +47,7 @@ for f in assets/data/*; do
   is_external "$name" && continue
   [ "$name" = tilesets.json ] && continue
   [ "$name" = stars.bin ] && continue
+  [ "$name" = constellations.bin ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 
@@ -90,6 +92,17 @@ if any(s[2] > cs.MAG_LIMIT + 0.05 for s in stars):
     problems.append("stars fainter than the limit")
 if problems:
     sys.exit("assets/data/stars.bin: " + ", ".join(problems))
+PY
+
+# Constellation figures (scripts/convert_constellations.py), from pinned
+# Stellarium and HYG downloads: all 88, decodable.
+python3 - <<'PY' || drift+=("constellations.bin (see above; rebuild with scripts/convert_constellations.py)")
+import sys
+sys.path.insert(0, "scripts")
+import convert_constellations as cc
+figs = cc.decode(open("assets/data/constellations.bin", "rb").read())
+if len(figs) != 88:
+    sys.exit(f"assets/data/constellations.bin: {len(figs)} constellations, expected 88")
 PY
 
 if [ ${#drift[@]} -gt 0 ]; then
