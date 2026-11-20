@@ -262,5 +262,41 @@ around it:
 - Coalesce range requests for neighboring tiles in a row.
 - The same machinery for planet surfaces (`maps-ztx.6`). HiPS sky tiles
   (`maps-4nv.7`) need a HEALPix page table, not this equirectangular one.
-- PMTiles for large vector data (`maps-wc7.3`) is separate: vector tiles need
-  a different cache.
+- Vector tiles in tile packs, when a vector layer outgrows one file (see
+  below).
+
+## Vector data: PMTiles or not (`maps-wc7.3`)
+
+Decided 2026-11-19: no PMTiles reader for now. When a vector layer needs
+tiles, put them in tile packs (this format) instead.
+
+- **No layer needs vector tiles yet.** The largest vector file is the
+  countries file at 294 KB; land is 239 KB. Natural Earth 1:10m coastlines
+  and borders (for zooming below 400 km) would be a few MB in the compact
+  binary format, which still loads once, and `lines.rs` already simplifies
+  them by zoom. Candidates that could outgrow one file: historical borders
+  with validity intervals (`maps-3sn.2`, `maps-3sn.4`) and anything finer
+  than 1:10m.
+- **PMTiles and its tools assume Web Mercator.** The z/x/y tiles that
+  tippecanoe and Planetiler write stop at ±85.05°, so Antarctica and the
+  Arctic would need a second source, and the tiles do not line up with this
+  equirectangular pyramid.
+- **Size cost.** PMTiles v3 directories are varint-encoded and, in practice,
+  gzip-compressed, and MVT tiles are protobuf plus geometry commands, usually
+  gzipped too. A Rust inflater (`miniz_oxide`) adds 17.7 KB to the wasm (7.9
+  KB gzipped, about 4.5% of today's 176 KB gzipped binary), measured with
+  `opt-level = "z"`, LTO and `wasm-opt -Oz`. The browser's
+  `DecompressionStream` would cost nothing but is asynchronous. An MVT decoder
+  would add a few KB more.
+- **Tile packs already do the hard part.** Range requests, directory pages,
+  R2 publishing, the CORS and range checks in `publish_data.py` and the
+  sparse fixtures all carry over. A vector pack would add a tile format byte
+  (2: the existing `MAPD` shapes of `geo::decode_shapes`, clipped to the
+  tile and quantized to it), so the decoder the app already has reads the
+  tiles, and Cloudflare cannot compress range responses anyway. What is new
+  is a cache of decoded segments per tile for the line pass, rather than
+  texture slots.
+- **When to revisit.** If a layer comes ready-made as PMTiles from a third
+  party (an OpenStreetMap extract built with tippecanoe or Planetiler, for
+  example), reading it directly may beat converting it. Then weigh the
+  inflater against `DecompressionStream`, and handle the polar gap.
