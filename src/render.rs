@@ -12,7 +12,7 @@ use web_sys::{
     WebGlShader, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
-const VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.vert"));
+pub(crate) const VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.vert"));
 const FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/globe.frag"));
 const SPACE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/space.frag"));
 const BLIT_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/blit.frag"));
@@ -901,6 +901,8 @@ pub struct Renderer {
     /// returns null once it is lost, and the object stays valid for
     /// `restoreContext`.
     lose_ext: Option<web_sys::WebglLoseContext>,
+    /// The sky view's pass, built the first time the sky is drawn.
+    sky: Option<crate::sky_render::SkyPass>,
 }
 
 impl Renderer {
@@ -960,6 +962,7 @@ impl Renderer {
             theme_classes: None,
             budget,
             lose_ext,
+            sky: None,
         })
     }
 
@@ -1267,6 +1270,20 @@ impl Renderer {
         self.ctx.on_lost();
     }
 
+    /// Draw the sky view instead of the Earth.
+    pub fn draw_sky(&mut self, frame: &crate::sky_render::SkyFrame) -> Result<(), JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(());
+        }
+        if self.sky.is_none() {
+            self.sky = Some(crate::sky_render::SkyPass::create(&self.gl)?);
+        }
+        if let Some(pass) = &self.sky {
+            pass.draw(&self.gl, frame);
+        }
+        Ok(())
+    }
+
     /// The context came back: rebuild every GL object and, if the map data
     /// is already in memory, upload it again without refetching. The layer
     /// and camera live outside GL, so the view is unchanged.
@@ -1283,6 +1300,7 @@ impl Renderer {
         self.blit = r.blit;
         self.frag = r.frag;
         self.morph = None; // rebuilt on demand
+        self.sky = None;
         self.vao = r.vao;
         self.uniforms = r.uniforms;
         self.map = r.map;
@@ -1890,7 +1908,7 @@ fn ensure_line_target(
     Ok(())
 }
 
-fn compile(gl: &GL, kind: u32, src: &str) -> Result<WebGlShader, JsValue> {
+pub(crate) fn compile(gl: &GL, kind: u32, src: &str) -> Result<WebGlShader, JsValue> {
     let shader = gl.create_shader(kind).ok_or("failed to create shader")?;
     gl.shader_source(&shader, src);
     gl.compile_shader(&shader);
@@ -1905,7 +1923,7 @@ fn compile(gl: &GL, kind: u32, src: &str) -> Result<WebGlShader, JsValue> {
     }
 }
 
-fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsValue> {
+pub(crate) fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, JsValue> {
     let program = gl.create_program().ok_or("failed to create program")?;
     gl.attach_shader(&program, vs);
     gl.attach_shader(&program, fs);

@@ -46,6 +46,36 @@ impl Overlay {
         }
     }
 
+    /// Draw the sky view's labels: text centered just above each point
+    /// (CSS pixels), replacing whatever was there.
+    pub fn draw_sky(
+        &mut self,
+        labels: &[(f64, f64, &str)],
+        css: (f64, f64),
+        px: u32,
+        py: u32,
+        dpr: f64,
+    ) {
+        if (px, py) != (self.canvas.width(), self.canvas.height()) {
+            self.canvas.set_width(px);
+            self.canvas.set_height(py);
+        }
+        let ctx = &self.ctx;
+        let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+        ctx.clear_rect(0.0, 0.0, css.0, css.1);
+        self.has_content = !labels.is_empty();
+        ctx.set_font("600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+        ctx.set_text_align("center");
+        ctx.set_text_baseline("bottom");
+        ctx.set_line_width(3.0);
+        ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
+        ctx.set_fill_style_str("#c9d3e6");
+        for (x, y, text) in labels {
+            let _ = ctx.stroke_text(text, *x, *y - 4.0);
+            let _ = ctx.fill_text(text, *x, *y - 4.0);
+        }
+    }
+
     /// Redraw for the current camera. Does nothing when there is nothing to
     /// draw now and nothing to clear.
     pub fn draw(&mut self, cam: &Camera, measure: &Measure, px: u32, py: u32, dpr: f64) {
