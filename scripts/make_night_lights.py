@@ -34,7 +34,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "
 
 
 def full_image(src=None):
-    """The source at its full 13500x6750 (also used by scripts/make_tiles.py).
+    """The source at its full 13500x6750.
     Fetches the pinned source unless given a path."""
     from PIL import Image
 

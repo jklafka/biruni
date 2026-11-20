@@ -5,33 +5,43 @@
 //! [`TileStream`] is browser-free bookkeeping (tested natively). The app
 //! carries out its [`Plan`] with [`fetch_range`] and [`decode_tile`], and
 //! reports back with [`TileStream::dir_loaded`], [`TileStream::tile_arrived`]
-//! and [`TileStream::tile_failed`]. Tiles are keyed by tileset index, so
+//! and [`TileStream::tile_failed`] (and [`TileStream::page_loaded`] for
+//! directory pages after the first). Tiles are keyed by tileset index, so
 //! switching layers and back keeps what is still cached; a lost context
 //! bumps the epoch, which drops every answer still on its way.
 
-use crate::tile_pack::{header_len, Directory};
+use crate::tile_pack::{first_len, Directory, Lookup, DIR_PAGE};
 use crate::tiles::{page_table, Levels, TileCache, TileId, Tileset};
 use std::collections::HashSet;
-use std::rc::Rc;
 
 /// Tile requests in flight at once.
 pub const MAX_IN_FLIGHT: usize = 6;
+/// Directory page requests in flight at once.
+pub const MAX_PAGES_IN_FLIGHT: usize = 2;
 
 #[derive(Debug)]
 enum Dir {
     Loading,
-    Ready(Rc<Directory>),
+    Ready(Directory),
     Failed,
 }
 
-/// A directory to fetch: the first `len` bytes of `url`.
+/// Directory bytes to fetch: `len` bytes of `url` from `offset`. `page` is
+/// `None` for the header with the first page (parse it with
+/// `Directory::parse(bytes, min, max, entries)` and report it to
+/// [`TileStream::dir_loaded`]), else a later page for
+/// [`TileStream::page_loaded`].
 #[derive(Debug, PartialEq)]
 pub struct DirFetch {
     pub set: usize,
     pub url: String,
+    pub offset: u32,
     pub len: u32,
     pub min: u8,
     pub max: u8,
+    pub page: Option<usize>,
+    /// Entries per directory page.
+    pub entries: usize,
 }
 
 /// A tile to fetch: `len` bytes of `url` from `offset`.
@@ -47,7 +57,7 @@ pub struct TileFetch {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Plan {
-    pub dir: Option<DirFetch>,
+    pub dirs: Vec<DirFetch>,
     pub tiles: Vec<TileFetch>,
 }
 
@@ -67,9 +77,12 @@ pub struct TileStream {
     in_flight: HashSet<(usize, TileId)>,
     /// Tiles the pack lacks, or that failed to load; not asked for again.
     absent: HashSet<(usize, TileId)>,
-    /// Last selection, for [`Self::settled`].
+    /// Last selection, for [`Self::status`].
     wanted: Vec<TileId>,
     pages_dirty: bool,
+    /// Entries per directory page ([`DIR_PAGE`]; smaller in tests).
+    dir_page: usize,
+    pages_in_flight: usize,
 }
 
 impl TileStream {
@@ -85,12 +98,15 @@ impl TileStream {
             absent: HashSet::new(),
             wanted: Vec::new(),
             pages_dirty: false,
+            dir_page: DIR_PAGE,
+            pages_in_flight: 0,
         }
     }
 
     pub fn set_tilesets(&mut self, sets: Vec<Tileset>) {
         self.dirs = sets.iter().map(|_| None).collect();
         self.sets = sets;
+        self.pages_in_flight = 0;
         self.active = None;
         self.pages_dirty = true;
     }
@@ -118,21 +134,23 @@ impl TileStream {
         let Some((i, levels)) = active else {
             return plan;
         };
-        let dir = match &self.dirs[i] {
-            None => {
-                let s = &self.sets[i];
-                self.dirs[i] = Some(Dir::Loading);
-                plan.dir = Some(DirFetch {
-                    set: i,
-                    url: s.url.clone(),
-                    len: header_len(s.min, s.max) as u32,
-                    min: s.min,
-                    max: s.max,
-                });
-                return plan;
-            }
-            Some(Dir::Ready(d)) => d.clone(),
-            Some(Dir::Loading | Dir::Failed) => return plan,
+        let s = &self.sets[i];
+        if self.dirs[i].is_none() {
+            self.dirs[i] = Some(Dir::Loading);
+            plan.dirs.push(DirFetch {
+                set: i,
+                url: s.url.clone(),
+                offset: 0,
+                len: first_len(s.min, s.max, self.dir_page) as u32,
+                min: s.min,
+                max: s.max,
+                page: None,
+                entries: self.dir_page,
+            });
+            return plan;
+        }
+        let Some(Dir::Ready(dir)) = &mut self.dirs[i] else {
+            return plan;
         };
         self.wanted = select(levels, self.cache.capacity());
         self.cache.touch(i as u32, &self.wanted, self.frame);
@@ -148,20 +166,36 @@ impl TileStream {
                 continue;
             }
             match dir.range(t) {
-                Some((offset, len)) => {
+                Lookup::Tile(offset, len) => {
                     self.in_flight.insert(key);
                     plan.tiles.push(TileFetch {
                         set: i,
                         id: t,
-                        url: self.sets[i].url.clone(),
+                        url: s.url.clone(),
                         offset,
                         len,
                         epoch: self.epoch,
                     });
                 }
-                None => {
+                Lookup::Absent => {
                     self.absent.insert(key);
                 }
+                Lookup::NeedPage(p) if self.pages_in_flight < MAX_PAGES_IN_FLIGHT => {
+                    dir.page_loading(p);
+                    self.pages_in_flight += 1;
+                    let (offset, len) = dir.page_range(p);
+                    plan.dirs.push(DirFetch {
+                        set: i,
+                        url: s.url.clone(),
+                        offset,
+                        len,
+                        min: s.min,
+                        max: s.max,
+                        page: Some(p),
+                        entries: self.dir_page,
+                    });
+                }
+                Lookup::NeedPage(_) | Lookup::Waiting => {}
             }
         }
         plan
@@ -172,9 +206,26 @@ impl TileStream {
             return;
         };
         *slot = Some(match dir {
-            Ok(d) => Dir::Ready(Rc::new(d)),
+            Ok(d) => Dir::Ready(d),
             Err(_) => Dir::Failed,
         });
+    }
+
+    /// A later directory page arrived, or failed (its tiles then count as
+    /// absent). Returns the error to report, if any.
+    pub fn page_loaded(
+        &mut self,
+        set: usize,
+        page: usize,
+        bytes: Result<Vec<u8>, String>,
+    ) -> Result<(), String> {
+        self.pages_in_flight = self.pages_in_flight.saturating_sub(1);
+        match self.dirs.get_mut(set) {
+            Some(Some(Dir::Ready(d))) => {
+                d.page_loaded(page, bytes.as_deref().map_err(|e| e.clone()))
+            }
+            _ => Err(format!("tile pack {set}: no directory for page {page}")),
+        }
     }
 
     /// A tile's bytes arrived and decoded: the slot to upload it to, or
@@ -368,7 +419,7 @@ mod tests {
     }
 
     fn ready(s: &mut TileStream, set: usize) {
-        s.dir_loaded(set, Directory::parse(TINY, 0, 1));
+        s.dir_loaded(set, Directory::parse(TINY, 0, 1, DIR_PAGE));
     }
 
     #[test]
@@ -377,14 +428,17 @@ mod tests {
         let shown = Some(("imagery", 0));
         let p = s.plan(shown, |_, _| panic!("no selection before the directory"));
         assert_eq!(
-            p.dir,
-            Some(DirFetch {
+            p.dirs,
+            vec![DirFetch {
                 set: 1,
                 url: "https://x/imagery.tiles".into(),
+                offset: 0,
                 len: 96,
                 min: 0,
-                max: 1
-            })
+                max: 1,
+                page: None,
+                entries: DIR_PAGE,
+            }]
         );
         assert_eq!(
             s.plan(shown, |_, _| vec![]),
@@ -398,7 +452,7 @@ mod tests {
             assert_eq!(cap, 8);
             want.clone()
         });
-        assert!(p.dir.is_none());
+        assert!(p.dirs.is_empty());
         // (1, 3, 1) is absent from the pack: not fetched.
         let ids: Vec<TileId> = p.tiles.iter().map(|f| f.id).collect();
         assert_eq!(ids, vec![id(1, 0, 0), id(1, 1, 0)]);
@@ -491,6 +545,55 @@ mod tests {
         s.dir_loaded(1, Err("bad".into()));
         assert!(s.plan(shown, |_, _| panic!()).tiles.is_empty());
         assert_eq!(s.status(), "settled");
+    }
+
+    #[test]
+    fn loads_directory_pages_as_tiles_need_them() {
+        let mut s = stream(8);
+        s.dir_page = 4;
+        let shown = Some(("imagery", 0));
+        let p = s.plan(shown, |_, _| vec![]);
+        let d = &p.dirs[0];
+        assert_eq!((d.offset, d.len, d.page, d.entries), (0, 48, None, 4));
+        s.dir_loaded(1, Directory::parse(&TINY[..48], 0, 1, 4));
+        // Directory entries 2 (page 0), 4 and 6 (page 1), 8 and 9 (page 2;
+        // 9 is absent from the pack).
+        let want = vec![
+            id(1, 0, 0),
+            id(1, 2, 0),
+            id(1, 0, 1),
+            id(1, 2, 1),
+            id(1, 3, 1),
+        ];
+        let p = s.plan(shown, |_, _| want.clone());
+        assert_eq!(
+            p.tiles.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![id(1, 0, 0)]
+        );
+        let pages: Vec<_> = p.dirs.iter().map(|d| (d.page, d.offset, d.len)).collect();
+        assert_eq!(pages, vec![(Some(1), 48, 32), (Some(2), 80, 16)]);
+        assert_eq!(s.status(), "loading");
+        let p2 = s.plan(shown, |_, _| want.clone());
+        assert_eq!(p2, Plan::default(), "pages and the tile are on their way");
+        s.page_loaded(1, 1, Ok(TINY[48..80].to_vec())).unwrap();
+        assert!(s.page_loaded(1, 2, Err("offline".into())).is_err());
+        let p3 = s.plan(shown, |_, _| want.clone());
+        let ids: Vec<TileId> = p3.tiles.iter().map(|f| f.id).collect();
+        assert_eq!(
+            ids,
+            vec![id(1, 2, 0), id(1, 0, 1)],
+            "page 2 failed: its tiles are absent"
+        );
+        assert!(p3.dirs.is_empty());
+        for f in p.tiles.iter().chain(&p3.tiles) {
+            s.tile_arrived(f);
+        }
+        s.plan(shown, |_, _| want.clone());
+        assert_eq!(s.status(), "settled");
+        assert!(
+            s.page_loaded(0, 1, Ok(vec![])).is_err(),
+            "no directory for that set"
+        );
     }
 
     #[test]

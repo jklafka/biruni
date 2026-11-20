@@ -4,6 +4,7 @@
 Run: python3 scripts/test_tile_pack.py (scripts/check-data.sh runs it too).
 """
 import struct
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -91,18 +92,39 @@ except ImportError:
     HAVE_PIL = False
 
 
+def gradient(w, h):
+    """An image whose every pixel differs from its neighbors."""
+    from PIL import Image
+
+    im = Image.new("RGB", (w, h))
+    px = im.load()
+    for x in range(w):
+        for y in range(h):
+            px[x, y] = ((x * 37 + y * 11) % 256, (y * 53 + x * 7) % 256, (x * y) % 256)
+    return im
+
+
+def grid_source(world, cols, rows):
+    """make_tiles.Source cutting `world` into cols x rows source tiles."""
+    import make_tiles
+
+    w, h = world.size[0] // cols, world.size[1] // rows
+    return make_tiles.Source(cols, rows, lambda c, r: world.crop((c * w, r * h, (c + 1) * w, (r + 1) * h)),
+                             lambda: world)
+
+
 @unittest.skipUnless(HAVE_PIL, "make_tiles.py needs Pillow")
 class Padding(unittest.TestCase):
-    def test_border_wraps_longitude_and_repeats_the_poles(self):
+    def pad_whole(self, im, m):
         import make_tiles
-        from PIL import Image
 
-        im = Image.new("RGB", (8, 4))
+        src = make_tiles.whole(lambda: im)
+        return make_tiles.padded(src, 0, 0, im, {(0, 0): make_tiles.strips(im, m)}, m)
+
+    def test_border_wraps_longitude_and_repeats_the_poles(self):
+        im = gradient(8, 4)
         px = im.load()
-        for x in range(8):
-            for y in range(4):
-                px[x, y] = (x * 30, y * 60, 0)
-        p = make_tiles.padded(im, 1)
+        p = self.pad_whole(im, 1)
         q = p.load()
         self.assertEqual(p.size, (10, 6))
         self.assertEqual(q[0, 1], px[7, 0], "west border is the east edge")
@@ -111,6 +133,53 @@ class Padding(unittest.TestCase):
         self.assertEqual(q[3, 5], px[2, 3], "south border repeats the bottom row")
         self.assertEqual((q[0, 0], q[9, 5]), (px[7, 0], px[0, 3]))
         self.assertEqual(q[4, 2], px[3, 1], "interior shifted by the border")
+
+    def test_source_tiles_are_padded_from_their_neighbors(self):
+        import make_tiles
+
+        world = gradient(16, 8)
+        m = 2
+        whole = self.pad_whole(world, m)
+        src = grid_source(world, 4, 2)
+        edges = {(c, r): make_tiles.strips(src.load(c, r), m) for r in range(2) for c in range(4)}
+        for r in range(2):
+            for c in range(4):
+                with self.subTest(c=c, r=r):
+                    got = make_tiles.padded(src, c, r, src.load(c, r), edges, m)
+                    want = whole.crop((c * 4, r * 4, c * 4 + 4 + 2 * m, r * 4 + 4 + 2 * m))
+                    self.assertEqual(got.tobytes(), want.tobytes())
+
+
+@unittest.skipUnless(HAVE_PIL, "make_tiles.py needs Pillow")
+class Cut(unittest.TestCase):
+    def test_a_grid_of_source_tiles_cuts_like_the_whole_image(self):
+        import make_tiles
+        from PIL import Image
+
+        # Smooth noise at level 3's size (4096x2048), so the source tiles
+        # are 1024 square and the margin matters for the filter.
+        world = Image.effect_noise((512, 256), 64).convert("RGB").resize((4096, 2048), Image.BILINEAR)
+        region = [(-30.0, 80.0, 30.0, 100.0), (60.0, -180.0, 90.0, -170.0)]  # a seam, a pole
+        whole = make_tiles.cut(make_tiles.whole(lambda: world), 3, region)
+        grid = make_tiles.cut(grid_source(world, 4, 2), 3, region)
+        self.assertEqual(sorted(whole), sorted(grid))
+        self.assertGreater(len(grid), 4)
+        for k in whole:
+            with self.subTest(tile=k):
+                a = Image.open(io.BytesIO(whole[k])).convert("RGB")
+                b = Image.open(io.BytesIO(grid[k])).convert("RGB")
+                self.assertEqual(a.size, (258, 258))
+                self.assertEqual(a.tobytes(), b.tobytes())
+
+    def test_misplaced_source_tiles_are_refused(self):
+        import make_tiles
+
+        world = gradient(64, 32)
+        src = grid_source(world, 4, 2)
+        load = src.load
+        src.load = lambda c, r: load((c + 1) % 4, r)
+        with self.assertRaises(SystemExit):
+            make_tiles.cut(src, 3, [(0.0, 0.0, 1.0, 1.0)])
 
 
 if __name__ == "__main__":
