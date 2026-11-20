@@ -12,6 +12,7 @@ uniform mat3 u_camToHor;      // camera -> horizontal (SkyCamera::basis)
 uniform mat3 u_horToEq;       // horizontal -> equatorial J2000
 uniform float u_dpr;
 uniform float u_gridStep;     // radians between grid lines, 0 for no grid
+uniform float u_daylight;     // 0 at night, 1 in full day (sky_bodies::daylight)
 
 out vec4 outColor;
 
@@ -19,6 +20,9 @@ const float PI = 3.14159265358979;
 const vec3 SKY = vec3(0.008, 0.012, 0.030);
 const vec3 GLOW = vec3(0.030, 0.040, 0.070);
 const vec3 GROUND = vec3(0.028, 0.030, 0.026);
+const vec3 DAY_ZENITH = vec3(0.24, 0.42, 0.74);
+const vec3 DAY_HORIZON = vec3(0.58, 0.70, 0.84);
+const vec3 DAY_GROUND = vec3(0.10, 0.11, 0.09);
 const vec3 GRID = vec3(0.30, 0.42, 0.70);
 const vec3 HORIZON = vec3(0.45, 0.50, 0.55);
 
@@ -42,6 +46,8 @@ void main() {
 
     float alt = asin(clamp(hor.y, -1.0, 1.0));
     vec3 col = SKY + GLOW * exp(-max(alt, 0.0) / 0.12);
+    vec3 day = mix(DAY_ZENITH, DAY_HORIZON, exp(-max(alt, 0.0) / 0.25));
+    col = mix(col, day, u_daylight);
 
     if (u_gridStep > 0.0) {
         float dec = asin(clamp(eq.y, -1.0, 1.0));
@@ -59,7 +65,7 @@ void main() {
 
     // Ground below the horizon, antialiased over a pixel, with a thin line.
     float ground = smoothstep(-px, px, -alt);
-    col = mix(col, GROUND, ground);
+    col = mix(col, mix(GROUND, DAY_GROUND, u_daylight), ground);
     col = mix(col, HORIZON, 0.6 * line(abs(alt), 1.5 * px));
     outColor = vec4(col, 1.0);
 }

@@ -27,6 +27,8 @@ pub struct SkyFrame {
     pub dpr: f64,
     /// Radians between grid lines, 0 for none.
     pub grid_step: f64,
+    /// 0 at night, 1 in full day.
+    pub daylight: f64,
     /// Equatorial -> camera, and the zenith in equatorial space.
     pub eq_to_cam: Mat3,
     pub zenith: [f64; 3],
@@ -62,6 +64,7 @@ pub struct SkyPass {
     hor_to_eq: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
     grid_step: Option<WebGlUniformLocation>,
+    daylight: Option<WebGlUniformLocation>,
     stars: StarProgram,
     star_buffer: Option<StarBuffer>,
 }
@@ -99,6 +102,7 @@ impl SkyPass {
             hor_to_eq: ku("u_horToEq"),
             dpr: ku("u_dpr"),
             grid_step: ku("u_gridStep"),
+            daylight: ku("u_daylight"),
             program,
         })
     }
@@ -151,6 +155,7 @@ impl SkyPass {
         gl.uniform_matrix3fv_with_f32_array(self.hor_to_eq.as_ref(), false, &to_gl(&f.hor_to_eq));
         gl.uniform1f(self.dpr.as_ref(), f.dpr as f32);
         gl.uniform1f(self.grid_step.as_ref(), f.grid_step as f32);
+        gl.uniform1f(self.daylight.as_ref(), f.daylight as f32);
         gl.draw_arrays(GL::TRIANGLE_STRIP, 0, 4);
 
         let Some(buf) = &self.star_buffer else {

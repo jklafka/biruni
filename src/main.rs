@@ -19,6 +19,7 @@ mod layer_loader;
 mod legend_ui;
 mod lines;
 mod measure;
+mod moon;
 mod overlay;
 mod projection;
 mod quality;
@@ -29,6 +30,7 @@ mod search;
 mod search_ui;
 mod share;
 mod sky;
+mod sky_bodies;
 mod sky_render;
 mod stars;
 mod sun;
@@ -816,7 +818,14 @@ impl App {
         };
         let cam = self.sky_cam;
         let eq_to_hor = obs.eq_to_horizon();
-        let mag_limit = stars::limiting_magnitude(cam.fov);
+        let bodies = sky_bodies::bodies(obs.unix_secs, obs.lat, obs.lon);
+        let sun_alt = bodies
+            .iter()
+            .find(|b| b.kind == sky_bodies::Kind::Sun)
+            .map_or(-1.0, |b| sky::mul(&eq_to_hor, b.dir)[1].asin());
+        let daylight = sky_bodies::daylight(sun_alt);
+        let mag_limit =
+            stars::limiting_magnitude(cam.fov) - sky_bodies::DAYLIGHT_MAGNITUDES * daylight as f32;
         let star_count = self
             .stars
             .as_ref()
@@ -827,9 +836,10 @@ impl App {
             half_short: 0.5 * pw.min(ph) as f64,
             tan_quarter: cam.tan_quarter(),
             cam_to_hor: cam.basis(),
-            hor_to_eq: sky::transpose(&obs.eq_to_horizon()),
+            hor_to_eq: sky::transpose(&eq_to_hor),
             dpr,
             grid_step: sky::grid_step(cam.fov),
+            daylight,
             eq_to_cam: sky::matmul(&sky::transpose(&cam.basis()), &eq_to_hor),
             zenith: sky::mul(&sky::transpose(&eq_to_hor), [0.0, 1.0, 0.0]),
             mag_limit,
@@ -839,22 +849,29 @@ impl App {
             web_sys::console::error_1(&e);
         }
         let horizon = sky::horizon_labels(&cam);
+        let shown = sky_bodies::on_screen(&bodies, &cam, &eq_to_hor, mag_limit);
+        let body_labels = sky_bodies::label_spots(&shown);
+        // Bodies and their names come first; star and constellation names
+        // keep clear of them.
+        let mut taken: Vec<stars::Rect> = shown
+            .iter()
+            .map(|b| (b.x - b.r, b.y - b.r, b.x + b.r, b.y + b.r))
+            .collect();
+        taken.extend(shown.iter().zip(&body_labels).filter_map(|(b, s)| {
+            let (x, y) = (*s)?;
+            Some((x, y - 8.0, x + 7.0 * b.name.chars().count() as f64, y + 8.0))
+        }));
         let names = self
             .stars
             .as_ref()
-            .map(|c| stars::labels(c, &cam, &eq_to_hor))
+            .map(|c| stars::labels(c, &cam, &eq_to_hor, mag_limit, &taken))
             .unwrap_or_default();
+        taken.extend(names.iter().map(|(x, y, n)| stars::label_rect(*x, *y, n)));
         let (lines, figure_names) = match (&self.figures, self.show_figures) {
-            (Some(f), true) => {
-                let taken: Vec<stars::Rect> = names
-                    .iter()
-                    .map(|(x, y, n)| stars::label_rect(*x, *y, n))
-                    .collect();
-                (
-                    constellations::screen_lines(f, &cam, &eq_to_hor),
-                    constellations::labels(f, &cam, &eq_to_hor, &taken),
-                )
-            }
+            (Some(f), true) => (
+                constellations::screen_lines(f, &cam, &eq_to_hor),
+                constellations::labels(f, &cam, &eq_to_hor, &taken),
+            ),
             _ => (Vec::new(), Vec::new()),
         };
         self.overlay.draw_sky(
@@ -863,6 +880,9 @@ impl App {
                 stars: &names,
                 lines: &lines,
                 figures: &figure_names,
+                bodies: &shown,
+                body_labels: &body_labels,
+                daylight,
             },
             (cam.width, cam.height),
             pw,
