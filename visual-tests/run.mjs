@@ -90,15 +90,17 @@ const VIEWS = [
   { name: "credits-open", hash: "#38.5,22.5,1500&layer=imagery", openCredits: true },
   { name: "credits-phone", hash: "#47,8.5,1500", viewport: { width: 390, height: 844 }, openCredits: true },
   { name: "mono-day-night", hash: "#30,0,9000&layer=mono&sun=on&t=1718992800" },
-  // The sky view from New York at a pinned time: due south (the celestial
-  // equator arcs across), due north (the pole at the center, 40 degrees up),
-  // a phone, and a context restore that must match the first.
-  { name: "sky-south", hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100" },
-  { name: "sky-north", hash: "#40,-74,800&t=1718992800&view=sky&look=0,40,90" },
-  { name: "sky-phone", hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100", viewport: { width: 390, height: 844 } },
+  // The sky view from New York on 2025-01-01 at 22:00 local (03:00 UTC):
+  // Orion due south, Polaris 40 degrees up in the north with the Big Dipper
+  // below it, a 20-degree zoom (fainter stars), a phone, and a context
+  // restore that must match the first.
+  { name: "sky-south", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90" },
+  { name: "sky-north", hash: "#40,-74,800&t=1735700400&view=sky&look=20,45,80" },
+  { name: "sky-zoom", hash: "#40,-74,800&t=1735700400&view=sky&look=175,32,20" },
+  { name: "sky-phone", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90", viewport: { width: 390, height: 844 } },
   {
     name: "sky-ctxloss",
-    hash: "#40,-74,800&t=1718992800&view=sky&look=180,30,100",
+    hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90",
     query: "?debug=ctxloss",
     loseContext: true,
     reference: "sky-south",
@@ -232,8 +234,10 @@ try {
       throw new Error(`${view.name}: map failed to load: ${await page.locator("#loading").innerText()}`);
     }
     if (/[&#]view=sky/.test(view.hash)) {
-      // The sky draws no Earth labels or countries; it flags its first frame.
+      // The sky draws no Earth labels or countries; it flags its first
+      // frame and the star catalog's arrival.
       await page.waitForSelector("#globe[data-sky]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
     } else {
       // Labels load after the map; the app flags the canvas once they are drawn.
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });

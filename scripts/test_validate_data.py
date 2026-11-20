@@ -148,6 +148,20 @@ class Validate(unittest.TestCase):
         files["land.bin"] = files["land.bin"][:-3]
         self.assertProblem(self.problems(files), "land.bin")
 
+    def test_star_catalog(self):
+        stars = (ROOT / "scripts" / "testdata" / "tiny_stars.bin").read_bytes()
+        files = self.good()
+        files["stars.bin"] = stars
+        self.assertEqual(self.problems(files), [])
+        for bad, text in ((stars[:-1], "star catalog"), (stars[:12] + b"\0\0\0\0" + stars[16:], "star catalog")):
+            files["stars.bin"] = bad
+            self.assertProblem(self.problems(files), text)
+        # Out of order: swap the brightest and the faintest of the 4 records.
+        rec = [stars[16 + 10 * i:26 + 10 * i] for i in range(4)]
+        swapped = stars[:16] + rec[3] + rec[1] + rec[2] + rec[0] + stars[56:]
+        files["stars.bin"] = swapped
+        self.assertProblem(self.problems(files), "sorted")
+
     def test_trailing_bytes(self):
         files = self.good()
         files["land.bin"] += b"\0"

@@ -43,8 +43,22 @@ pub const BLACK_MARBLE: Credit = Credit {
     text: "Night lights, 2016. NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA's Goddard Space Flight Center.",
 };
 
+pub const HYG: Credit = Credit {
+    id: "hyg",
+    name: "HYG star database",
+    license: "CC BY-SA 4.0",
+    license_url: "https://creativecommons.org/licenses/by-sa/4.0/",
+    source_url: "https://codeberg.org/astronexus/hyg",
+    text: "Stars of the sky view (positions, brightness, colors, names), v4.4 by David Nash (astronexus). Our converted star file is offered under the same license.",
+};
+
 /// Every dataset the app can show.
-pub const ALL: [&Credit; 3] = [&NATURAL_EARTH, &BLUE_MARBLE, &BLACK_MARBLE];
+pub const ALL: [&Credit; 4] = [&NATURAL_EARTH, &BLUE_MARBLE, &BLACK_MARBLE, &HYG];
+
+/// The credits of the sky view.
+pub fn sky_credits() -> Vec<&'static Credit> {
+    vec![&HYG]
+}
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
 /// every view (map shape, labels, search, statistics, the Terrain layer's
@@ -53,6 +67,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
+        .filter(|c| c.id != HYG.id)
         .collect()
 }
 
@@ -87,6 +102,17 @@ mod tests {
                 layer == Layer::NightLights,
                 "{layer:?}"
             );
+        }
+    }
+
+    #[test]
+    fn the_sky_credits_its_stars_and_the_earth_does_not() {
+        assert_eq!(
+            sky_credits().iter().map(|c| c.id).collect::<Vec<_>>(),
+            ["hyg"]
+        );
+        for layer in Layer::ALL {
+            assert!(visible_credits(layer).iter().all(|c| c.id != HYG.id));
         }
     }
 

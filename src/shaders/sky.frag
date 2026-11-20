@@ -54,7 +54,7 @@ void main() {
         float spread = smoothstep(6.0, 12.0, s * cos(dec) / radPerPx);
         float g = max(line(dDec, px), line(dRa, px) * spread);
         float equator = line(abs(dec), 1.5 * px);
-        col = mix(col, GRID, 0.22 * g + 0.25 * equator);
+        col = mix(col, GRID, 0.14 * g + 0.2 * equator);
     }
 
     // Ground below the horizon, antialiased over a pixel, with a thin line.
