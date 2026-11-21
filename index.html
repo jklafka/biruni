@@ -430,16 +430,20 @@
       @media (max-width: 860px) {
         #title p { display: none; }
       }
+      /* The title (with its Earth / Sky / Solar system switch) and the layer
+         picker need about 830 px side by side: below that the picker goes
+         under the title, and the search box under the picker. */
+      @media (max-width: 900px) {
+        #layers { top: 64px; left: 16px; right: auto; max-width: calc(100vw - 32px); }
+        #search { top: 116px; }
+      }
       @media (max-width: 520px) {
         #title p { display: none; }
-        #layers { top: 64px; left: 16px; right: auto; }
         /* Fit 390 px even with a wide fallback font: the menu takes what is left and clips. */
-        #layers { max-width: calc(100vw - 32px); }
         #layers button { padding: 0 6px; flex: none; }
         /* Five buttons and the Data menu: shorten Monochrome so the menu keeps room for its label. */
         #layers .wide-only { display: none; }
         #layer-theme { flex: 1 1 0; min-width: 0; padding: 0 4px; text-overflow: ellipsis; }
-        #search { top: 116px; }
         /* Above the HUD, left of the control buttons, in two columns to stay short. */
         #legend { left: 16px; right: 70px; max-width: none; bottom: calc(150px + var(--scrub, 0px)); }
         #legend ul { columns: 2; column-gap: 12px; }
