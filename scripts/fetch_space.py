@@ -403,23 +403,25 @@ def fetch_all(date):
 
 
 def from_live(manifest_url, out_path):
-    """Copy the published space.bin over `out_path` if it is newer."""
+    """Copy the published space.bin over `out_path` if it is valid and
+    newer. Any failure keeps `out_path` (an older but valid file)."""
     from urllib.parse import urljoin
 
-    req = urllib.request.Request(manifest_url, headers={"User-Agent": USER_AGENT,
-                                                        "Origin": "https://biruni.jklafka.cloud"})
+    headers = {"User-Agent": USER_AGENT, "Origin": "https://biruni.jklafka.cloud"}
     try:
+        req = urllib.request.Request(manifest_url, headers=headers)
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            manifest = json.loads(r.read())
-        path = manifest["files"]["space.bin"]
-    except (OSError, ValueError, KeyError) as e:
-        print(f"no live space.bin ({e}); keeping {out_path}", file=sys.stderr)
+            path = json.loads(r.read())["files"]["space.bin"]
+        req = urllib.request.Request(urljoin(manifest_url, path), headers=headers)
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            live = r.read()
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"warning: no live space.bin ({e}); keeping {out_path}", file=sys.stderr)
         return False
-    req = urllib.request.Request(urljoin(manifest_url, path), headers=req.headers)
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        live = r.read()
-    if check(live):
-        raise SystemExit(f"the live space.bin is broken: {check(live)}")
+    problems = check(live)
+    if problems:
+        print(f"warning: the live space.bin is broken ({problems}); keeping {out_path}", file=sys.stderr)
+        return False
     with open(out_path, "rb") as f:
         current = f.read()
     if decode(live)[0] <= decode(current)[0]:

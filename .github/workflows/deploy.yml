@@ -16,12 +16,27 @@ name: Deploy
 # assets/data/tilesets.json are uploaded separately (publish-tiles.yml); the
 # deploy only checks that they are served. Pull requests, dev servers and visual
 # tests keep serving the data from the site itself.
+#
+# Spacecraft and small bodies (assets/data/space.bin, scripts/fetch_space.py)
+# are refreshed from NASA JPL's Horizons and Small-Body Database APIs by the
+# weekly scheduled run (and by a manual run with "refresh_space"), which then
+# deploys main with the fresh file. Pushes to main reuse the live file when it
+# is newer than the committed snapshot, so a deploy never rolls the data
+# back. Pull requests use the committed snapshot. The browser never calls JPL.
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Mondays 05:23 UTC.
+    - cron: "23 5 * * 1"
   workflow_dispatch:
+    inputs:
+      refresh_space:
+        description: Fetch fresh spacecraft and small-body data from JPL
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -56,6 +71,17 @@ jobs:
           curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin" trunk
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Space data
+        env:
+          REFRESH: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_space) }}
+          ON_MAIN: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          if [ "$REFRESH" = "true" ]; then
+            python3 scripts/fetch_space.py assets/data/space.bin
+          elif [ "$ON_MAIN" = "true" ]; then
+            python3 scripts/fetch_space.py assets/data/space.bin --from-live "$LIVE_MANIFEST_URL"
+          fi
+          python3 scripts/fetch_space.py --check assets/data/space.bin
       - name: Release build
         run: trunk build --release
       - name: Validate built data

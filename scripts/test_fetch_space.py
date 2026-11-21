@@ -174,6 +174,43 @@ class Comets(unittest.TestCase):
         self.assertEqual(seen["sb-kind"], "c")
 
 
+class FromLive(unittest.TestCase):
+    """--from-live keeps the newer of the committed and the published file."""
+
+    def run_with(self, published, current):
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        def urlopen(req, timeout=None):
+            url = req.full_url
+            if url.endswith("manifest.json"):
+                if published is None:
+                    raise OSError("404")
+                return io.BytesIO(json.dumps({"files": {"space.bin": "https://r2/space.x.bin"}}).encode())
+            return io.BytesIO(published)
+
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "space.bin"
+            out.write_bytes(current)
+            with mock.patch.object(fs.urllib.request, "urlopen", urlopen):
+                copied = fs.from_live("https://site/data/manifest.json", str(out))
+            return copied, out.read_bytes()
+
+    def test_newer_live_file_wins(self):
+        as_of, objects = fixture_objects()
+        old, new = fs.encode(as_of, objects), fs.encode(as_of + 86_400, objects)
+        self.assertEqual(self.run_with(new, old), (True, new))
+        self.assertEqual(self.run_with(old, new), (False, new))
+
+    def test_failures_keep_the_committed_file(self):
+        as_of, objects = fixture_objects()
+        current = fs.encode(as_of, objects)
+        self.assertEqual(self.run_with(None, current), (False, current))
+        self.assertEqual(self.run_with(b"SPCE junk", current), (False, current))
+
+
 class Format(unittest.TestCase):
     def test_round_trip(self):
         as_of, objects = fixture_objects()
