@@ -123,6 +123,12 @@ const VIEWS = [
   // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
   // field and no constellation figures.
   { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
+  // Historical borders (Cliopatria): Europe in 1914, the Mediterranean in
+  // 117 (the Roman Empire at its largest), the world in 1500, a phone.
+  { name: "history-1914", hash: "#48,12,4500&year=1914" },
+  { name: "history-rome", hash: "#40,8,5500&year=117" },
+  { name: "history-1500", hash: "#20,40,16000&year=1500" },
+  { name: "history-phone", hash: "#45,30,9000&year=-500", viewport: { width: 390, height: 844 } },
   // The solar system view on 2025-01-01: the home view (the Sun and the
   // inner planets from above), the outer planets, Saturn and its rings up
   // close from the sunlit side, the Earth close up and with the Moon's path,
@@ -325,6 +331,10 @@ try {
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
       // Country data (hover, political fills) loads last; the app flags the canvas.
       await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
+      if (/[&#]year=/.test(view.hash)) {
+        // The year's polities replace the countries once they are drawn.
+        await page.waitForSelector("#globe[data-year]", { state: "attached", timeout: 30_000 });
+      }
     }
     // A data layer is shown only once its file is fetched, decoded and
     // uploaded. The app sets data-layer on the canvas then, and fails loudly

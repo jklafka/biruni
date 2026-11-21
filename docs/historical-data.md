@@ -15,7 +15,7 @@ One file per layer, in the "HIST" format. `scripts/hist_format.py` documents it,
 - **Geometries**: lists of ring indices, filled with the even-odd rule, so holes and multipolygons need no extra structure. They are shared too: 2,387 of 13,412 Cliopatria records repeat an earlier geometry.
 - **Records**: a name, an inclusive interval `from..=to`, a geometry, a label point (where the name goes, computed once by the converter), and a tag (layer-specific: the fill color and label tier for borders, the plate id for geology).
 
-Drawing time `t` means taking the records with `from <= t <= to` (`Timeline::at`). With about 14,000 records a linear scan takes microseconds. The year control changes `t` and only the visible set changes.
+Drawing time `t` means taking the records with `from <= t <= to` (`Timeline::active`). With about 14,000 records a linear scan takes microseconds. The year control changes `t` and only the visible set changes.
 
 ### Two time scales
 

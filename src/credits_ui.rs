@@ -49,6 +49,10 @@ impl CreditsPanel {
         self.show(credits::sky_credits(survey));
     }
 
+    pub fn show_history(&self) {
+        self.show(credits::history_credits());
+    }
+
     pub fn show_solar(&self) {
         self.show(credits::solar_credits());
     }

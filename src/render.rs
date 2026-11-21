@@ -1561,6 +1561,23 @@ impl Renderer {
         Ok(())
     }
 
+    /// Replace only the border lines (the historical borders, or the modern
+    /// ones back), keeping the coastlines. No-op before the map data.
+    pub fn set_border_lines(&mut self, borders: &crate::lines::LineLevels) -> Result<(), JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(());
+        }
+        let Some(gpu) = &mut self.lines else {
+            return Ok(());
+        };
+        let fresh = upload_levels(&self.gl, &self.line_pass, borders)?;
+        for b in std::mem::replace(&mut gpu.borders, fresh) {
+            self.gl.delete_vertex_array(Some(&b.vao));
+            self.gl.delete_buffer(Some(&b.buf));
+        }
+        Ok(())
+    }
+
     /// Make sure the line target matches the canvas size.
     fn ensure_target(&mut self, w: i32, h: i32) -> Result<(), JsValue> {
         ensure_line_target(&self.gl, &mut self.target, w, h)

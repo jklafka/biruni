@@ -98,7 +98,16 @@ pub const PLANET_MAPS: Credit = Credit {
     text: "Surfaces of the Moon, Mars, Mercury and Jupiter in the solar system view. Moon: NASA/GSFC Scientific Visualization Studio, CGI Moon Kit (LRO). Mars: USGS Astrogeology and NASA, Viking MDIM 2.1. Mercury: NASA/JHUAPL/Carnegie Institution of Washington (MESSENGER). Jupiter: NASA/JPL/Space Science Institute (Cassini).",
 };
 
-pub const ALL: [&Credit; 9] = [
+pub const CLIOPATRIA: Credit = Credit {
+    id: "cliopatria",
+    name: "Cliopatria (Seshat Global History Databank)",
+    license: "CC BY 4.0",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    source_url: "https://github.com/Seshat-Global-History-Databank/cliopatria",
+    text: "Historical borders, 3400 BCE to 2024: polities from Cliopatria v0.2.1 (Bennett et al. 2025, Scientific Data), simplified and recolored. These maps are one version of the territory past polities held; borders, names and dates are often uncertain.",
+};
+
+pub const ALL: [&Credit; 10] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -108,6 +117,7 @@ pub const ALL: [&Credit; 9] = [
     &DSS,
     &JPL_HORIZONS,
     &PLANET_MAPS,
+    &CLIOPATRIA,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -132,6 +142,12 @@ pub fn solar_credits() -> Vec<&'static Credit> {
     ]
 }
 
+/// The credits of the historical borders view: the modern base map and
+/// Cliopatria.
+pub fn history_credits() -> Vec<&'static Credit> {
+    vec![&CLIOPATRIA, &NATURAL_EARTH]
+}
+
 /// The credits that apply while `layer` is shown. Natural Earth is behind
 /// every view (map shape, labels, search, statistics, the Terrain layer's
 /// relief); each NASA image only shows on its own layer.
@@ -141,7 +157,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
         // The solar view's own data (it shares the Blue Marble with the Earth).
-        .filter(|c| c.id != JPL_HORIZONS.id && c.id != PLANET_MAPS.id)
+        .filter(|c| c.id != JPL_HORIZONS.id && c.id != PLANET_MAPS.id && c.id != CLIOPATRIA.id)
         .collect()
 }
 

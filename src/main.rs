@@ -13,6 +13,7 @@ mod geo;
 mod geodesic;
 mod healpix;
 mod history;
+mod history_app;
 mod imagery;
 mod info_panel;
 mod label_layer;
@@ -199,6 +200,9 @@ struct App {
     planet_failed: std::collections::HashSet<solar::Body>,
     /// Earth, Sky and Solar system buttons.
     view_buttons: [HtmlElement; 3],
+    /// The historical borders (`&year=`, see `history_app.rs`) and their panel.
+    history: history_app::HistoryState,
+    year_ui: history_app::YearUi,
     title_hint: HtmlElement,
     /// Labels of the first three HUD rows, which differ per view.
     hud_labels: [HtmlElement; 3],
@@ -248,6 +252,9 @@ impl App {
             Ok(()) => {
                 self.sync_imagery_attr();
                 self.restore_imagery();
+                if self.history.on {
+                    self.history_reapply();
+                }
                 if layers.is_some() {
                     let _ = self.status.class_list().add_1("hidden");
                 } else {
@@ -272,6 +279,9 @@ impl App {
         self.renderer.upload_map(&layers)?;
         if !self.renderer.is_lost() {
             let _ = self.status.class_list().add_1("hidden");
+        }
+        if self.history.on {
+            self.history_reapply(); // the upload put the modern borders back
         }
         self.redraw.mark_render();
         Ok(())
@@ -388,7 +398,7 @@ impl App {
         self.renderer.set_theme_classes(classes.as_ref());
         let year = self.countries.as_ref().map_or(0, |c| c.data_year());
         self.legend.show(theme, year);
-        self.credits.show_layer(self.layers_state.shown());
+        self.credits_for_layer();
         // The open info panel gains or loses the theme's value row.
         let c = self.selected.and_then(|i| self.countries.as_ref()?.get(i));
         if c.is_some() {
@@ -728,7 +738,7 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        if self.view != View::Earth {
+        if self.view != View::Earth || self.history.on {
             let base = page.split('#').next().unwrap_or("");
             return format!("{base}{}", self.view_hash());
         }
@@ -745,6 +755,9 @@ impl App {
     /// depends on it.
     fn view_hash(&self) -> String {
         let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
+        if self.history.on {
+            hash.push_str(&history::format_hash_year(self.history.year));
+        }
         if self.view == View::Solar {
             if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
                 hash.push_str(&format!("&t={t}"));
@@ -812,7 +825,7 @@ impl App {
         match view {
             View::Sky => self.credits.show_sky(self.survey_on),
             View::Solar => self.credits.show_solar(),
-            View::Earth => self.credits.show_layer(self.layers_state.shown()),
+            View::Earth => self.credits_for_layer(),
         }
         if view == View::Solar {
             self.load_space();
@@ -1267,6 +1280,9 @@ impl App {
     /// A country whose outline is within a few pixels counts, so tiny
     /// islands can be hovered and tapped; `coarse` widens that for touch.
     fn country_at(&self, x: f64, y: f64, coarse: bool) -> Option<usize> {
+        if self.history.on {
+            return None; // the IDs on the GPU are the year's polities
+        }
         self.countries
             .as_ref()?
             .hit_near(&self.camera, x, y, country::near_radius(coarse))
@@ -1419,6 +1435,7 @@ impl App {
         if scale != self.drawn_scale {
             self.redraw.mark_render();
         }
+        self.history_frame();
         let (draw, hud) = self.redraw.take();
         let relayout = self
             .keepout
@@ -1526,10 +1543,17 @@ impl App {
                 bearing
             ),
         );
-        let country = self
-            .hover
-            .and_then(|i| self.countries.as_ref()?.get(i))
-            .map_or("—", |c| c.name.as_str());
+        let polity = self.history.on.then(|| {
+            let (lat, lon) = self.cursor.and_then(|(x, y)| self.camera.pick(x, y))?;
+            self.history_at(lat.to_degrees(), lon.to_degrees())
+        });
+        let country = match &polity {
+            Some(p) => p.as_deref().unwrap_or("—"),
+            None => self
+                .hover
+                .and_then(|i| self.countries.as_ref()?.get(i))
+                .map_or("—", |c| c.name.as_str()),
+        };
         self.hud_country.set_text_content(Some(country));
         match scale_bar(&self.camera, self.units, SCALE_MAX_PX) {
             Some(bar) => {
@@ -1888,6 +1912,8 @@ fn start() -> Result<(), JsValue> {
         planet_bytes: HashMap::new(),
         planet_busy: Default::default(),
         planet_failed: Default::default(),
+        history: history_app::HistoryState::new(history::parse_hash_year(&initial_hash)),
+        year_ui: history_app::YearUi::new(&doc)?,
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,
@@ -1929,6 +1955,10 @@ fn start() -> Result<(), JsValue> {
         a.set_survey(survey);
         if initial_view != View::Earth {
             a.set_view(initial_view);
+        }
+        if a.history.on {
+            a.history.on = false; // set_history acts on a change
+            a.set_history(true);
         }
         a.sync_solar_select();
     }
@@ -2445,7 +2475,32 @@ fn start() -> Result<(), JsValue> {
                         share::share(&ui, url);
                         return;
                     }
-                    "n" | "N" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => a.toggle_sun(),
+                    "n" | "N"
+                        if !(e.ctrl_key() || e.meta_key() || e.alt_key()) && !a.history.on =>
+                    {
+                        a.toggle_sun()
+                    }
+                    "h" | "H" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let on = !a.history.on;
+                        a.set_history(on);
+                    }
+                    // Historical borders: , and . step a year, Shift (< and >)
+                    // a century.
+                    "," | "." | "<" | ">"
+                        if a.history.on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                    {
+                        let key = e.key();
+                        let step = if e.shift_key() || key == "<" || key == ">" {
+                            100
+                        } else {
+                            1
+                        };
+                        a.step_year(if key == "," || key == "<" {
+                            -step
+                        } else {
+                            step
+                        });
+                    }
                     // Time scrubber (terminator on): , and . step an hour back and
                     // forward, Shift (< and >) a day; T plays and pauses.
                     "," | "." | "<" | ">"
@@ -2545,6 +2600,13 @@ fn start() -> Result<(), JsValue> {
                 a.playing = false;
                 a.refresh_sun();
                 let view = View::from_hash(&hash);
+                let year = history::parse_hash_year(&hash);
+                if let Some(y) = year {
+                    a.set_year(y);
+                }
+                if year.is_some() != a.history.on {
+                    a.set_history(year.is_some());
+                }
                 if let Some(cam) = solar::parse_hash_orbit(&hash) {
                     let (w, h) = (a.solar_cam.look.width, a.solar_cam.look.height);
                     a.solar_cam = cam;
@@ -2581,7 +2643,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 14] = [
+    let buttons: [(&str, Action); 15] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2649,6 +2711,10 @@ fn start() -> Result<(), JsValue> {
         ("view-earth", |a| a.set_view(View::Earth)),
         ("view-sky", |a| a.set_view(View::Sky)),
         ("view-solar", |a| a.set_view(View::Solar)),
+        ("history-toggle", |a| {
+            let on = !a.history.on;
+            a.set_history(on)
+        }),
         ("objects-toggle", |a| {
             let on = !a.objects_on;
             a.set_objects(on)
@@ -2664,6 +2730,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     solar_app::wire(&app)?;
+    history_app::wire(&app, &doc)?;
 
     // Place search: fly to the chosen place.
     {
@@ -2744,7 +2811,12 @@ fn start() -> Result<(), JsValue> {
             match label_layer::load().await {
                 Ok(list) => {
                     let mut a = app.borrow_mut();
-                    a.labels.set_labels(list);
+                    a.history.modern_labels = Some(list.clone());
+                    if a.history.on {
+                        a.history_reapply();
+                    } else {
+                        a.labels.set_labels(list);
+                    }
                     a.redraw.mark_render();
                 }
                 Err(e) => web_sys::console::error_1(&e),
@@ -2770,6 +2842,9 @@ fn start() -> Result<(), JsValue> {
                         web_sys::console::error_1(&e);
                     }
                     a.renderer.set_country_colors(&countries.id_colors());
+                    if a.history.on {
+                        a.history_reapply(); // the year's IDs go back on top
+                    }
                     // Thematic classes are only known now: set them up after
                     // the countries are stored, below.
                     a.redraw.mark_render(); // political fills switch on
