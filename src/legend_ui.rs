@@ -68,6 +68,33 @@ impl Legend {
         self.panel.set_hidden(false);
     }
 
+    /// Show a legend of CSS colors and labels (the languages layer).
+    pub fn show_rows(&self, title: &str, rows: &[(&str, String)], note: &str) {
+        self.title.set_text_content(Some(title));
+        self.note.set_text_content(Some(note));
+        self.list.set_text_content(None);
+        for (color, text) in rows {
+            if let Err(e) = self.add_css_row(color, text) {
+                web_sys::console::error_1(&e);
+            }
+        }
+        self.panel.set_hidden(false);
+    }
+
+    fn add_css_row(&self, color: &str, text: &str) -> Result<(), JsValue> {
+        let li = self.doc.create_element("li")?;
+        let swatch = self.doc.create_element("span")?;
+        swatch.set_class_name("sw");
+        swatch.set_attribute("style", &format!("background:{color}"))?;
+        swatch.set_attribute("aria-hidden", "true")?;
+        let label = self.doc.create_element("span")?;
+        label.set_text_content(Some(text));
+        li.append_child(&swatch)?;
+        li.append_child(&label)?;
+        self.list.append_child(&li)?;
+        Ok(())
+    }
+
     fn add_row(&self, color: [u8; 3], text: &str) -> Result<(), JsValue> {
         let li = self.doc.create_element("li")?;
         let swatch = self.doc.create_element("span")?;

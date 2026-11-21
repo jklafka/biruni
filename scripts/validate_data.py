@@ -64,6 +64,7 @@ PALETTE_SIZE = 6
 TSV_SCHEMAS = {
     "places.tsv": ("MAPSPLACES1", 8, 3, 4),
     "labels.tsv": ("MAPSLABELS1", 7, 2, 3),
+    "languages.tsv": ("MAPSLANGS1", 7, 3, 4),
 }
 # name -> (width, height) the renderer expects
 WEBP_SIZES = {

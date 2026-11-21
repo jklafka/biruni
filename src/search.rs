@@ -22,6 +22,9 @@ const MIN_COUNTRY_ALT: f64 = 0.12;
 pub enum Kind {
     Country,
     Place,
+    /// A language of the languages layer (`country` holds "Language ·
+    /// family").
+    Language,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -371,6 +374,18 @@ impl Gazetteer {
     #[cfg(test)]
     fn len(&self) -> usize {
         self.places.len()
+    }
+
+    /// Add more entries (the languages, once their layer loads).
+    pub fn extend(&mut self, places: Vec<Place>) {
+        for p in places {
+            let key = fold(&p.name);
+            if key.is_empty() {
+                continue;
+            }
+            self.keys.push(vec![key]);
+            self.places.push(p);
+        }
     }
 
     /// Up to `limit` best matches. Ranked exact name, then name prefix, then

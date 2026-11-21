@@ -34,9 +34,26 @@ struct State {
     results: Vec<Place>,
     active: usize,
     on_select: Rc<dyn Fn(f64, f64, f64)>,
+    /// Entries added by layers (languages) before the gazetteer loaded.
+    extra: Vec<Place>,
 }
 
 type Shared = Rc<RefCell<State>>;
+
+/// Lets layers add their own entries to the search (see [`Search::add`]).
+#[derive(Clone)]
+pub struct Search(Shared);
+
+impl Search {
+    /// Add entries, now or when the gazetteer has loaded.
+    pub fn add(&self, places: Vec<Place>) {
+        let mut s = self.0.borrow_mut();
+        match &mut s.gaz {
+            Some(g) => g.extend(places),
+            None => s.extra.extend(places),
+        }
+    }
+}
 
 fn is_typing_target(e: &KeyboardEvent) -> bool {
     e.target().is_some_and(|t| {
@@ -108,7 +125,7 @@ impl State {
                 let _ = name.set_attribute("class", "search-name");
                 sub.set_text_content(Some(match p.kind {
                     Kind::Country => "Country",
-                    Kind::Place => &p.country,
+                    Kind::Place | Kind::Language => &p.country,
                 }));
                 let _ = sub.set_attribute("class", "search-sub");
                 let _ = li.append_child(&name);
@@ -173,7 +190,8 @@ fn ensure_loaded(st: &Shared) {
         .await;
         let mut s = st.borrow_mut();
         match loaded {
-            Ok(g) => {
+            Ok(mut g) => {
+                g.extend(std::mem::take(&mut s.extra));
                 s.gaz = Some(g);
                 s.load = Load::Done;
             }
@@ -231,7 +249,10 @@ fn dismiss(st: &Shared) {
 
 /// Wire up the search box. `on_select(lat, lon, alt)` receives radians and
 /// a camera altitude in globe radii.
-pub fn init(doc: &Document, on_select: impl Fn(f64, f64, f64) + 'static) -> Result<(), JsValue> {
+pub fn init(
+    doc: &Document,
+    on_select: impl Fn(f64, f64, f64) + 'static,
+) -> Result<Search, JsValue> {
     let get = |id: &str| -> Result<Element, JsValue> {
         doc.get_element_by_id(id)
             .ok_or_else(|| JsValue::from_str(&format!("missing #{id}")))
@@ -249,6 +270,7 @@ pub fn init(doc: &Document, on_select: impl Fn(f64, f64, f64) + 'static) -> Resu
         results: Vec::new(),
         active: 0,
         on_select: Rc::new(on_select),
+        extra: Vec::new(),
     }));
 
     let input_target: &EventTarget = input.as_ref();
@@ -333,5 +355,5 @@ pub fn init(doc: &Document, on_select: impl Fn(f64, f64, f64) + 'static) -> Resu
             }
         })?;
     }
-    Ok(())
+    Ok(Search(st))
 }

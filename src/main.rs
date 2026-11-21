@@ -18,6 +18,8 @@ mod imagery;
 mod info_panel;
 mod label_layer;
 mod labels;
+mod languages;
+mod languages_app;
 mod layer_loader;
 mod legend_ui;
 mod lines;
@@ -203,6 +205,11 @@ struct App {
     /// The historical borders (`&year=`, see `history_app.rs`) and their panel.
     history: history_app::HistoryState,
     year_ui: history_app::YearUi,
+    /// The languages layer (`&languages=1`), its button, and the search box
+    /// (which gets the languages as entries).
+    langs: languages_app::LanguagesState,
+    langs_button: HtmlElement,
+    search: Option<search_ui::Search>,
     title_hint: HtmlElement,
     /// Labels of the first three HUD rows, which differ per view.
     hud_labels: [HtmlElement; 3],
@@ -396,8 +403,7 @@ impl App {
             .zip(self.countries.as_ref())
             .map(|(t, c)| c.theme_classes(t));
         self.renderer.set_theme_classes(classes.as_ref());
-        let year = self.countries.as_ref().map_or(0, |c| c.data_year());
-        self.legend.show(theme, year);
+        self.sync_legend();
         self.credits_for_layer();
         // The open info panel gains or loses the theme's value row.
         let c = self.selected.and_then(|i| self.countries.as_ref()?.get(i));
@@ -738,7 +744,7 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        if self.view != View::Earth || self.history.on {
+        if self.view != View::Earth || self.history.on || self.langs.on {
             let base = page.split('#').next().unwrap_or("");
             return format!("{base}{}", self.view_hash());
         }
@@ -757,6 +763,9 @@ impl App {
         let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
         if self.history.on {
             hash.push_str(&history::format_hash_year(self.history.year));
+        }
+        if self.langs.on {
+            hash.push_str("&languages=1");
         }
         if self.view == View::Solar {
             if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
@@ -1456,7 +1465,15 @@ impl App {
                 .draw(&self.camera, self.morph.blend(), pw, ph, dpr, scale);
             self.drawn_scale = scale;
             if !morphing {
-                self.overlay.draw(&self.camera, &self.measure, pw, ph, dpr);
+                let marks = self.language_marks();
+                self.overlay.draw(
+                    &self.camera,
+                    &self.measure,
+                    marks.as_ref().map(|m| m.as_marks()).as_ref(),
+                    pw,
+                    ph,
+                    dpr,
+                );
             }
             self.hash_stale = true;
         }
@@ -1547,7 +1564,9 @@ impl App {
             let (lat, lon) = self.cursor.and_then(|(x, y)| self.camera.pick(x, y))?;
             self.history_at(lat.to_degrees(), lon.to_degrees())
         });
+        let language = self.cursor.and_then(|(x, y)| self.language_at(x, y));
         let country = match &polity {
+            _ if language.is_some() => language.as_deref().unwrap_or("—"),
             Some(p) => p.as_deref().unwrap_or("—"),
             None => self
                 .hover
@@ -1914,6 +1933,9 @@ fn start() -> Result<(), JsValue> {
         planet_failed: Default::default(),
         history: history_app::HistoryState::new(history::parse_hash_year(&initial_hash)),
         year_ui: history_app::YearUi::new(&doc)?,
+        langs: languages_app::LanguagesState::default(),
+        langs_button: element(&doc, "languages-toggle")?,
+        search: None,
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,
@@ -1959,6 +1981,9 @@ fn start() -> Result<(), JsValue> {
         if a.history.on {
             a.history.on = false; // set_history acts on a change
             a.set_history(true);
+        }
+        if languages_app::parse_hash(&initial_hash) {
+            a.set_languages(true);
         }
         a.sync_solar_select();
     }
@@ -2480,6 +2505,10 @@ fn start() -> Result<(), JsValue> {
                     {
                         a.toggle_sun()
                     }
+                    "w" | "W" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let on = !a.langs.on;
+                        a.set_languages(on);
+                    }
                     "h" | "H" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         let on = !a.history.on;
                         a.set_history(on);
@@ -2607,6 +2636,10 @@ fn start() -> Result<(), JsValue> {
                 if year.is_some() != a.history.on {
                     a.set_history(year.is_some());
                 }
+                let langs = languages_app::parse_hash(&hash);
+                if langs != a.langs.on {
+                    a.set_languages(langs);
+                }
                 if let Some(cam) = solar::parse_hash_orbit(&hash) {
                     let (w, h) = (a.solar_cam.look.width, a.solar_cam.look.height);
                     a.solar_cam = cam;
@@ -2643,7 +2676,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 15] = [
+    let buttons: [(&str, Action); 16] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2711,6 +2744,10 @@ fn start() -> Result<(), JsValue> {
         ("view-earth", |a| a.set_view(View::Earth)),
         ("view-sky", |a| a.set_view(View::Sky)),
         ("view-solar", |a| a.set_view(View::Solar)),
+        ("languages-toggle", |a| {
+            let on = !a.langs.on;
+            a.set_languages(on)
+        }),
         ("history-toggle", |a| {
             let on = !a.history.on;
             a.set_history(on)
@@ -2734,15 +2771,16 @@ fn start() -> Result<(), JsValue> {
 
     // Place search: fly to the chosen place.
     {
-        let app = app.clone();
-        search_ui::init(&doc, move |lat, lon, alt| {
-            app.borrow_mut().send(Event::FlyTo {
+        let app2 = app.clone();
+        let search = search_ui::init(&doc, move |lat, lon, alt| {
+            app2.borrow_mut().send(Event::FlyTo {
                 lat,
                 lon,
                 alt,
                 bearing: None,
             });
         })?;
+        app.borrow_mut().search = Some(search);
     }
 
     // Share button.

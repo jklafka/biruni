@@ -42,6 +42,40 @@ pub struct SolarLabels<'a> {
     pub marker_labels: &'a [(usize, f64, f64)],
 }
 
+/// The languages layer's dots and names (see `languages.rs`).
+pub struct LanguageMarks<'a> {
+    pub langs: &'a crate::languages::Languages,
+    pub dots: &'a [crate::languages::Dot],
+    /// (language index, x, y): where each shown name starts.
+    pub names: &'a [(usize, f64, f64)],
+}
+
+/// Dots with a dark rim, so every family color reads on any layer, then the
+/// names.
+fn draw_languages(ctx: &CanvasRenderingContext2d, l: &LanguageMarks) {
+    use crate::languages::DOT_PX;
+    ctx.set_line_width(1.0);
+    ctx.set_stroke_style_str("rgba(0,0,0,0.6)");
+    for d in l.dots {
+        ctx.begin_path();
+        let _ = ctx.arc(d.x, d.y, DOT_PX, 0.0, std::f64::consts::TAU);
+        ctx.set_fill_style_str(l.langs.color(d.index));
+        ctx.fill();
+        ctx.stroke();
+    }
+    ctx.set_font("11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+    ctx.set_text_align("left");
+    ctx.set_text_baseline("middle");
+    ctx.set_line_width(3.0);
+    ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
+    ctx.set_fill_style_str("#f2f4f8");
+    for (i, x, y) in l.names {
+        let name = &l.langs.list[*i].name;
+        let _ = ctx.stroke_text(name, *x, *y);
+        let _ = ctx.fill_text(name, *x, *y);
+    }
+}
+
 pub struct Overlay {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
@@ -265,13 +299,22 @@ impl Overlay {
 
     /// Redraw for the current camera. Does nothing when there is nothing to
     /// draw now and nothing to clear.
-    pub fn draw(&mut self, cam: &Camera, measure: &Measure, px: u32, py: u32, dpr: f64) {
+    pub fn draw(
+        &mut self,
+        cam: &Camera,
+        measure: &Measure,
+        langs: Option<&LanguageMarks>,
+        px: u32,
+        py: u32,
+        dpr: f64,
+    ) {
         if (px, py) != (self.canvas.width(), self.canvas.height()) {
             self.canvas.set_width(px);
             self.canvas.set_height(py);
             self.has_content = true; // resizing cleared it; redraw below
         }
-        let show = measure.active || !measure.points().is_empty();
+        let measuring = measure.active || !measure.points().is_empty();
+        let show = measuring || langs.is_some_and(|l| !l.dots.is_empty());
         if !show && !self.has_content {
             return;
         }
@@ -280,6 +323,12 @@ impl Overlay {
         ctx.clear_rect(0.0, 0.0, cam.width, cam.height);
         self.has_content = show;
         if !show {
+            return;
+        }
+        if let Some(l) = langs {
+            draw_languages(ctx, l);
+        }
+        if !measuring {
             return;
         }
         ctx.set_line_cap("round");
