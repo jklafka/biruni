@@ -913,6 +913,9 @@ impl Renderer {
         js_sys::Reflect::set(&opts, &"antialias".into(), &false.into())?;
         js_sys::Reflect::set(&opts, &"alpha".into(), &false.into())?;
         js_sys::Reflect::set(&opts, &"depth".into(), &false.into())?;
+        // The sky view's survey draws each part of the sky once, from the
+        // finest tile there, with the stencil (see sky_render).
+        js_sys::Reflect::set(&opts, &"stencil".into(), &true.into())?;
         let gl: GL = canvas
             .get_context_with_context_options("webgl2", &opts)?
             .ok_or("WebGL2 is not supported by this browser")?
@@ -1294,6 +1297,47 @@ impl Renderer {
     /// exists without it, e.g. after a context restore).
     pub fn sky_wants_milky_way(&self) -> bool {
         self.sky.as_ref().is_some_and(|p| !p.has_milky_way()) && !self.ctx.is_lost()
+    }
+
+    fn sky_pass(&mut self) -> Result<Option<&mut crate::sky_render::SkyPass>, JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(None);
+        }
+        if self.sky.is_none() {
+            self.sky = Some(crate::sky_render::SkyPass::create(&self.gl)?);
+        }
+        Ok(self.sky.as_mut())
+    }
+
+    /// Whether the survey's Allsky atlas is on the GPU.
+    pub fn survey_has_allsky(&self) -> bool {
+        self.sky.as_ref().is_some_and(|p| p.has_allsky())
+    }
+
+    pub fn survey_upload_allsky(&mut self, bitmap: &web_sys::ImageBitmap) -> Result<(), JsValue> {
+        let gl = self.gl.clone();
+        match self.sky_pass()? {
+            Some(p) => p.upload_allsky(&gl, bitmap),
+            None => Ok(()),
+        }
+    }
+
+    pub fn survey_upload_tile(
+        &mut self,
+        tile: crate::healpix::Tile,
+        bitmap: &web_sys::ImageBitmap,
+    ) -> Result<(), JsValue> {
+        let gl = self.gl.clone();
+        match self.sky_pass()? {
+            Some(p) => p.upload_survey_tile(&gl, tile, bitmap),
+            None => Ok(()),
+        }
+    }
+
+    pub fn survey_drop_tile(&mut self, tile: crate::healpix::Tile) {
+        if let Some(p) = &mut self.sky {
+            p.drop_survey_tile(&self.gl, tile);
+        }
     }
 
     /// Upload the sky view's Milky Way image.

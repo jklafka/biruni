@@ -1,0 +1,3 @@
+`Allsky.jpg` is the Digitized Sky Survey color HiPS Allsky atlas (order 3), reduced to half size (864x928, 32 px cells) for the visual tests, which serve it in place of the survey mirrors so they never use the network.
+
+Source: Digitized Sky Survey - STScI/NASA, Colored & Healpixed by CDS (CNRS/Unistra), from the ESA ESASky mirror (`https://skies.esac.esa.int/DSSColor/Norder3/Allsky.jpg`). DSS images are licensed CC BY-NC-SA (non-commercial; see https://archive.stsci.edu/dss/copyright.html and `DATA_LICENSES.md`); this reduced copy is offered under the same terms. Plate copyrights: California Institute of Technology (POSS-II), UK SERC/PPARC and the Anglo-Australian Observatory (UK Schmidt), AURA.

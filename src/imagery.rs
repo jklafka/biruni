@@ -24,15 +24,26 @@ pub fn mip_levels(width: u32, height: u32) -> i32 {
 /// browser that ignores the resize options returns the full-size image,
 /// which the caller sizes its texture from.
 pub async fn decode(bytes: &[u8], width: u32) -> Result<ImageBitmap, JsValue> {
+    decode_sized(bytes, "image/webp", Some((width, height_for(width)))).await
+}
+
+/// Decode an image of type `mime`, resized to `size` if given.
+pub async fn decode_sized(
+    bytes: &[u8],
+    mime: &str,
+    size: Option<(u32, u32)>,
+) -> Result<ImageBitmap, JsValue> {
     let window = web_sys::window().ok_or("no window")?;
     let parts = js_sys::Array::new();
     parts.push(&js_sys::Uint8Array::from(bytes));
     let props = BlobPropertyBag::new();
-    props.set_type("image/webp");
+    props.set_type(mime);
     let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &props)?;
     let opts = ImageBitmapOptions::new();
-    opts.set_resize_width(width);
-    opts.set_resize_height(height_for(width));
+    if let Some((w, h)) = size {
+        opts.set_resize_width(w);
+        opts.set_resize_height(h);
+    }
     opts.set_resize_quality(ResizeQuality::High);
     let promise = window.create_image_bitmap_with_blob_and_image_bitmap_options(&blob, &opts)?;
     JsFuture::from(promise)

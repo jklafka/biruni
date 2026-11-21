@@ -78,7 +78,7 @@
       body.view-sky #proj-menu, body.view-sky #compass, body.view-sky #measure-toggle,
       body.view-sky #sun-toggle, body.view-sky #hud-country-row, body.view-sky #hud-scale,
       body.view-sky #labels { display: none !important; }
-      body:not(.view-sky) #figures-toggle { display: none; }
+      body:not(.view-sky) #figures-toggle, body:not(.view-sky) #survey-toggle { display: none; }
       /* The Earth's map data keeps loading in the background; only a failure matters here. */
       body.view-sky #loading:not(.error) { visibility: hidden; }
       #title p { margin: 2px 0 0; color: var(--muted); }
@@ -566,6 +566,7 @@
       </button>
       <button id="measure-toggle" aria-pressed="false" title="Measure distance (M)" aria-label="Measure distance">&#128207;</button>
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
+      <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
       <button id="figures-toggle" aria-pressed="true" title="Constellations (C)" aria-label="Constellation figures">&#10022;</button>
       <button id="reset" title="Reset view (R)" aria-label="Reset view">⟲</button>
     </div>
