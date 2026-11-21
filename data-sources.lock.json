@@ -10,6 +10,38 @@
       "license": "cliopatria"
     },
     {
+      "name": "dplace-v330-codes",
+      "url": "https://raw.githubusercontent.com/D-PLACE/dplace-cldf/6c2008c187a297d1955b41d8ae80d8e31d404f6c/cldf/codes.csv",
+      "version": "3.3.0 (dplace-cldf 6c2008c)",
+      "sha256": "c94cbd2a6f4e08f555a21c93d9fe77d747535595ad5d5cabb17895aa4d7e9070",
+      "size": 1198955,
+      "license": "dplace"
+    },
+    {
+      "name": "dplace-v330-data",
+      "url": "https://raw.githubusercontent.com/D-PLACE/dplace-cldf/6c2008c187a297d1955b41d8ae80d8e31d404f6c/cldf/data.csv",
+      "version": "3.3.0 (dplace-cldf 6c2008c)",
+      "sha256": "1b98920d98ee2033e29abf18573bfb06b07c277f50f692a49d8b5e9abe29a9b2",
+      "size": 74471121,
+      "license": "dplace"
+    },
+    {
+      "name": "dplace-v330-societies",
+      "url": "https://raw.githubusercontent.com/D-PLACE/dplace-cldf/6c2008c187a297d1955b41d8ae80d8e31d404f6c/cldf/societies.csv",
+      "version": "3.3.0 (dplace-cldf 6c2008c)",
+      "sha256": "b8ccd185c28fe428c8e8d3588bb3cfc1b8eef220c34f219d60ef81ab90cac4e0",
+      "size": 883543,
+      "license": "dplace"
+    },
+    {
+      "name": "dplace-v330-variables",
+      "url": "https://raw.githubusercontent.com/D-PLACE/dplace-cldf/6c2008c187a297d1955b41d8ae80d8e31d404f6c/cldf/variables.csv",
+      "version": "3.3.0 (dplace-cldf 6c2008c)",
+      "sha256": "dc7a6bfb5c871357a2d35abad45b9551ec276dafba90650b24b48669b12ebe9c",
+      "size": 996489,
+      "license": "dplace"
+    },
+    {
       "name": "glottolog-v54-languages",
       "url": "https://raw.githubusercontent.com/glottolog/glottolog-cldf/84977fcab99ddca540550ba99984a32e908a7fcf/cldf/languages.csv",
       "version": "5.4 (glottolog-cldf 84977fc)",

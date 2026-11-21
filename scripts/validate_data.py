@@ -402,9 +402,50 @@ def check_tilesets(data):
     return None
 
 
+def check_societies(data):
+    """societies.tsv (scripts/convert_dplace.py, src/ethnography.rs): V lines
+    with codes, then S lines with one known code (or nothing) per variable.
+    Returns the society count."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Bad("invalid UTF-8") from None
+    if not text.endswith("\n"):
+        raise Bad("missing final newline")
+    lines = text[:-1].split("\n")
+    if lines[0] != "MAPSSOCIETIES1":
+        raise Bad("header is not MAPSSOCIETIES1")
+    codes, rows = [], 0
+    for number, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if f[0] == "V" and len(f) == 4 and not rows:
+            pairs = [p.split("=", 1) for p in f[3].split("|")]
+            if not all(len(p) == 2 and p[0].isdigit() and p[1] for p in pairs):
+                raise Bad(f"line {number}: bad codes")
+            codes.append({p[0] for p in pairs})
+        elif f[0] == "S" and codes and len(f) == 7 + len(codes):
+            try:
+                lat, lon = float(f[3]), float(f[4])
+            except ValueError:
+                raise Bad(f"line {number}: bad coordinates") from None
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise Bad(f"line {number}: coordinates out of range")
+            for v, known in zip(f[7:], codes):
+                if v and v not in known:
+                    raise Bad(f"line {number}: unknown code {v}")
+            rows += 1
+        else:
+            raise Bad(f"line {number}: not a V or S line of the right width")
+    if not rows:
+        raise Bad("no societies")
+    return rows
+
+
 def check_format(name, data):
     """Features in a file, or raise Bad."""
     ext = Path(name).suffix
+    if name == "societies.tsv":
+        return check_societies(data)
     if ext == ".bin":
         return decode_bin(data)
     if ext == ".tsv":
