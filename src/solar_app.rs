@@ -4,7 +4,7 @@
 //! the Earth and sky views.
 
 use crate::solar::{self, Body, SOLAR_TO_EQ};
-use crate::solar_render::BodyFrame;
+use crate::solar_render::{self, BodyFrame};
 use crate::solar_scene::objects;
 use crate::{
     data, ephemeris, overlay, scrub, sky, sky_render, solar_scene, space, stars, App,
@@ -142,6 +142,7 @@ impl App {
             dpr,
         );
         self.solar_markers = markers;
+        self.want_planet_maps(&drawn);
         self.solar_drawn = drawn;
         self.solar_labels = labels;
         if !self.renderer.is_lost() {
@@ -163,7 +164,21 @@ impl App {
                 objects::describe(cat, i, self.sun_time())
             };
             match solar_scene::hit(&self.solar_drawn, &self.solar_labels, x, y) {
-                Some(b) => solar_scene::describe(b, eye, t),
+                Some(b) => {
+                    let text = solar_scene::describe(b, eye, t)?;
+                    let at = self
+                        .solar_cam
+                        .look
+                        .pick(x, y)
+                        .and_then(|d| solar_scene::surface_under(b, t, eye, d));
+                    Some(match at {
+                        Some((lon, lat)) => format!(
+                            "{text}; {}",
+                            crate::view::format_lat_lon(lat.to_radians(), lon.to_radians())
+                        ),
+                        None => text,
+                    })
+                }
                 None if object().is_some() => object(),
                 None => {
                     let d = self.solar_cam.look.pick(x, y)?;
@@ -209,6 +224,72 @@ impl App {
         let fov = self.solar_cam.look.fov;
         self.solar_cam.look.set(az, alt, fov);
         self.fly_solar(Body::Sun);
+    }
+
+    /// Load the surface maps of the (at most `MAX_MAPS`) biggest bodies on
+    /// screen that have one and are big enough to show it, and report on
+    /// the canvas (`data-maps`) whether all of them are drawn.
+    fn want_planet_maps(&mut self, drawn: &[solar_scene::Drawn]) {
+        let mut big: Vec<&solar_scene::Drawn> = drawn
+            .iter()
+            .filter(|d| d.disk.r > 10.0 && solar_scene::map_file(d.body).is_some())
+            .collect();
+        big.sort_by(|a, b| b.disk.r.total_cmp(&a.disk.r));
+        big.truncate(solar_render::MAX_MAPS);
+        let mut settled = true;
+        for d in big {
+            if self.renderer.solar_has_map(d.body) || self.planet_failed.contains(&d.body) {
+                continue;
+            }
+            settled = false;
+            self.load_planet_map(d.body);
+        }
+        if !self.renderer.is_lost() {
+            self.set_globe_attr("data-maps", if settled { "settled" } else { "loading" });
+        }
+    }
+
+    /// Fetch (once) and decode a body's surface map, then upload it.
+    fn load_planet_map(&mut self, body: Body) {
+        let Some(file) = solar_scene::map_file(body) else {
+            return;
+        };
+        if !self.planet_busy.insert(body) {
+            return;
+        }
+        let Some(app) = self.me.upgrade() else { return };
+        let kept = self.planet_bytes.get(&body).cloned();
+        // The small texture tier decodes at half size.
+        let width = if self.renderer.tile_capacity() < 64 {
+            1024
+        } else {
+            2048
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            let bytes = match kept {
+                Some(b) => Ok(b),
+                None => data::fetch(file).await.map(Rc::new),
+            };
+            let bitmap = match &bytes {
+                Ok(b) => crate::imagery::decode(b, width).await,
+                Err(e) => Err(e.clone()),
+            };
+            let mut a = app.borrow_mut();
+            a.planet_busy.remove(&body);
+            if let Ok(b) = bytes {
+                a.planet_bytes.insert(body, b);
+            }
+            let uploaded = bitmap.and_then(|bm| {
+                let r = a.renderer.upload_solar_map(body, &bm);
+                bm.close();
+                r
+            });
+            if let Err(e) = uploaded {
+                web_sys::console::error_1(&e);
+                a.planet_failed.insert(body);
+            }
+            a.redraw.mark_render();
+        });
     }
 
     /// Fetch and decode the spacecraft and small bodies, once.

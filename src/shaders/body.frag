@@ -19,8 +19,13 @@ uniform float u_bands;        // strength of latitude bands (the giants)
 uniform vec2 u_rings;         // inner and outer ring radius, body radii (0 for none)
 uniform vec3 u_dot;           // disk center and radius, device pixels
 uniform float u_dpr;
+uniform vec3 u_meridian;      // prime meridian on the equator, camera space
+uniform sampler2D u_map;      // surface map: u = 0.5 + east lon / 2pi, v = 0.5 - lat / pi
+uniform float u_mapOn;        // 1 when u_map holds this body's map
 
 out vec4 outColor;
+
+const float PI = 3.14159265358979;
 
 // Brightness of Saturn's rings at radius r (Saturn radii): the faint C
 // ring, the bright B ring, the Cassini division and the A ring with the
@@ -66,12 +71,30 @@ void main() {
     float cover = clamp(0.5 - edgePx, 0.0, 1.0);
     vec4 col = vec4(0.0);
     float tSphere = 1e30;
+    // The surface normal and map coordinates for every pixel of the quad
+    // (outside the disk they are only used for the derivatives), so the
+    // derivatives below are taken in uniform control flow.
+    float tHit = b - sqrt(max(h, 0.0));
+    vec3 n = normalize(tHit * dir - u_center);
+    vec3 east = cross(u_pole, u_meridian);
+    float lon = atan(dot(n, east), dot(n, u_meridian));
+    float lat = asin(clamp(dot(n, u_pole), -1.0, 1.0));
+    // Two parameterizations of u: one jumps at the 180 degree meridian, the
+    // other at 0; the smaller derivative is the true one (no seam line).
+    float u1 = 0.5 + lon / (2.0 * PI);
+    float u2 = fract(u1 + 0.5);
+    vec2 uv = vec2(u1, 0.5 - lat / PI);
+    vec2 dx = vec2(dFdx(u1), dFdx(uv.y));
+    vec2 dy = vec2(dFdy(u1), dFdy(uv.y));
+    float dx2 = dFdx(u2);
+    float dy2 = dFdy(u2);
+    if (abs(dx2) < abs(dx.x)) dx.x = dx2;
+    if (abs(dy2) < abs(dy.x)) dy.x = dy2;
+    vec3 surface = textureGrad(u_map, uv, dx, dy).rgb;
     if (h > -0.05 && b > 0.0) {
-        float tHit = b - sqrt(max(h, 0.0));
         tSphere = tHit;
-        vec3 n = normalize(tHit * dir - u_center);
-        vec3 c = u_color;
-        if (u_bands > 0.0) {
+        vec3 c = u_mapOn > 0.5 ? surface : u_color;
+        if (u_bands > 0.0 && u_mapOn < 0.5) {
             float lat = dot(n, u_pole);
             c *= 1.0 + u_bands * (0.6 * sin(lat * 18.0) + 0.4 * sin(lat * 41.0 + 1.3));
         }

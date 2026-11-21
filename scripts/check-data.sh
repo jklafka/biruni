@@ -32,7 +32,8 @@ done
 # Hand-processed from pinned downloads (scripts/make_blue_marble.py,
 # scripts/make_terrain.py, scripts/make_night_lights.py, scripts/make_milky_way.py);
 # CI cannot fetch them, so they are checked for shape only (below), not regenerated.
-external=(blue_marble.webp night_lights.webp terrain.webp milky_way.webp)
+external=(blue_marble.webp night_lights.webp terrain.webp milky_way.webp
+  planet_earth.webp planet_moon.webp planet_mars.webp planet_mercury.webp planet_jupiter.webp)
 is_external() { local x; for x in "${external[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
 # The tile pack list (docs/tile-streaming.md): written by scripts/make_tiles.py
@@ -54,7 +55,7 @@ for f in assets/data/*; do
 done
 
 # Each image layer must be a 4096x2048 WebP under 2 MB (what the renderer
-# expects); the sky's Milky Way is 2048x1024.
+# expects); the sky's Milky Way and the planet maps are 2048x1024.
 for name in "${external[@]}"; do
   img="assets/data/$name"
   if [ ! -f "$img" ]; then
@@ -72,7 +73,7 @@ print(w & 0x3FFF, h & 0x3FFF)
 PY
 )"
   want="4096 2048"
-  [ "$name" = milky_way.webp ] && want="2048 1024"
+  case "$name" in milky_way.webp | planet_*.webp) want="2048 1024" ;; esac
   [ "$dims" = "$want" ] || drift+=("$name is not a lossy ${want/ /x} WebP (got: $dims)")
   [ "$size" -lt 2097152 ] || drift+=("$name is $size bytes, over the 2 MB budget")
 done

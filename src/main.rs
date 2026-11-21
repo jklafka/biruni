@@ -191,6 +191,11 @@ struct App {
     objects_on: bool,
     objects_button: HtmlElement,
     solar_markers: Vec<solar_scene::objects::Marker>,
+    /// Surface maps of the solar view: encoded bytes (kept to decode again
+    /// after eviction or a context loss), decodes under way, and failures.
+    planet_bytes: HashMap<solar::Body, Rc<Vec<u8>>>,
+    planet_busy: std::collections::HashSet<solar::Body>,
+    planet_failed: std::collections::HashSet<solar::Body>,
     /// Earth, Sky and Solar system buttons.
     view_buttons: [HtmlElement; 3],
     title_hint: HtmlElement,
@@ -1879,6 +1884,9 @@ fn start() -> Result<(), JsValue> {
         objects_on: !initial_hash.contains("&objects=off"),
         objects_button: element(&doc, "objects-toggle")?,
         solar_markers: Vec::new(),
+        planet_bytes: HashMap::new(),
+        planet_busy: Default::default(),
+        planet_failed: Default::default(),
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,

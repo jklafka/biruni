@@ -162,12 +162,36 @@
       "license": "nasa-bmng"
     },
     {
+      "name": "nasa-cassini-jupiter-pia07782",
+      "url": "https://assets.science.nasa.gov/content/dam/science/psd/photojournal/pia/pia07/pia07782/PIA07782.jpg",
+      "version": "2006-03-27",
+      "sha256": "6b835ddd8036ea9efd25def04f75aa60b69b096025a37eeae5e9b6978e0a2281",
+      "size": 441285,
+      "license": "nasa-planetary-maps"
+    },
+    {
+      "name": "nasa-messenger-mercury-pia15063",
+      "url": "https://assets.science.nasa.gov/content/dam/science/psd/photojournal/pia/pia15/pia15063/PIA15063.jpg",
+      "version": "2011-11-29",
+      "sha256": "f633fe2fc51656a9c5198cd34eaaf1fa5e5ae77c05461e012e19f4e14faa9f1f",
+      "size": 3091704,
+      "license": "nasa-planetary-maps"
+    },
+    {
       "name": "nasa-svs-milkyway-2020-4k",
       "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_4k.exr",
       "version": "Deep Star Maps 2020 (SVS 4851)",
       "sha256": "2eb802d6e68d170b410f766c7fec07f7518619f6b6708fdc81e9302d93e74fdb",
       "size": 36436668,
       "license": "nasa-svs-deep-star-maps"
+    },
+    {
+      "name": "nasa-svs-moon-kit-2k",
+      "url": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_2k.tif",
+      "version": "2019",
+      "sha256": "13b797422e8c4b8607ff2b2623ac3a046a6da0132d567c2d272d92fad7052c4a",
+      "size": 3339438,
+      "license": "nasa-planetary-maps"
     },
     {
       "name": "ne-50m-hypso-relief-water",
@@ -192,6 +216,14 @@
       "sha256": "a861accd345249a185a5ecfc2a516f34291c0aa52f4bb8d8337ffc53e9cef6b9",
       "size": 107520,
       "license": "stellarium-skycultures"
+    },
+    {
+      "name": "usgs-mars-viking-mdim21-1km",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Mars_Viking_MDIM21_ClrMosaic_1km.jpg",
+      "version": "MDIM 2.1",
+      "sha256": "fdfcd335559c3dc67052b7e8a9565d850e336ac0d1f3ea7f5eb7826ffb44ecb2",
+      "size": 36708552,
+      "license": "nasa-planetary-maps"
     }
   ]
 }

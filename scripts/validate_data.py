@@ -71,6 +71,12 @@ WEBP_SIZES = {
     "terrain.webp": (4096, 2048),
     "night_lights.webp": (4096, 2048),
     "milky_way.webp": (2048, 1024),
+    # The solar system view's surface maps (scripts/make_planets.py).
+    "planet_earth.webp": (2048, 1024),
+    "planet_moon.webp": (2048, 1024),
+    "planet_mars.webp": (2048, 1024),
+    "planet_mercury.webp": (2048, 1024),
+    "planet_jupiter.webp": (2048, 1024),
 }
 
 
