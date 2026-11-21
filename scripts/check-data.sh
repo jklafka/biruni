@@ -17,6 +17,7 @@ python3 scripts/test_tile_pack.py > /dev/null 2>&1 || { python3 scripts/test_til
 python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test_convert_stars.py; exit 1; }
 python3 scripts/test_convert_constellations.py > /dev/null 2>&1 || { python3 scripts/test_convert_constellations.py; exit 1; }
 python3 scripts/test_fetch_space.py > /dev/null 2>&1 || { python3 scripts/test_fetch_space.py; exit 1; }
+python3 scripts/test_hist_format.py > /dev/null 2>&1 || { python3 scripts/test_hist_format.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
