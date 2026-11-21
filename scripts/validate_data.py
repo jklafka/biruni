@@ -237,7 +237,20 @@ def decode_constellations(data):
     return len(figs)
 
 
+def decode_space(data):
+    """SPCE spacecraft and small bodies (scripts/fetch_space.py,
+    src/space.rs). Returns the object count."""
+    import fetch_space
+
+    problems = fetch_space.check(data)
+    if problems:
+        raise Bad("space data: " + "; ".join(problems[:3]))
+    return len(fetch_space.decode(data)[1])
+
+
 def decode_bin(data):
+    if data[:4] == b"SPCE":
+        return decode_space(data)
     if data[:4] == b"MAPC":
         return decode_countries(data)
     if data[:4] == b"STAR":
