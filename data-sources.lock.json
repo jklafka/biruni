@@ -2,6 +2,14 @@
   "version": 1,
   "sources": [
     {
+      "name": "cliopatria-v021",
+      "url": "https://raw.githubusercontent.com/Seshat-Global-History-Databank/cliopatria/5f433377139a6eeaeacbdc894b70f8805b72c8b5/cliopatria.geojson.zip",
+      "version": "0.2.1 (5f43337)",
+      "sha256": "e10a4e429fca708788ff9e7572a95fce801fae55852d217cffabc1c59cd4eed4",
+      "size": 46005176,
+      "license": "cliopatria"
+    },
+    {
       "name": "hyg-v44",
       "url": "https://codeberg.org/astronexus/hyg/media/commit/53e3df311869e813ace5f1ad2ec4ce909f13256c/data/hyg/CURRENT/hyg_v44.csv.gz",
       "version": "4.4 (codeberg astronexus/hyg 53e3df3)",

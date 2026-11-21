@@ -18,6 +18,7 @@ python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test
 python3 scripts/test_convert_constellations.py > /dev/null 2>&1 || { python3 scripts/test_convert_constellations.py; exit 1; }
 python3 scripts/test_fetch_space.py > /dev/null 2>&1 || { python3 scripts/test_fetch_space.py; exit 1; }
 python3 scripts/test_hist_format.py > /dev/null 2>&1 || { python3 scripts/test_hist_format.py; exit 1; }
+python3 scripts/test_convert_cliopatria.py > /dev/null 2>&1 || { python3 scripts/test_convert_cliopatria.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -52,6 +53,7 @@ for f in assets/data/*; do
   [ "$name" = stars.bin ] && continue
   [ "$name" = constellations.bin ] && continue
   [ "$name" = space.bin ] && continue
+  [ "$name" = history_borders.bin ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 
@@ -105,6 +107,36 @@ PY
 # that deploys replace with fresh data. CI does not ask JPL; check that the
 # snapshot decodes and looks sane.
 python3 scripts/fetch_space.py --check assets/data/space.bin || drift+=("space.bin (see above; refetch with scripts/fetch_space.py)")
+
+# Historical borders (scripts/convert_cliopatria.py), from the pinned
+# Cliopatria download, which CI does not fetch: decodable, the full span,
+# at most 255 polities in any year (the ID raster is 8-bit), under 4 MB.
+python3 - <<'PY' || drift+=("history_borders.bin (see above; rebuild with scripts/convert_cliopatria.py)")
+import sys
+sys.path.insert(0, "scripts")
+import hist_format as hf
+data = open("assets/data/history_borders.bin", "rb").read()
+scale, _, names, _, records = hf.decode(data)
+problems = []
+if scale != hf.SCALE_YEARS:
+    problems.append("not in calendar years")
+if (min(r[1] for r in records), max(r[2] for r in records)) != (-3400, 2024):
+    problems.append("does not span 3400 BCE to 2024")
+events = {}
+for r in records:
+    events[r[1]] = events.get(r[1], 0) + 1
+    events[r[2] + 1] = events.get(r[2] + 1, 0) - 1
+live = peak = 0
+for year in sorted(events):
+    live += events[year]
+    peak = max(peak, live)
+if peak > 255:
+    problems.append(f"{peak} polities at once, over 255")
+if len(data) > 4 << 20:
+    problems.append(f"{len(data)} bytes, over 4 MB")
+if problems:
+    sys.exit("assets/data/history_borders.bin: " + ", ".join(problems))
+PY
 
 # Constellation figures (scripts/convert_constellations.py), from pinned
 # Stellarium and HYG downloads: all 88, decodable.
