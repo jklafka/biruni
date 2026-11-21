@@ -12,6 +12,7 @@ mod ephemeris;
 mod geo;
 mod geodesic;
 mod healpix;
+mod history;
 mod imagery;
 mod info_panel;
 mod label_layer;

@@ -254,7 +254,23 @@ def decode_space(data):
     return len(fetch_space.decode(data)[1])
 
 
+def decode_history(data):
+    """HIST time-indexed shapes (scripts/hist_format.py, src/history.rs).
+    Returns the record count."""
+    import hist_format
+
+    try:
+        _, _, names, geometries, records = hist_format.decode(data)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise Bad(f"history data: {e}")
+    if not records:
+        raise Bad("history data: no records")
+    return len(records)
+
+
 def decode_bin(data):
+    if data[:4] == b"HIST":
+        return decode_history(data)
     if data[:4] == b"SPCE":
         return decode_space(data)
     if data[:4] == b"MAPC":

@@ -162,6 +162,14 @@ class Validate(unittest.TestCase):
         files["stars.bin"] = swapped
         self.assertProblem(self.problems(files), "sorted")
 
+    def test_history(self):
+        hist = (ROOT / "scripts" / "testdata" / "tiny_history.bin").read_bytes()
+        files = self.good()
+        files["history.bin"] = hist
+        self.assertEqual(self.problems(files), [])
+        files["history.bin"] = hist[:-1]
+        self.assertProblem(self.problems(files), "history data")
+
     def test_space(self):
         space = (ROOT / "scripts" / "testdata" / "tiny_space.bin").read_bytes()
         files = self.good()
