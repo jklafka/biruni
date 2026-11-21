@@ -11,6 +11,7 @@ mod data;
 mod ephemeris;
 mod geo;
 mod geodesic;
+mod healpix;
 mod imagery;
 mod info_panel;
 mod label_layer;
@@ -34,6 +35,7 @@ mod sky_bodies;
 mod sky_render;
 mod stars;
 mod sun;
+mod survey;
 mod thematic;
 mod tile_pack;
 mod tile_stream;
@@ -183,12 +185,24 @@ struct App {
     /// loss), and whether a decode is under way.
     milky_way: Option<Rc<Vec<u8>>>,
     milky_way_decoding: bool,
+    /// The deep-sky survey (`survey.rs`): shown or not, the tile planner,
+    /// the Allsky atlas still encoded (decoded again after a context loss),
+    /// whether it is being fetched or decoded, the mirror in use, the
+    /// toggle button and the last `data-survey` value.
+    survey_on: bool,
+    survey: survey::Survey,
+    survey_allsky: Option<Rc<Vec<u8>>>,
+    survey_busy: bool,
+    survey_mirror: usize,
+    survey_button: HtmlElement,
+    survey_attr: &'static str,
 }
 
 impl App {
     fn context_lost(&mut self) {
         self.renderer.context_lost();
         self.tile_stream.context_lost();
+        self.survey.context_lost();
         self.sync_imagery_attr();
         self.send(Event::CancelInertia);
         self.status.set_text_content(Some("Restoring map…"));
@@ -708,6 +722,9 @@ impl App {
             if !self.show_figures {
                 hash.push_str("&figures=off");
             }
+            if self.survey_on {
+                hash.push_str("&survey=dss");
+            }
         }
         hash
     }
@@ -744,7 +761,7 @@ impl App {
         self.labels.clear();
         self.overlay.clear();
         if sky {
-            self.credits.show_sky();
+            self.credits.show_sky(self.survey_on);
             self.load_stars();
         } else {
             self.credits.show_layer(self.layers_state.shown());
@@ -764,6 +781,117 @@ impl App {
         self.redraw.mark_render();
         self.redraw.mark_hud();
         self.hash_stale = true;
+    }
+
+    /// Show or hide the deep-sky survey.
+    fn set_survey(&mut self, on: bool) {
+        self.survey_on = on;
+        let _ = self
+            .survey_button
+            .set_attribute("aria-pressed", if on { "true" } else { "false" });
+        if self.sky_on {
+            self.credits.show_sky(on);
+        }
+        if on && self.sky_on {
+            self.load_allsky();
+        }
+        self.redraw.mark_render();
+        self.hash_stale = true;
+    }
+
+    /// Fetch the survey's Allsky atlas once (trying the mirrors in turn),
+    /// and decode and upload it whenever the renderer lacks it.
+    fn load_allsky(&mut self) {
+        if self.survey_busy || self.renderer.survey_has_allsky() {
+            return;
+        }
+        let Some(app) = self.me.upgrade() else { return };
+        self.survey_busy = true;
+        let kept = self.survey_allsky.clone();
+        let mirror = self.survey_mirror;
+        // The small texture tier decodes the atlas at half size (4 MB with
+        // mipmaps instead of 17).
+        let size = (self.renderer.tile_capacity() < 64).then_some(survey::ALLSKY_SMALL);
+        wasm_bindgen_futures::spawn_local(async move {
+            let bytes = match kept {
+                Some(b) => Ok(b),
+                None => {
+                    let mut got = Err(JsValue::from_str("no survey mirror answered"));
+                    for (i, base) in survey::MIRRORS.iter().enumerate().skip(mirror) {
+                        match geo::fetch_bytes(&survey::allsky_url(base)).await {
+                            Ok(b) => {
+                                app.borrow_mut().survey_mirror = i;
+                                got = Ok(Rc::new(b));
+                                break;
+                            }
+                            Err(e) => got = Err(e),
+                        }
+                    }
+                    got
+                }
+            };
+            let bitmap = match &bytes {
+                Ok(b) => imagery::decode_sized(b, "image/jpeg", size).await,
+                Err(e) => Err(e.clone()),
+            };
+            let mut a = app.borrow_mut();
+            a.survey_busy = false;
+            match bitmap {
+                Ok(bm) => {
+                    if let Err(e) = a.renderer.survey_upload_allsky(&bm) {
+                        web_sys::console::error_1(&e);
+                    }
+                    bm.close();
+                    a.survey_allsky = bytes.ok();
+                    a.redraw.mark_render();
+                }
+                Err(e) => {
+                    let msg = format!(
+                        "deep-sky survey unavailable: {}",
+                        e.as_string().unwrap_or_else(|| format!("{e:?}"))
+                    );
+                    web_sys::console::warn_1(&msg.into());
+                }
+            }
+        });
+    }
+
+    /// Fetch, decode and upload one survey tile.
+    fn fetch_survey_tile(&self, t: healpix::Tile) {
+        let Some(app) = self.me.upgrade() else { return };
+        let (epoch, base) = (self.survey.epoch, survey::MIRRORS[self.survey_mirror]);
+        let url = survey::tile_url(base, t);
+        wasm_bindgen_futures::spawn_local(async move {
+            let px = survey::TILE_PX;
+            let bitmap = match geo::fetch_bytes(&url).await {
+                Ok(b) => imagery::decode_sized(&b, "image/jpeg", Some((px, px))).await,
+                Err(e) => Err(e),
+            };
+            let mut a = app.borrow_mut();
+            if a.survey.epoch != epoch {
+                a.survey.forget(t);
+                return;
+            }
+            match bitmap {
+                Ok(bm) => {
+                    let up = a.renderer.survey_upload_tile(t, &bm);
+                    bm.close();
+                    match up {
+                        Ok(()) => {
+                            if let Some(old) = a.survey.arrived(t) {
+                                a.renderer.survey_drop_tile(old);
+                            }
+                        }
+                        Err(e) => {
+                            web_sys::console::error_1(&e);
+                            a.survey.failed(t);
+                        }
+                    }
+                }
+                Err(_) => a.survey.failed(t), // absent at this order, or offline
+            }
+            a.redraw.mark_render();
+        });
     }
 
     /// Show or hide the constellation figures.
@@ -828,6 +956,47 @@ impl App {
         });
     }
 
+    /// The survey's part of a sky frame, starting the fetches it needs;
+    /// `None` when it is off or its atlas is not in yet.
+    fn plan_survey(
+        &mut self,
+        cam: &sky::SkyCamera,
+        eq_to_hor: &sky::Mat3,
+        daylight: f64,
+    ) -> Option<sky_render::SurveyFrame> {
+        let status = if !self.survey_on {
+            "off"
+        } else if self.renderer.survey_has_allsky() && self.survey.settled() {
+            "settled"
+        } else {
+            "loading"
+        };
+        if status != self.survey_attr {
+            self.survey_attr = status;
+            self.set_globe_attr("data-survey", status);
+        }
+        if !self.survey_on {
+            return None;
+        }
+        if !self.renderer.survey_has_allsky() {
+            self.load_allsky();
+            return None;
+        }
+        let cone = survey::view_cone(cam, eq_to_hor)?;
+        let rad_per_px = 2.0 * cam.tan_quarter() / cam.half_short();
+        let wanted = survey::wanted_order(rad_per_px)
+            .map(|k| survey::Survey::select(k, cone))
+            .unwrap_or_default();
+        for t in self.survey.plan(wanted) {
+            self.fetch_survey_tile(t);
+        }
+        Some(sky_render::SurveyFrame {
+            strength: 1.0 - daylight,
+            allsky_indices: survey::allsky_indices(cone),
+            tiles: self.survey.drawable(cone),
+        })
+    }
+
     /// Decode the Milky Way image and hand it to the renderer (again after a
     /// lost context).
     fn decode_milky_way(&mut self) {
@@ -876,6 +1045,7 @@ impl App {
             .stars
             .as_ref()
             .map_or(0, |c| stars::count_brighter(c, mag_limit));
+        let survey_frame = self.plan_survey(&cam, &eq_to_hor, daylight);
         let frame = sky_render::SkyFrame {
             width: pw,
             height: ph,
@@ -886,11 +1056,17 @@ impl App {
             dpr,
             grid_step: sky::grid_step(cam.fov),
             daylight,
-            milky_way: MILKY_WAY_STRENGTH,
+            // The survey shows the Milky Way itself.
+            milky_way: if survey_frame.is_some() {
+                0.0
+            } else {
+                MILKY_WAY_STRENGTH
+            },
             eq_to_cam: sky::matmul(&sky::transpose(&cam.basis()), &eq_to_hor),
             zenith: sky::mul(&sky::transpose(&eq_to_hor), [0.0, 1.0, 0.0]),
             mag_limit,
             star_count,
+            survey: survey_frame,
         };
         if let Err(e) = self.renderer.draw_sky(&frame) {
             web_sys::console::error_1(&e);
@@ -1634,6 +1810,13 @@ fn start() -> Result<(), JsValue> {
         figures_button: element(&doc, "figures-toggle")?,
         milky_way: None,
         milky_way_decoding: false,
+        survey_on: initial_hash.contains("&survey=dss"),
+        survey: survey::Survey::new(renderer_tile_capacity),
+        survey_allsky: None,
+        survey_busy: false,
+        survey_mirror: 0,
+        survey_button: element(&doc, "survey-toggle")?,
+        survey_attr: "",
     }));
 
     {
@@ -1643,6 +1826,8 @@ fn start() -> Result<(), JsValue> {
         a.select_layer(initial_layer);
         let figures = a.show_figures;
         a.set_figures(figures); // labels the button
+        let survey = a.survey_on;
+        a.set_survey(survey);
         if initial_sky {
             a.set_view(true);
         }
@@ -1954,6 +2139,10 @@ fn start() -> Result<(), JsValue> {
                                     let on = !a.show_figures;
                                     a.set_figures(on);
                                 }
+                                "d" | "D" if plain => {
+                                    let on = !a.survey_on;
+                                    a.set_survey(on);
+                                }
                                 "s" | "S" if plain => {
                                     let (ui, url) = (a.share_ui.clone(), a.current_share_url());
                                     drop(a);
@@ -2239,6 +2428,7 @@ fn start() -> Result<(), JsValue> {
                     };
                 }
                 a.set_figures(!hash.contains("&figures=off"));
+                a.set_survey(hash.contains("&survey=dss"));
                 if sky != a.sky_on {
                     a.set_view(sky);
                 } else {
@@ -2257,7 +2447,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 11] = [
+    let buttons: [(&str, Action); 12] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2302,6 +2492,10 @@ fn start() -> Result<(), JsValue> {
                 return a.sky_moved();
             }
             a.send(Event::Reset);
+        }),
+        ("survey-toggle", |a| {
+            let on = !a.survey_on;
+            a.set_survey(on)
         }),
         ("figures-toggle", |a| {
             let on = !a.show_figures;

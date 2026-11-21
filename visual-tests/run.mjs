@@ -105,6 +105,19 @@ const VIEWS = [
   // Midnight on 2024-07-15 in New York: the summer Milky Way from
   // Sagittarius up through Cygnus, without figures.
   { name: "sky-milky-way", hash: "#40,-74,800&t=1721016000&view=sky&look=170,40,110&figures=off" },
+  // The deep-sky survey (DSS color) from the reduced Allsky fixture: Orion
+  // wide, and 35 degrees around M42 (the widest view still drawn from the
+  // atlas alone, so no tiles are asked for); and a context restore that
+  // must match the wide view.
+  { name: "sky-survey", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90&survey=dss&figures=off" },
+  { name: "sky-survey-zoom", hash: "#40,-74,800&t=1735700400&view=sky&look=163.75,43.33,35&survey=dss&figures=off" },
+  {
+    name: "sky-survey-ctxloss",
+    hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90&survey=dss&figures=off",
+    query: "?debug=ctxloss",
+    loseContext: true,
+    reference: "sky-survey",
+  },
   // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
   // field and no constellation figures.
   { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
@@ -158,6 +171,20 @@ async function routeTilePacks(page) {
       headers: { ...cors, "content-range": `bytes ${start}-${end}/${body.length}` },
       body: body.subarray(start, end + 1),
     });
+  });
+}
+
+// The deep-sky survey's mirrors: the Allsky atlas comes from a reduced
+// fixture, every tile is "missing", so the views show the atlas offline.
+async function routeSurvey(page) {
+  await page.route(/^https:\/\/(skies\.esac\.esa\.int|irsa\.ipac\.caltech\.edu)\//, async (route) => {
+    const cors = { "access-control-allow-origin": "*" };
+    if (route.request().url().endsWith("/Norder3/Allsky.jpg")) {
+      const body = await readFile(join(here, "fixtures", "dss", "Allsky.jpg"));
+      await route.fulfill({ status: 200, headers: { ...cors, "content-type": "image/jpeg" }, body });
+    } else {
+      await route.fulfill({ status: 404, headers: cors, body: "no fixture" });
+    }
   });
 }
 
@@ -229,6 +256,7 @@ try {
     // the globe and would hover-highlight a country.
     await page.mouse.move(-20, -20);
     await routeTilePacks(page);
+    await routeSurvey(page);
     const requests = [];
     let workers = 0;
     page.on("request", (r) => requests.push(r.url()));
@@ -251,6 +279,10 @@ try {
       await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-figures]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-milky-way]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector('#globe[data-survey="settled"], #globe[data-survey="off"]', {
+        state: "attached",
+        timeout: 30_000,
+      });
     } else {
       // Labels load after the map; the app flags the canvas once they are drawn.
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });

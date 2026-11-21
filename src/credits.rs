@@ -71,18 +71,32 @@ pub const DEEP_STAR_MAPS: Credit = Credit {
     text: "The Milky Way of the sky view. NASA/Goddard Space Flight Center Scientific Visualization Studio. Gaia DR2: ESA/Gaia/DPAC.",
 };
 
-pub const ALL: [&Credit; 6] = [
+pub const DSS: Credit = Credit {
+    id: "dss",
+    name: "Digitized Sky Survey (DSS2, color)",
+    license: "CC BY-NC-SA (non-commercial)",
+    license_url: "https://archive.stsci.edu/dss/copyright.html",
+    source_url: "https://archive.stsci.edu/dss/",
+    text: "The deep-sky survey of the sky view. Digitized Sky Survey - STScI/NASA; colored and HiPS by CDS (CNRS/Unistra); tiles served by ESA ESASky and NASA/IPAC IRSA. Plates: POSS-II (Caltech), UK Schmidt (UK SERC/PPARC, Anglo-Australian Observatory).",
+};
+
+pub const ALL: [&Credit; 7] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
     &HYG,
     &STELLARIUM,
     &DEEP_STAR_MAPS,
+    &DSS,
 ];
 
-/// The credits of the sky view.
-pub fn sky_credits() -> Vec<&'static Credit> {
-    vec![&HYG, &STELLARIUM, &DEEP_STAR_MAPS]
+/// The credits of the sky view; the survey's only while it is shown.
+pub fn sky_credits(survey: bool) -> Vec<&'static Credit> {
+    let mut v = vec![&HYG, &STELLARIUM, &DEEP_STAR_MAPS];
+    if survey {
+        v.push(&DSS);
+    }
+    v
 }
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
@@ -92,7 +106,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
-        .filter(|c| !sky_credits().iter().any(|s| s.id == c.id))
+        .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
         .collect()
 }
 
@@ -133,9 +147,10 @@ mod tests {
     #[test]
     fn the_sky_credits_its_stars_and_the_earth_does_not() {
         assert_eq!(
-            sky_credits().iter().map(|c| c.id).collect::<Vec<_>>(),
+            sky_credits(false).iter().map(|c| c.id).collect::<Vec<_>>(),
             ["hyg", "stellarium-skycultures", "nasa-svs-deep-star-maps"]
         );
+        assert_eq!(sky_credits(true).last().unwrap().id, "dss");
         for layer in Layer::ALL {
             let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
             assert!(!ids.contains(&HYG.id) && !ids.contains(&STELLARIUM.id));

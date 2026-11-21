@@ -44,9 +44,9 @@ impl CreditsPanel {
         self.show(credits::visible_credits(layer));
     }
 
-    /// Rebuild the list for the sky view.
-    pub fn show_sky(&self) {
-        self.show(credits::sky_credits());
+    /// Rebuild the list for the sky view (with the survey, if shown).
+    pub fn show_sky(&self, survey: bool) {
+        self.show(credits::sky_credits(survey));
     }
 
     fn show(&self, list: Vec<&'static credits::Credit>) {
