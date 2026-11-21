@@ -147,6 +147,61 @@ impl Overlay {
         }
     }
 
+    /// Draw the solar system view's overlay, replacing whatever was there:
+    /// the orbits (the target's a little stronger) and the bodies' names
+    /// (CSS pixels).
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_solar(
+        &mut self,
+        orbits: &[crate::solar_scene::OrbitLine],
+        labels: &[crate::solar_scene::Label],
+        target: crate::solar::Body,
+        css: (f64, f64),
+        px: u32,
+        py: u32,
+        dpr: f64,
+    ) {
+        use crate::solar_scene::css_color;
+        if (px, py) != (self.canvas.width(), self.canvas.height()) {
+            self.canvas.set_width(px);
+            self.canvas.set_height(py);
+        }
+        let ctx = &self.ctx;
+        let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+        ctx.clear_rect(0.0, 0.0, css.0, css.1);
+        self.has_content = !(orbits.is_empty() && labels.is_empty());
+        ctx.set_line_cap("round");
+        ctx.set_line_join("round");
+        ctx.set_line_width(1.0);
+        for o in orbits {
+            ctx.set_global_alpha(if o.body == target { 0.7 } else { 0.38 });
+            ctx.set_stroke_style_str(&css_color(o.body));
+            ctx.begin_path();
+            for run in &o.lines {
+                for (i, (x, y)) in run.iter().enumerate() {
+                    if i == 0 {
+                        ctx.move_to(*x, *y);
+                    } else {
+                        ctx.line_to(*x, *y);
+                    }
+                }
+            }
+            ctx.stroke();
+        }
+        ctx.set_global_alpha(1.0);
+        ctx.set_font("600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+        ctx.set_text_align("left");
+        ctx.set_text_baseline("middle");
+        ctx.set_line_width(3.0);
+        ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
+        for l in labels {
+            let name = l.body.name();
+            ctx.set_fill_style_str(&css_color(l.body));
+            let _ = ctx.stroke_text(name, l.x, l.y);
+            let _ = ctx.fill_text(name, l.x, l.y);
+        }
+    }
+
     /// Redraw for the current camera. Does nothing when there is nothing to
     /// draw now and nothing to clear.
     pub fn draw(&mut self, cam: &Camera, measure: &Measure, px: u32, py: u32, dpr: f64) {

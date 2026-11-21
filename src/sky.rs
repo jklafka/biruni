@@ -455,11 +455,6 @@ fn hash_param<'a>(hash: &'a str, key: &str) -> Option<&'a str> {
         .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
 }
 
-/// Whether the hash asks for the sky view (`&view=sky`).
-pub fn parse_hash_view(hash: &str) -> bool {
-    hash_param(hash, "view") == Some("sky")
-}
-
 /// The sky camera from `&look=az,alt,fov` (degrees), or `None` if absent or
 /// malformed.
 pub fn parse_hash_look(hash: &str) -> Option<SkyCamera> {
@@ -766,12 +761,9 @@ mod tests {
             h,
             "#10.0,20.0,800&layer=imagery&view=sky&look=123.4,-12.3,5.25"
         );
-        assert!(parse_hash_view(&h));
+        assert_eq!(crate::view::View::from_hash(&h), crate::view::View::Sky);
         let back = parse_hash_look(&h).unwrap();
         assert!((back.az - cam.az).abs() < 1e-9 && (back.fov - cam.fov).abs() < 1e-9);
-        assert!(!parse_hash_view("#1,2,3"));
-        assert!(!parse_hash_view("#1,2,3&view=earth"));
-        assert!(!parse_hash_view("view=sky"), "only after the first part");
         assert_eq!(parse_hash_look("#1,2,3&look=1,2"), None);
         assert_eq!(parse_hash_look("#1,2,3&look=1,NaN,3"), None);
         assert_eq!(parse_hash_look("#1,2,3&look=1,x,3"), None);

@@ -34,6 +34,9 @@ mod sky;
 mod sky_bodies;
 mod sky_render;
 mod solar;
+mod solar_app;
+mod solar_render;
+mod solar_scene;
 mod stars;
 mod sun;
 mod survey;
@@ -53,7 +56,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use view::{
     format_altitude, format_lat_lon, format_view_hash, parse_hash_layer, parse_hash_proj,
-    parse_view_hash, scale_bar, share_url, Layer, RedrawFlags, SunView, Units, HOME,
+    parse_view_hash, scale_bar, share_url, Layer, RedrawFlags, SunView, Units, View, HOME,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -163,13 +166,24 @@ struct App {
     tile_stream: tile_stream::TileStream,
     /// Last `data-tiles` value, so the attribute is only written on change.
     tiles_attr: &'static str,
-    /// The sky view is shown instead of the Earth (`&view=sky`). The
-    /// observer stands at the Earth camera's center.
+    /// Which view is shown: the Earth, the sky (`&view=sky`; the observer
+    /// stands at the Earth camera's center) or the solar system
+    /// (`&view=solar`). `sky_on` is `view == View::Sky`.
+    view: View,
     sky_on: bool,
     sky_cam: sky::SkyCamera,
     sky_gestures: sky::Gestures,
-    /// Earth and Sky buttons.
-    view_buttons: [HtmlElement; 2],
+    /// The solar system view's camera and gestures, where a press began
+    /// (a tap on a body flies to it), and the bodies and names last drawn
+    /// (for picking).
+    solar_cam: solar::SolarCamera,
+    solar_gestures: sky::Gestures,
+    solar_press: Option<(f64, f64)>,
+    solar_drawn: Vec<solar_scene::Drawn>,
+    solar_labels: Vec<solar_scene::Label>,
+    solar_select: web_sys::HtmlSelectElement,
+    /// Earth, Sky and Solar system buttons.
+    view_buttons: [HtmlElement; 3],
     title_hint: HtmlElement,
     /// Labels of the first three HUD rows, which differ per view.
     hud_labels: [HtmlElement; 3],
@@ -620,7 +634,7 @@ impl App {
     /// The time scrubber is shown: the terminator is on, or the sky view
     /// (which always depends on the time).
     fn time_shown(&self) -> bool {
-        self.sun_on || self.sky_on
+        self.sun_on || self.view != View::Earth
     }
 
     /// The time the terminator and the sky show: the pin, or the clock.
@@ -667,6 +681,7 @@ impl App {
                 .flatten()
                 .is_some_and(|m| m.matches());
             self.player = scrub::Player::new(self.player.mode, reduced);
+            self.player.continuous = self.view == View::Solar;
             // Playing from the live clock pins the time where it is.
             self.sun_pin = Some(scrub::clamp_t(self.sun_time().floor()));
         }
@@ -698,7 +713,7 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        if self.sky_on {
+        if self.view != View::Earth {
             let base = page.split('#').next().unwrap_or("");
             return format!("{base}{}", self.view_hash());
         }
@@ -715,6 +730,12 @@ impl App {
     /// depends on it.
     fn view_hash(&self) -> String {
         let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
+        if self.view == View::Solar {
+            if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
+                hash.push_str(&format!("&t={t}"));
+            }
+            hash.push_str(&solar::format_hash(&self.solar_cam));
+        }
         if self.sky_on {
             if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
                 hash.push_str(&format!("&t={t}"));
@@ -730,29 +751,38 @@ impl App {
         hash
     }
 
-    /// Switch between the Earth and the sky view.
-    fn set_view(&mut self, sky: bool) {
-        self.sky_on = sky;
+    /// Switch between the Earth, the sky and the solar system.
+    fn set_view(&mut self, view: View) {
+        self.view = view;
+        self.sky_on = view == View::Sky;
+        let sky = self.sky_on;
         let doc = self.window.document();
         if let Some(body) = doc.as_ref().and_then(|d| d.body()) {
-            let _ = body.class_list().toggle_with_force("view-sky", sky);
+            let list = body.class_list();
+            let _ = list.toggle_with_force("view-sky", sky);
+            let _ = list.toggle_with_force("view-solar", view == View::Solar);
+            let _ = list.toggle_with_force("view-space", view != View::Earth);
         }
-        for (i, b) in self.view_buttons.iter().enumerate() {
-            let pressed = (i == 1) == sky;
+        for (b, v) in self.view_buttons.iter().zip(View::ALL) {
+            let pressed = v == view;
             let _ = b.set_attribute("aria-pressed", if pressed { "true" } else { "false" });
         }
-        let (hint, labels, aria) = if sky {
-            (
+        let (hint, labels, aria) = match view {
+            View::Sky => (
                 "Drag to look around · scroll or pinch to zoom",
                 ["Cursor", "Looking", "Field"],
                 "Sky view. Drag to look around, scroll to zoom.",
-            )
-        } else {
-            (
+            ),
+            View::Solar => (
+                "Drag to orbit · scroll or pinch to zoom · tap a planet to fly there",
+                ["Cursor", "Orbiting", "Distance"],
+                "Solar system. Drag to orbit, scroll to zoom, tap a planet to fly to it.",
+            ),
+            View::Earth => (
                 "Drag to rotate · scroll or pinch to zoom · double-click to fly in",
                 ["Cursor", "Center", "Altitude"],
                 "Interactive globe. Drag to rotate, scroll to zoom.",
-            )
+            ),
         };
         self.title_hint.set_text_content(Some(hint));
         for (el, text) in self.hud_labels.iter().zip(labels) {
@@ -761,22 +791,30 @@ impl App {
         let _ = self.canvas.set_attribute("aria-label", aria);
         self.labels.clear();
         self.overlay.clear();
-        if sky {
-            self.credits.show_sky(self.survey_on);
-            self.load_stars();
-        } else {
-            self.credits.show_layer(self.layers_state.shown());
+        match view {
+            View::Sky => self.credits.show_sky(self.survey_on),
+            View::Solar => self.credits.show_solar(),
+            View::Earth => self.credits.show_layer(self.layers_state.shown()),
         }
-        if sky {
+        if view != View::Earth {
+            self.load_stars();
             self.send(Event::CancelInertia);
             if self.measure.active {
                 self.toggle_measure();
             }
             self.select(None);
             self.set_proj_menu(false);
-        } else {
+        }
+        if view != View::Sky {
             self.sky_gestures = sky::Gestures::default();
         }
+        if view != View::Solar {
+            self.solar_gestures = sky::Gestures::default();
+            self.solar_press = None;
+            self.solar_cam.flight = None;
+        }
+        let _ = self.canvas.class_list().remove_1("dragging");
+        self.player.continuous = view == View::Solar;
         self.playing = self.playing && self.time_shown();
         self.refresh_sun();
         self.redraw.mark_render();
@@ -1068,6 +1106,7 @@ impl App {
             mag_limit,
             star_count,
             survey: survey_frame,
+            ground: true,
         };
         if let Err(e) = self.renderer.draw_sky(&frame) {
             web_sys::console::error_1(&e);
@@ -1311,6 +1350,10 @@ impl App {
                 self.refresh_sun();
             }
         }
+        if self.view == View::Solar {
+            self.solar_frame(cw, ch, pw, ph, dpr, dt, now_ms);
+            return;
+        }
         if self.sky_on {
             self.sky_cam.width = cw;
             self.sky_cam.height = ch;
@@ -1402,6 +1445,9 @@ impl App {
     }
 
     fn update_hud(&mut self) {
+        if self.view == View::Solar {
+            return self.solar_hud();
+        }
         if self.sky_on {
             let to_eq = sky::transpose(
                 &sky::Observer {
@@ -1493,6 +1539,9 @@ impl App {
         if e.pointer_type() == "mouse" && e.button() != 0 {
             return;
         }
+        if self.view == View::Solar {
+            return self.solar_pointer_down(e);
+        }
         if self.sky_on {
             let _ = self.canvas.set_pointer_capture(e.pointer_id());
             self.sky_gestures
@@ -1546,6 +1595,9 @@ impl App {
         self.coarse_pointer = !self.mouse_hover;
         // The cursor readout alone never needs a redraw of the globe.
         self.redraw.mark_hud();
+        if self.view == View::Solar {
+            return self.solar_pointer_move(e.pointer_id(), x, y);
+        }
         if self.sky_on {
             if self
                 .sky_gestures
@@ -1576,6 +1628,9 @@ impl App {
     }
 
     fn pointer_up(&mut self, e: &PointerEvent) {
+        if self.view == View::Solar {
+            return self.solar_pointer_up(e);
+        }
         if self.sky_on {
             self.sky_gestures.up(e.pointer_id());
             if !self.sky_gestures.active() {
@@ -1714,8 +1769,9 @@ fn start() -> Result<(), JsValue> {
         .map(|h| SunView::from_hash(&h))
         .unwrap_or_default();
     let initial_hash = window.location().hash().unwrap_or_default();
-    let initial_sky = sky::parse_hash_view(&initial_hash);
+    let initial_view = View::from_hash(&initial_hash);
     let initial_look = sky::parse_hash_look(&initial_hash);
+    let initial_orbit = solar::parse_hash_orbit(&initial_hash);
     let mut layer_buttons = Vec::new();
     for layer in Layer::ALL.into_iter().filter(|l| l.theme().is_none()) {
         let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
@@ -1796,7 +1852,18 @@ fn start() -> Result<(), JsValue> {
         sky_on: false,
         sky_cam: initial_look.unwrap_or_default(),
         sky_gestures: sky::Gestures::default(),
-        view_buttons: [element(&doc, "view-earth")?, element(&doc, "view-sky")?],
+        view: View::Earth,
+        solar_cam: initial_orbit.unwrap_or_default(),
+        solar_gestures: sky::Gestures::default(),
+        solar_press: None,
+        solar_drawn: Vec::new(),
+        solar_labels: Vec::new(),
+        solar_select: element(&doc, "solar-target")?,
+        view_buttons: [
+            element(&doc, "view-earth")?,
+            element(&doc, "view-sky")?,
+            element(&doc, "view-solar")?,
+        ],
         title_hint: element(&doc, "title-hint")?,
         hud_labels: [
             element(&doc, "hud-l-cursor")?,
@@ -1829,9 +1896,10 @@ fn start() -> Result<(), JsValue> {
         a.set_figures(figures); // labels the button
         let survey = a.survey_on;
         a.set_survey(survey);
-        if initial_sky {
-            a.set_view(true);
+        if initial_view != View::Earth {
+            a.set_view(initial_view);
         }
+        a.sync_solar_select();
     }
     app.borrow_mut().refresh_sun();
     {
@@ -1993,6 +2061,12 @@ fn start() -> Result<(), JsValue> {
         listen(target, "wheel", false, move |e: WheelEvent| {
             e.prevent_default();
             let mut a = app.borrow_mut();
+            if a.view == View::Solar {
+                let f = sky::wheel_factor(e.delta_y(), e.delta_mode(), e.ctrl_key());
+                a.solar_cam.zoom_by(f);
+                a.solar_moved();
+                return;
+            }
             if a.sky_on {
                 let f = sky::wheel_factor(e.delta_y(), e.delta_mode(), e.ctrl_key());
                 let at = (e.client_x() as f64, e.client_y() as f64);
@@ -2013,6 +2087,9 @@ fn start() -> Result<(), JsValue> {
         let app = app.clone();
         listen(target, "dblclick", true, move |e: MouseEvent| {
             let mut a = app.borrow_mut();
+            if a.view == View::Solar {
+                return; // the first tap already flew to what is under it
+            }
             if a.sky_on {
                 let factor = if e.shift_key() { 2.0 } else { 0.5 };
                 let at = (e.client_x() as f64, e.client_y() as f64);
@@ -2098,6 +2175,7 @@ fn start() -> Result<(), JsValue> {
                 if e.target().is_some_and(|t| {
                     t.is_instance_of::<web_sys::HtmlInputElement>()
                         || t.is_instance_of::<web_sys::HtmlTextAreaElement>()
+                        || t.is_instance_of::<web_sys::HtmlSelectElement>()
                 }) {
                     return;
                 }
@@ -2113,8 +2191,24 @@ fn start() -> Result<(), JsValue> {
                 }
                 let plain = !(e.ctrl_key() || e.meta_key() || e.alt_key());
                 if plain && (e.key() == "v" || e.key() == "V") {
-                    let sky = !a.sky_on;
-                    a.set_view(sky);
+                    let next = if e.shift_key() {
+                        a.view.prev()
+                    } else {
+                        a.view.next()
+                    };
+                    a.set_view(next);
+                    return;
+                }
+                if a.view == View::Solar {
+                    if plain && (e.key() == "s" || e.key() == "S") {
+                        let (ui, url) = (a.share_ui.clone(), a.current_share_url());
+                        drop(a);
+                        share::share(&ui, url);
+                        return;
+                    }
+                    if a.solar_key(&e, plain) {
+                        e.prevent_default();
+                    }
                     return;
                 }
                 if a.sky_on {
@@ -2419,7 +2513,13 @@ fn start() -> Result<(), JsValue> {
                 a.sun_pin = sun.pin;
                 a.playing = false;
                 a.refresh_sun();
-                let sky = sky::parse_hash_view(&hash);
+                let view = View::from_hash(&hash);
+                if let Some(cam) = solar::parse_hash_orbit(&hash) {
+                    let (w, h) = (a.solar_cam.look.width, a.solar_cam.look.height);
+                    a.solar_cam = cam;
+                    a.solar_cam.look.width = w;
+                    a.solar_cam.look.height = h;
+                }
                 if let Some(look) = sky::parse_hash_look(&hash) {
                     let (w, h) = (a.sky_cam.width, a.sky_cam.height);
                     a.sky_cam = sky::SkyCamera {
@@ -2430,10 +2530,11 @@ fn start() -> Result<(), JsValue> {
                 }
                 a.set_figures(!hash.contains("&figures=off"));
                 a.set_survey(hash.contains("&survey=dss"));
-                if sky != a.sky_on {
-                    a.set_view(sky);
+                if view != a.view {
+                    a.set_view(view);
                 } else {
                     a.sky_moved();
+                    a.sync_solar_select();
                 }
                 if let Some(c) = parse_view_hash(&hash) {
                     a.send(Event::FlyTo {
@@ -2448,7 +2549,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 12] = [
+    let buttons: [(&str, Action); 13] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2460,6 +2561,10 @@ fn start() -> Result<(), JsValue> {
             }
         }),
         ("zoom-in", |a| {
+            if a.view == View::Solar {
+                a.solar_cam.zoom_by(0.5);
+                return a.solar_moved();
+            }
             if a.sky_on {
                 a.sky_cam.zoom(0.5, None);
                 a.hash_stale = true;
@@ -2471,6 +2576,10 @@ fn start() -> Result<(), JsValue> {
             });
         }),
         ("zoom-out", |a| {
+            if a.view == View::Solar {
+                a.solar_cam.zoom_by(2.0);
+                return a.solar_moved();
+            }
             if a.sky_on {
                 a.sky_cam.zoom(2.0, None);
                 a.hash_stale = true;
@@ -2482,6 +2591,9 @@ fn start() -> Result<(), JsValue> {
             });
         }),
         ("reset", |a| {
+            if a.view == View::Solar {
+                return a.solar_reset();
+            }
             if a.sky_on {
                 let (width, height) = (a.sky_cam.width, a.sky_cam.height);
                 a.sky_cam = sky::SkyCamera {
@@ -2502,8 +2614,9 @@ fn start() -> Result<(), JsValue> {
             let on = !a.show_figures;
             a.set_figures(on)
         }),
-        ("view-earth", |a| a.set_view(false)),
-        ("view-sky", |a| a.set_view(true)),
+        ("view-earth", |a| a.set_view(View::Earth)),
+        ("view-sky", |a| a.set_view(View::Sky)),
+        ("view-solar", |a| a.set_view(View::Solar)),
         ("ci-close", |a| a.select(None)),
     ];
     for (id, action) in buttons {
@@ -2513,6 +2626,8 @@ fn start() -> Result<(), JsValue> {
             action(&mut app.borrow_mut())
         })?;
     }
+
+    solar_app::wire(&app)?;
 
     // Place search: fly to the chosen place.
     {

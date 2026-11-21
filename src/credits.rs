@@ -99,6 +99,12 @@ pub fn sky_credits(survey: bool) -> Vec<&'static Credit> {
     v
 }
 
+/// The credits of the solar system view: the stars and the Milky Way
+/// behind the planets (whose positions are computed, not datasets).
+pub fn solar_credits() -> Vec<&'static Credit> {
+    vec![&HYG, &DEEP_STAR_MAPS]
+}
+
 /// The credits that apply while `layer` is shown. Natural Earth is behind
 /// every view (map shape, labels, search, statistics, the Terrain layer's
 /// relief); each NASA image only shows on its own layer.
@@ -151,6 +157,9 @@ mod tests {
             ["hyg", "stellarium-skycultures", "nasa-svs-deep-star-maps"]
         );
         assert_eq!(sky_credits(true).last().unwrap().id, "dss");
+        assert!(solar_credits()
+            .iter()
+            .all(|c| sky_credits(false).iter().any(|s| s.id == c.id)));
         for layer in Layer::ALL {
             let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
             assert!(!ids.contains(&HYG.id) && !ids.contains(&STELLARIUM.id));
