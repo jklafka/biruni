@@ -132,6 +132,10 @@ const VIEWS = [
   { name: "solar-saturn", hash: "#40,-74,800&t=1735689600&view=solar&orbit=saturn,210,-25,0.0042" },
   { name: "solar-earth", hash: "#40,-74,800&t=1735689600&view=solar&orbit=earth,100,-20,0.0004" },
   { name: "solar-moon", hash: "#40,-74,800&t=1735689600&view=solar&orbit=earth,60,-25,0.0075" },
+  // Spacecraft and small bodies from the committed JPL snapshot (as of
+  // 2026-11-20): the inner system, and far out where the Voyagers are.
+  { name: "solar-objects", hash: "#40,-74,800&t=1795132800&view=solar&orbit=sun,180,40,4" },
+  { name: "solar-objects-far", hash: "#40,-74,800&t=1795132800&view=solar&orbit=sun,250,30,420" },
   { name: "solar-phone", hash: "#40,-74,800&t=1735689600&view=solar", viewport: { width: 390, height: 844 } },
   {
     name: "solar-ctxloss",
@@ -294,6 +298,9 @@ try {
     if (/[&#]view=solar/.test(view.hash)) {
       // Space behind the planets: the stars and the Milky Way.
       await page.waitForSelector("#globe[data-solar]", { state: "attached", timeout: 30_000 });
+      if (!/[&#]objects=off/.test(view.hash)) {
+        await page.waitForSelector("#globe[data-space]", { state: "attached", timeout: 30_000 });
+      }
       await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
       await page.waitForSelector("#globe[data-milky-way]", { state: "attached", timeout: 30_000 });
     } else if (/[&#]view=sky/.test(view.hash)) {

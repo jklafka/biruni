@@ -46,9 +46,9 @@ const EARTH_MOON_MASS_RATIO: f64 = 81.300_56;
 
 /// Field of view across the shorter screen axis.
 pub const FOV: f64 = 50.0 * PI / 180.0;
-/// The farthest the camera goes from its focus, au: past Neptune's orbit
-/// with room to see it whole.
-pub const MAX_DIST: f64 = 250.0;
+/// The farthest the camera goes from its focus, au: far enough to see the
+/// Voyagers (140 to 170 au out in the 2020s) with the planets.
+pub const MAX_DIST: f64 = 500.0;
 /// The view a reset returns to: the Sun from 3.5 au, from 30 degrees
 /// above the ecliptic, so the inner planets fill the screen.
 pub const HOME: (Body, f64, f64, f64) = (Body::Sun, PI, 30.0 * PI / 180.0, 3.5);

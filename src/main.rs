@@ -37,6 +37,7 @@ mod solar;
 mod solar_app;
 mod solar_render;
 mod solar_scene;
+mod space;
 mod stars;
 mod sun;
 mod survey;
@@ -182,6 +183,14 @@ struct App {
     solar_drawn: Vec<solar_scene::Drawn>,
     solar_labels: Vec<solar_scene::Label>,
     solar_select: web_sys::HtmlSelectElement,
+    /// Spacecraft and small bodies (`space.rs`; fetched the first time the
+    /// solar view opens), whether they show (`&objects=off` hides them),
+    /// their button, and the markers last drawn (for the HUD).
+    space: Option<Rc<space::Catalog>>,
+    space_requested: bool,
+    objects_on: bool,
+    objects_button: HtmlElement,
+    solar_markers: Vec<solar_scene::objects::Marker>,
     /// Earth, Sky and Solar system buttons.
     view_buttons: [HtmlElement; 3],
     title_hint: HtmlElement,
@@ -735,6 +744,9 @@ impl App {
                 hash.push_str(&format!("&t={t}"));
             }
             hash.push_str(&solar::format_hash(&self.solar_cam));
+            if !self.objects_on {
+                hash.push_str("&objects=off");
+            }
         }
         if self.sky_on {
             if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
@@ -795,6 +807,9 @@ impl App {
             View::Sky => self.credits.show_sky(self.survey_on),
             View::Solar => self.credits.show_solar(),
             View::Earth => self.credits.show_layer(self.layers_state.shown()),
+        }
+        if view == View::Solar {
+            self.load_space();
         }
         if view != View::Earth {
             self.load_stars();
@@ -1859,6 +1874,11 @@ fn start() -> Result<(), JsValue> {
         solar_drawn: Vec::new(),
         solar_labels: Vec::new(),
         solar_select: element(&doc, "solar-target")?,
+        space: None,
+        space_requested: false,
+        objects_on: !initial_hash.contains("&objects=off"),
+        objects_button: element(&doc, "objects-toggle")?,
+        solar_markers: Vec::new(),
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,
@@ -1894,6 +1914,8 @@ fn start() -> Result<(), JsValue> {
         a.select_layer(initial_layer);
         let figures = a.show_figures;
         a.set_figures(figures); // labels the button
+        let objects = a.objects_on;
+        a.set_objects(objects);
         let survey = a.survey_on;
         a.set_survey(survey);
         if initial_view != View::Earth {
@@ -2529,6 +2551,7 @@ fn start() -> Result<(), JsValue> {
                     };
                 }
                 a.set_figures(!hash.contains("&figures=off"));
+                a.objects_on = !hash.contains("&objects=off");
                 a.set_survey(hash.contains("&survey=dss"));
                 if view != a.view {
                     a.set_view(view);
@@ -2549,7 +2572,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 13] = [
+    let buttons: [(&str, Action); 14] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2617,6 +2640,10 @@ fn start() -> Result<(), JsValue> {
         ("view-earth", |a| a.set_view(View::Earth)),
         ("view-sky", |a| a.set_view(View::Sky)),
         ("view-solar", |a| a.set_view(View::Solar)),
+        ("objects-toggle", |a| {
+            let on = !a.objects_on;
+            a.set_objects(on)
+        }),
         ("ci-close", |a| a.select(None)),
     ];
     for (id, action) in buttons {

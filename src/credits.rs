@@ -80,7 +80,16 @@ pub const DSS: Credit = Credit {
     text: "The deep-sky survey of the sky view. Digitized Sky Survey - STScI/NASA; colored and HiPS by CDS (CNRS/Unistra); tiles served by ESA ESASky and NASA/IPAC IRSA. Plates: POSS-II (Caltech), UK Schmidt (UK SERC/PPARC, Anglo-Australian Observatory).",
 };
 
-pub const ALL: [&Credit; 7] = [
+pub const JPL_HORIZONS: Credit = Credit {
+    id: "jpl-horizons",
+    name: "NASA/JPL Horizons and Small-Body Database",
+    license: "US government service (no license published)",
+    license_url: "https://ssd.jpl.nasa.gov/horizons/manual.html",
+    source_url: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+    text: "Spacecraft positions and the orbits of dwarf planets, asteroids and comets in the solar system view, refreshed weekly. NASA/JPL Solar System Dynamics.",
+};
+
+pub const ALL: [&Credit; 8] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -88,6 +97,7 @@ pub const ALL: [&Credit; 7] = [
     &STELLARIUM,
     &DEEP_STAR_MAPS,
     &DSS,
+    &JPL_HORIZONS,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -99,10 +109,11 @@ pub fn sky_credits(survey: bool) -> Vec<&'static Credit> {
     v
 }
 
-/// The credits of the solar system view: the stars and the Milky Way
-/// behind the planets (whose positions are computed, not datasets).
+/// The credits of the solar system view: JPL for the spacecraft and small
+/// bodies, the stars and the Milky Way behind them (the planets are
+/// computed from published elements, not a dataset).
 pub fn solar_credits() -> Vec<&'static Credit> {
-    vec![&HYG, &DEEP_STAR_MAPS]
+    vec![&JPL_HORIZONS, &HYG, &DEEP_STAR_MAPS]
 }
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
@@ -113,6 +124,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
+        .filter(|c| !solar_credits().iter().any(|s| s.id == c.id))
         .collect()
 }
 
@@ -157,9 +169,11 @@ mod tests {
             ["hyg", "stellarium-skycultures", "nasa-svs-deep-star-maps"]
         );
         assert_eq!(sky_credits(true).last().unwrap().id, "dss");
-        assert!(solar_credits()
-            .iter()
-            .all(|c| sky_credits(false).iter().any(|s| s.id == c.id)));
+        assert_eq!(solar_credits()[0].id, "jpl-horizons");
+        for layer in Layer::ALL {
+            let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
+            assert!(!ids.contains(&JPL_HORIZONS.id));
+        }
         for layer in Layer::ALL {
             let ids: Vec<_> = visible_credits(layer).iter().map(|c| c.id).collect();
             assert!(!ids.contains(&HYG.id) && !ids.contains(&STELLARIUM.id));

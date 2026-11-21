@@ -258,6 +258,9 @@ pub fn screen_path(
     lines
 }
 
+/// Screen polylines, CSS pixels.
+pub type Polylines = Vec<Vec<(f64, f64)>>;
+
 /// An orbit to draw: whose, and its polylines.
 pub struct OrbitLine {
     pub body: Body,
@@ -365,6 +368,20 @@ pub fn labels(cam: &SolarCamera, drawn: &[Drawn]) -> Vec<Label> {
     out
 }
 
+/// Screen rectangles the bodies and their names take, for other names to
+/// keep clear of.
+pub fn taken(drawn: &[Drawn], labels: &[Label]) -> Vec<Rect> {
+    let mut out: Vec<Rect> = drawn
+        .iter()
+        .map(|d| {
+            let r = d.disk.r.max(DOT_RADIUS) + 2.0;
+            (d.disk.x - r, d.disk.y - r, d.disk.x + r, d.disk.y + r)
+        })
+        .collect();
+    out.extend(labels.iter().map(|l| label_rect(l.x, l.y, l.body.name())));
+    out
+}
+
 /// The body under a screen point (CSS pixels): on its disk (with a few
 /// pixels of slack for dots) or on its name. The nearest wins.
 pub fn hit(drawn: &[Drawn], labels: &[Label], x: f64, y: f64) -> Option<Body> {
@@ -392,6 +409,203 @@ pub fn describe(body: Body, eye: [f64; 3], t: f64) -> Option<String> {
         body.name(),
         crate::solar::format_distance(above)
     ))
+}
+
+/// Spacecraft, asteroids and comets (`space.rs`): markers, paths and names.
+pub mod objects {
+    use super::{screen_path, Occluder};
+    use crate::solar::{ecl_to_solar, length, SolarCamera};
+    use crate::space::{Catalog, Kind, Track};
+    use crate::stars::{overlaps, Rect};
+
+    /// Orbits and trajectories reach this far from the Sun at most, au.
+    const MAX_R: f64 = 60.0;
+    /// Markers closer than this (CSS pixels) to a click hit.
+    pub const HIT_PX: f64 = 7.0;
+
+    /// CSS color of each kind.
+    pub fn css_color(kind: Kind) -> &'static str {
+        match kind {
+            Kind::Spacecraft => "#9fe3b0",
+            Kind::Asteroid => "#c2b8a8",
+            Kind::Comet => "#a6cdff",
+        }
+    }
+
+    /// An object on screen.
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Marker {
+        /// Index into the catalog.
+        pub index: usize,
+        pub kind: Kind,
+        pub x: f64,
+        pub y: f64,
+        /// Comets: unit vector on screen pointing away from the Sun.
+        pub tail: Option<(f64, f64)>,
+    }
+
+    /// The objects in front of the camera, on screen and not behind a body,
+    /// at UTC Unix time `unix`.
+    pub fn markers(
+        cat: &Catalog,
+        cam: &SolarCamera,
+        eye: [f64; 3],
+        unix: f64,
+        occ: &[Occluder],
+    ) -> Vec<Marker> {
+        let (w, h) = (cam.look.width, cam.look.height);
+        let fwd = cam.look_dir();
+        cat.objects
+            .iter()
+            .enumerate()
+            .filter_map(|(index, o)| {
+                let p = o.position(unix)?;
+                let rel = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+                let d = length(rel);
+                // Ahead of the camera, within 100 degrees of the view center.
+                if !d.is_finite()
+                    || d <= 0.0
+                    || (rel[0] * fwd[0] + rel[1] * fwd[1] + rel[2] * fwd[2]) / d < -0.17
+                {
+                    return None;
+                }
+                let (x, y) = cam.look.project(rel)?;
+                if !(-10.0..w + 10.0).contains(&x) || !(-10.0..h + 10.0).contains(&y) {
+                    return None;
+                }
+                if occ
+                    .iter()
+                    .any(|b| b.front < d && (x - b.disk.x).hypot(y - b.disk.y) < b.disk.r)
+                {
+                    return None;
+                }
+                let tail = (o.kind == Kind::Comet)
+                    .then(|| {
+                        // A point a little farther from the Sun.
+                        let r = length(p);
+                        let k = 1.0 + 0.02 * (d / r).max(1e-6);
+                        let q = p.map(|c| c * k);
+                        let (tx, ty) =
+                            cam.look
+                                .project([q[0] - eye[0], q[1] - eye[1], q[2] - eye[2]])?;
+                        let n = (tx - x).hypot(ty - y);
+                        (n > 1e-9).then(|| ((tx - x) / n, (ty - y) / n))
+                    })
+                    .flatten();
+                Some(Marker {
+                    index,
+                    kind: o.kind,
+                    x,
+                    y,
+                    tail,
+                })
+            })
+            .collect()
+    }
+
+    /// Paths: each spacecraft's trajectory over its whole data window, and
+    /// each small body's orbit (an ellipse through the body, or the arms of
+    /// a hyperbola or parabola out to 60 au). (catalog index, polylines).
+    pub fn paths(
+        cat: &Catalog,
+        cam: &SolarCamera,
+        eye: [f64; 3],
+        unix: f64,
+        occ: &[Occluder],
+    ) -> Vec<(usize, super::Polylines)> {
+        let mut out = Vec::new();
+        for (i, o) in cat.objects.iter().enumerate() {
+            let lines = match &o.track {
+                Track::Samples { points, .. } => {
+                    let Some((t0, t1)) = o.span() else { continue };
+                    let f = |s: f64| o.position(t0 + s * (t1 - t0)).unwrap_or([0.0; 3]);
+                    screen_path(cam, eye, &f, points.len().clamp(2, 400), occ)
+                }
+                Track::Orbit(el) => {
+                    if el.e < 1.0 {
+                        // From the body's place now, once around.
+                        let jd = crate::ephemeris::centuries_tt_from_unix(unix)
+                            .map(|t| crate::ephemeris::J2000_JD + t * 36_525.0);
+                        let nu0 = jd.and_then(|jd| el.true_anomaly(jd)).unwrap_or(0.0);
+                        let aphelion = el.q * (1.0 + el.e) / (1.0 - el.e);
+                        if aphelion > 4.0 * MAX_R {
+                            continue;
+                        }
+                        let f = |s: f64| {
+                            let nu = nu0 + s * std::f64::consts::TAU;
+                            ecl_to_solar(el.at_true_anomaly(nu).unwrap_or([0.0; 3]))
+                        };
+                        screen_path(cam, eye, &f, 128, occ)
+                    } else {
+                        // Out to MAX_R on both arms: 1 + e cos nu = p / r.
+                        let p = el.q * (1.0 + el.e);
+                        let lim = ((p / MAX_R - 1.0) / el.e).clamp(-1.0, 1.0).acos();
+                        let f = |s: f64| {
+                            let nu = -lim + 2.0 * lim * s;
+                            ecl_to_solar(el.at_true_anomaly(nu).unwrap_or([0.0; 3]))
+                        };
+                        screen_path(cam, eye, &f, 128, occ)
+                    }
+                }
+            };
+            if !lines.is_empty() {
+                out.push((i, lines));
+            }
+        }
+        out
+    }
+
+    /// Names for the markers, right of each, clear of `avoid` (the bodies
+    /// and their names) and of each other: spacecraft first.
+    pub fn labels(cat: &Catalog, markers: &[Marker], avoid: &[Rect]) -> Vec<(usize, f64, f64)> {
+        let mut order: Vec<&Marker> = markers.iter().collect();
+        order.sort_by_key(|m| match m.kind {
+            Kind::Spacecraft => 0,
+            Kind::Comet => 1,
+            Kind::Asteroid => 2,
+        });
+        let mut placed = avoid.to_vec();
+        let mut out = Vec::new();
+        for m in order {
+            let name = &cat.objects[m.index].name;
+            let (x, y) = (m.x + 6.0, m.y);
+            let rect = (x, y - 7.0, x + 6.0 * name.chars().count() as f64, y + 7.0);
+            if placed.iter().any(|p| overlaps(&rect, p)) {
+                continue;
+            }
+            placed.push(rect);
+            out.push((m.index, x, y));
+        }
+        out
+    }
+
+    /// The marker nearest a screen point, within [`HIT_PX`].
+    pub fn hit(markers: &[Marker], x: f64, y: f64) -> Option<usize> {
+        markers
+            .iter()
+            .map(|m| ((m.x - x).hypot(m.y - y), m.index))
+            .filter(|(d, _)| *d <= HIT_PX)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, i)| i)
+    }
+
+    /// HUD text for an object: name, what it is, its distance from the Sun,
+    /// and how fresh the data is.
+    pub fn describe(cat: &Catalog, index: usize, unix: f64) -> Option<String> {
+        let o = cat.objects.get(index)?;
+        let r = length(o.position(unix)?);
+        let what = match o.kind {
+            Kind::Spacecraft => "spacecraft",
+            Kind::Asteroid => "minor planet",
+            Kind::Comet => "comet",
+        };
+        Some(format!(
+            "{}, {what}, {} from the Sun (JPL, {})",
+            o.name,
+            crate::solar::format_distance(r),
+            crate::space::format_as_of(cat.as_of)
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -596,6 +810,67 @@ mod tests {
             s.starts_with("Sun, 3.50 au") || s.starts_with("Sun, 3.49 au"),
             "{s}"
         );
+    }
+
+    #[test]
+    fn objects_are_placed_named_and_hit() {
+        use crate::space::{decode, Kind};
+        let cat = decode(include_bytes!("../assets/data/space.bin")).unwrap();
+        // 2026-11-20, the snapshot's date, from far above the ecliptic.
+        let unix = 1_795_132_800.0;
+        let t = centuries_tt_from_unix(unix).unwrap();
+        let cam = sized(SolarCamera::new(Body::Sun, PI, 1.2, 6.0));
+        let eye = cam.eye(t).unwrap();
+        let d = drawn(&cam, eye, t);
+        let occ = occluders(&d);
+        let m = objects::markers(&cat, &cam, eye, unix, &occ);
+        let name = |i: usize| cat.objects[i].name.as_str();
+        let names: Vec<&str> = m.iter().map(|m| name(m.index)).collect();
+        for want in ["Ceres", "Vesta", "Parker Solar Probe", "JWST"] {
+            assert!(names.contains(&want), "{want} not in {names:?}");
+        }
+        // Far ones are off this screen.
+        assert!(!names.contains(&"Voyager 1"));
+        // Comets carry a tail direction; others do not.
+        for mk in &m {
+            assert_eq!(
+                mk.tail.is_some(),
+                mk.kind == Kind::Comet,
+                "{}",
+                name(mk.index)
+            );
+        }
+        // JWST sits next to the Earth (1.5 million km), within a few pixels.
+        let jwst = m.iter().find(|mk| name(mk.index) == "JWST").unwrap();
+        let (ex, ey) = cam.project(eye, position(Body::Earth, t).unwrap()).unwrap();
+        assert!((jwst.x - ex).hypot(jwst.y - ey) < 5.0);
+        // Names avoid what they are told to and each other.
+        let avoid = vec![(ex - 50.0, ey - 50.0, ex + 50.0, ey + 50.0)];
+        let l = objects::labels(&cat, &m, &avoid);
+        assert!(!l.iter().any(|(i, _, _)| name(*i) == "JWST"));
+        assert!(!l.is_empty());
+        let ceres = m.iter().find(|mk| name(mk.index) == "Ceres").unwrap();
+        assert_eq!(objects::hit(&m, ceres.x + 3.0, ceres.y), Some(ceres.index));
+        let text = objects::describe(&cat, ceres.index, unix).unwrap();
+        assert!(text.starts_with("Ceres, minor planet, 2."), "{text}");
+        assert!(text.ends_with("(JPL, as of 20 Nov 2026)"), "{text}");
+        // Paths: orbits for the small bodies, trajectories for the craft.
+        let p = objects::paths(&cat, &cam, eye, unix, &occ);
+        let has = |n: &str| p.iter().any(|(i, l)| name(*i) == n && !l.is_empty());
+        assert!(has("Ceres") && has("Parker Solar Probe") && has("3I/ATLAS"));
+    }
+
+    #[test]
+    fn outside_the_data_window_spacecraft_vanish() {
+        use crate::space::decode;
+        let cat = decode(include_bytes!("../assets/data/space.bin")).unwrap();
+        let unix = 1_735_689_600.0; // 2025, before the snapshot's window
+        let t = centuries_tt_from_unix(unix).unwrap();
+        let cam = sized(SolarCamera::new(Body::Sun, PI, 1.2, 6.0));
+        let eye = cam.eye(t).unwrap();
+        let m = objects::markers(&cat, &cam, eye, unix, &[]);
+        assert!(m.iter().all(|mk| mk.kind != crate::space::Kind::Spacecraft));
+        assert!(m.iter().any(|mk| cat.objects[mk.index].name == "Ceres"));
     }
 
     #[test]
