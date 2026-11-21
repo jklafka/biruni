@@ -11,8 +11,9 @@ A historical layer must draw any moment: a year from 3400 BCE to 2024, or an age
 One file per layer, in the "HIST" format. `scripts/hist_format.py` documents it, with the encoder, the Python decoder and its tests. `src/history.rs` decodes it in the app, and `scripts/validate_data.py` checks it.
 
 - **Names**, stored once.
-- **Geometries**, stored once and shared by every record that uses them. In Cliopatria 2,387 of 13,412 polity records repeat an earlier geometry. A geometry is a set of rings, filled with the even-odd rule, so holes and multipolygons need no extra structure. Coordinates are zigzag varint deltas, as in the MAPD format, quantized to `10^-D` degrees with `D` in the header. Three digits (about 110 m) is plenty after simplifying to a few km.
-- **Records**: a name, an inclusive interval `from..=to`, a geometry, a label point (where the name goes, computed once by the converter), and a tag (a plate id for geology, 0 otherwise).
+- **Rings**, stored once and shared by every geometry that uses them. When a polity's borders change in one place its other rings (islands, exclaves) are reused: in Cliopatria the 3.8 M points of all records come from 1.8 M points of distinct rings. Coordinates are zigzag varint deltas, as in the MAPD format, quantized to `10^-D` degrees with `D` in the header. Three digits (about 110 m) is plenty after simplifying to a few km.
+- **Geometries**: lists of ring indices, filled with the even-odd rule, so holes and multipolygons need no extra structure. They are shared too: 2,387 of 13,412 Cliopatria records repeat an earlier geometry.
+- **Records**: a name, an inclusive interval `from..=to`, a geometry, a label point (where the name goes, computed once by the converter), and a tag (layer-specific: the fill color and label tier for borders, the plate id for geology).
 
 Drawing time `t` means taking the records with `from <= t <= to` (`Timeline::at`). With about 14,000 records a linear scan takes microseconds. The year control changes `t` and only the visible set changes.
 

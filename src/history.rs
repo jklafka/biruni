@@ -41,8 +41,11 @@ pub struct Record {
 pub struct Timeline {
     pub scale: Scale,
     pub names: Vec<String>,
-    /// Each geometry is a set of closed rings, filled even-odd.
-    pub geometries: Vec<Vec<Shape>>,
+    /// Closed rings, shared between geometries.
+    pub rings: Vec<Shape>,
+    /// Each geometry is a set of rings (indices into `rings`), filled
+    /// even-odd.
+    pub geometries: Vec<Vec<u32>>,
     pub records: Vec<Record>,
 }
 
@@ -63,6 +66,13 @@ impl Timeline {
 
     pub fn name(&self, r: &Record) -> &str {
         &self.names[r.name as usize]
+    }
+
+    /// The rings of a record's geometry.
+    pub fn rings_of<'a>(&'a self, r: &Record) -> impl Iterator<Item = &'a Shape> + 'a {
+        self.geometries[r.geometry as usize]
+            .iter()
+            .map(|&i| &self.rings[i as usize])
     }
 }
 
@@ -111,33 +121,41 @@ pub fn decode(data: &[u8]) -> Result<Timeline, String> {
         pos += n;
     }
     let (mut x, mut y) = (0i64, 0i64);
+    let mut rings: Vec<Shape> = Vec::new();
+    for _ in 0..read_count(data, &mut pos)? {
+        let n = read_count(data, &mut pos)?;
+        if n < 3 {
+            return Err("history data: ring with fewer than 3 points".into());
+        }
+        let mut points = Vec::with_capacity(n);
+        for _ in 0..n {
+            x = x
+                .checked_add(read_zigzag(data, &mut pos)?)
+                .ok_or("coordinate overflow")?;
+            y = y
+                .checked_add(read_zigzag(data, &mut pos)?)
+                .ok_or("coordinate overflow")?;
+            if x.abs() > max_x || y.abs() > max_y {
+                return Err("history data: coordinate out of range".into());
+            }
+            points.push([x as f64 / k, y as f64 / k]);
+        }
+        rings.push(Shape {
+            points,
+            closed: true,
+        });
+    }
     let mut geometries = Vec::new();
     for _ in 0..read_count(data, &mut pos)? {
-        let mut rings = Vec::new();
+        let mut refs = Vec::new();
         for _ in 0..read_count(data, &mut pos)? {
-            let n = read_count(data, &mut pos)?;
-            if n < 3 {
-                return Err("history data: ring with fewer than 3 points".into());
+            let i = read_varint(data, &mut pos)?;
+            if i >= rings.len() as u64 {
+                return Err("history data: bad ring index".into());
             }
-            let mut points = Vec::with_capacity(n);
-            for _ in 0..n {
-                x = x
-                    .checked_add(read_zigzag(data, &mut pos)?)
-                    .ok_or("coordinate overflow")?;
-                y = y
-                    .checked_add(read_zigzag(data, &mut pos)?)
-                    .ok_or("coordinate overflow")?;
-                if x.abs() > max_x || y.abs() > max_y {
-                    return Err("history data: coordinate out of range".into());
-                }
-                points.push([x as f64 / k, y as f64 / k]);
-            }
-            rings.push(Shape {
-                points,
-                closed: true,
-            });
+            refs.push(i as u32);
         }
-        geometries.push(rings);
+        geometries.push(refs);
     }
     let mut records = Vec::new();
     for _ in 0..read_count(data, &mut pos)? {
@@ -169,6 +187,7 @@ pub fn decode(data: &[u8]) -> Result<Timeline, String> {
     Ok(Timeline {
         scale,
         names,
+        rings,
         geometries,
         records,
     })
@@ -211,10 +230,14 @@ mod tests {
         assert_eq!(t.scale, Scale::Years);
         assert_eq!(t.names, ["Squareland", "Ost", "Ünïcode"]);
         assert_eq!(t.geometries.len(), 3);
+        assert_eq!(t.rings.len(), 4, "shared rings stored once");
         assert_eq!(t.geometries[0].len(), 2, "outer ring and hole");
-        assert_eq!(t.geometries[1][2].points[0], [-20.0, 0.0]);
-        assert_eq!(t.geometries[2][0].points[1], [180.0, -5.0]);
-        assert!(t.geometries.iter().flatten().all(|r| r.closed));
+        assert_eq!(t.geometries[1][..2], t.geometries[0][..]);
+        let ring = |g: usize, i: usize| &t.rings[t.geometries[g][i] as usize];
+        assert_eq!(ring(1, 2).points[0], [-20.0, 0.0]);
+        assert_eq!(ring(2, 0).points[1], [180.0, -5.0]);
+        assert!(t.rings.iter().all(|r| r.closed));
+        assert_eq!(t.rings_of(&t.records[1]).count(), 3);
         assert_eq!(t.records[2].label, [175.0, 0.0]);
         assert_eq!(t.records[2].tag, 7);
         assert_eq!(t.span(), Some((-44, 2024)));

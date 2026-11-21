@@ -16,16 +16,19 @@ Little-endian, varints are unsigned LEB128, "zigzag" varints are signed:
     6   1   coordinate digits D: lon/lat are integers in units of 10^-D degree
     7   1   reserved (0)
     8   ... varint name count, then each name: varint byte length, UTF-8
-        ... varint geometry count, then each geometry: varint ring count,
-            then each ring: varint point count N (>= 3), then N pairs of
-            zigzag deltas (lon, lat) from the previous point of the file
-            (the first from 0,0); rings are closed implicitly and filled
-            with the even-odd rule
+        ... varint ring count, then each ring: varint point count N (>= 3),
+            then N pairs of zigzag deltas (lon, lat) from the previous point
+            of the file (the first from 0,0); rings are closed implicitly
+        ... varint geometry count, then each geometry: varint ring count K,
+            then K varint ring indices; a geometry's rings are filled with
+            the even-odd rule. Rings are shared: a polity whose borders
+            change in one place keeps its other rings
         ... varint record count, then each record:
             varint name index, zigzag from, zigzag to (inclusive: the
             record holds when from <= t <= to), varint geometry index,
             zigzag label lon, zigzag label lat (absolute, where the name
-            goes), varint tag (a plate id for geology; 0 when unused)
+            goes), varint tag (layer-specific: the fill color and label
+            tier for borders, the plate id for geology; 0 when unused)
         end of file (no trailing bytes)
 """
 import struct
@@ -87,7 +90,8 @@ class Reader:
 def encode(scale, digits, names, geometries, records):
     """names: [str]; geometries: [[ring]] with ring = [(lon, lat)] in
     degrees; records: [(name index, from, to, geometry index, (label lon,
-    label lat), tag)]. Coordinates are rounded to `digits` decimals."""
+    label lat), tag)]. Coordinates are rounded to `digits` decimals; rings
+    that are equal after rounding are stored once."""
     k = 10 ** digits
     out = bytearray(HEADER.pack(MAGIC, VERSION, scale, digits))
     put_varint(out, len(names))
@@ -95,18 +99,30 @@ def encode(scale, digits, names, geometries, records):
         raw = n.encode("utf-8")
         put_varint(out, len(raw))
         out += raw
-    put_varint(out, len(geometries))
-    x = y = 0
+    ring_index, ring_list, geom_refs = {}, [], []
     for rings in geometries:
-        put_varint(out, len(rings))
+        refs = []
         for ring in rings:
             if len(ring) < 3:
                 raise ValueError("ring with fewer than 3 points")
-            put_varint(out, len(ring))
-            for lon, lat in ring:
-                qx, qy = round(lon * k), round(lat * k)
-                out += bytes(_zz(qx - x)) + bytes(_zz(qy - y))
-                x, y = qx, qy
+            q = tuple((round(lon * k), round(lat * k)) for lon, lat in ring)
+            if q not in ring_index:
+                ring_index[q] = len(ring_list)
+                ring_list.append(q)
+            refs.append(ring_index[q])
+        geom_refs.append(refs)
+    put_varint(out, len(ring_list))
+    x = y = 0
+    for ring in ring_list:
+        put_varint(out, len(ring))
+        for qx, qy in ring:
+            out += bytes(_zz(qx - x)) + bytes(_zz(qy - y))
+            x, y = qx, qy
+    put_varint(out, len(geom_refs))
+    for refs in geom_refs:
+        put_varint(out, len(refs))
+        for r in refs:
+            put_varint(out, r)
     put_varint(out, len(records))
     for name, start, end, geom, (llon, llat), tag in records:
         if not (0 <= name < len(names) and 0 <= geom < len(geometries) and start <= end):
@@ -142,23 +158,26 @@ def decode(data):
     names = []
     for _ in range(_count(r, data)):
         names.append(r.take(r.varint()).decode("utf-8"))
-    geometries = []
+    ring_list = []
     x = y = 0
     for _ in range(_count(r, data)):
-        rings = []
-        for _ in range(_count(r, data)):
-            n = _count(r, data)
-            if n < 3:
-                raise ValueError("ring with fewer than 3 points")
-            ring = []
-            for _ in range(n):
-                x += r.zigzag()
-                y += r.zigzag()
-                if abs(x) > 180 * k or abs(y) > 90 * k:
-                    raise ValueError("coordinate out of range")
-                ring.append((x / k, y / k))
-            rings.append(ring)
-        geometries.append(rings)
+        n = _count(r, data)
+        if n < 3:
+            raise ValueError("ring with fewer than 3 points")
+        ring = []
+        for _ in range(n):
+            x += r.zigzag()
+            y += r.zigzag()
+            if abs(x) > 180 * k or abs(y) > 90 * k:
+                raise ValueError("coordinate out of range")
+            ring.append((x / k, y / k))
+        ring_list.append(ring)
+    geometries = []
+    for _ in range(_count(r, data)):
+        refs = [r.varint() for _ in range(_count(r, data))]
+        if any(i >= len(ring_list) for i in refs):
+            raise ValueError("bad ring index")
+        geometries.append([ring_list[i] for i in refs])
     records = []
     for _ in range(_count(r, data)):
         name, start, end, geom = r.varint(), r.zigzag(), r.zigzag(), r.varint()

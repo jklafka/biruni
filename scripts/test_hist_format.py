@@ -37,6 +37,18 @@ class Format(unittest.TestCase):
         data = hf.encode(scale, digits, names, geoms, records)
         self.assertEqual(hf.decode(data), (scale, digits, names, geoms, records))
 
+    def test_rings_are_shared(self):
+        scale, digits, names, geoms, records = fixture()
+        data = hf.encode(scale, digits, names, geoms, records)
+        # SQUARE and HOLE appear in two geometries but are stored once:
+        # dropping the second copy of each from the input changes nothing.
+        once = hf.encode(scale, digits, names, [geoms[0], geoms[0] + [WEST], geoms[2]], records)
+        self.assertEqual(data, once)
+        r = hf.Reader(data, hf.HEADER.size)
+        for _ in range(r.varint()):
+            r.take(r.varint())
+        self.assertEqual(r.varint(), 4, "four distinct rings")
+
     def test_quantization(self):
         data = hf.encode(hf.SCALE_MA, 2, ["a"], [[[(0.123, 0.456), (1.0, 0.0), (0.0, 1.0)]]],
                          [(0, -5400, 0, 0, (0.0, 0.0), 801)])
