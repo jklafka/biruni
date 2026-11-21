@@ -29,6 +29,19 @@ pub struct SkyLabels<'a> {
     pub daylight: f64,
 }
 
+/// What the solar system view's overlay shows (see [`Overlay::draw_solar`]).
+#[derive(Clone, Copy)]
+pub struct SolarLabels<'a> {
+    pub orbits: &'a [crate::solar_scene::OrbitLine],
+    pub labels: &'a [crate::solar_scene::Label],
+    pub target: crate::solar::Body,
+    /// Spacecraft and small bodies, when shown and loaded.
+    pub catalog: Option<&'a crate::space::Catalog>,
+    pub object_paths: &'a [(usize, crate::solar_scene::Polylines)],
+    pub markers: &'a [crate::solar_scene::objects::Marker],
+    pub marker_labels: &'a [(usize, f64, f64)],
+}
+
 pub struct Overlay {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
@@ -148,20 +161,10 @@ impl Overlay {
     }
 
     /// Draw the solar system view's overlay, replacing whatever was there:
-    /// the orbits (the target's a little stronger) and the bodies' names
-    /// (CSS pixels).
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw_solar(
-        &mut self,
-        orbits: &[crate::solar_scene::OrbitLine],
-        labels: &[crate::solar_scene::Label],
-        target: crate::solar::Body,
-        css: (f64, f64),
-        px: u32,
-        py: u32,
-        dpr: f64,
-    ) {
-        use crate::solar_scene::css_color;
+    /// the orbits (the target's a little stronger), the paths and markers of
+    /// spacecraft and small bodies, and the names (CSS pixels).
+    pub fn draw_solar(&mut self, l: &SolarLabels, css: (f64, f64), px: u32, py: u32, dpr: f64) {
+        use crate::solar_scene::{css_color, objects};
         if (px, py) != (self.canvas.width(), self.canvas.height()) {
             self.canvas.set_width(px);
             self.canvas.set_height(py);
@@ -169,15 +172,13 @@ impl Overlay {
         let ctx = &self.ctx;
         let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         ctx.clear_rect(0.0, 0.0, css.0, css.1);
-        self.has_content = !(orbits.is_empty() && labels.is_empty());
+        self.has_content = true;
         ctx.set_line_cap("round");
         ctx.set_line_join("round");
         ctx.set_line_width(1.0);
-        for o in orbits {
-            ctx.set_global_alpha(if o.body == target { 0.7 } else { 0.38 });
-            ctx.set_stroke_style_str(&css_color(o.body));
+        let stroke = |lines: &[Vec<(f64, f64)>]| {
             ctx.begin_path();
-            for run in &o.lines {
+            for run in lines {
                 for (i, (x, y)) in run.iter().enumerate() {
                     if i == 0 {
                         ctx.move_to(*x, *y);
@@ -187,18 +188,78 @@ impl Overlay {
                 }
             }
             ctx.stroke();
+        };
+        if let Some(cat) = l.catalog {
+            for (i, lines) in l.object_paths {
+                let kind = cat.objects[*i].kind;
+                ctx.set_global_alpha(match kind {
+                    crate::space::Kind::Spacecraft => 0.32,
+                    crate::space::Kind::Comet => 0.18,
+                    crate::space::Kind::Asteroid => 0.12,
+                });
+                ctx.set_stroke_style_str(objects::css_color(kind));
+                stroke(lines);
+            }
+        }
+        for o in l.orbits {
+            ctx.set_global_alpha(if o.body == l.target { 0.7 } else { 0.38 });
+            ctx.set_stroke_style_str(&css_color(o.body));
+            stroke(&o.lines);
         }
         ctx.set_global_alpha(1.0);
+        if let Some(cat) = l.catalog {
+            for m in l.markers {
+                let color = objects::css_color(m.kind);
+                ctx.set_fill_style_str(color);
+                ctx.begin_path();
+                match m.kind {
+                    crate::space::Kind::Spacecraft => {
+                        let r = 3.2;
+                        ctx.move_to(m.x, m.y - r);
+                        ctx.line_to(m.x + r, m.y);
+                        ctx.line_to(m.x, m.y + r);
+                        ctx.line_to(m.x - r, m.y);
+                        ctx.close_path();
+                    }
+                    _ => {
+                        let _ = ctx.arc(m.x, m.y, 1.8, 0.0, std::f64::consts::TAU);
+                    }
+                }
+                ctx.fill();
+                if let Some((tx, ty)) = m.tail {
+                    ctx.set_stroke_style_str(color);
+                    ctx.set_line_width(1.5);
+                    ctx.set_global_alpha(0.6);
+                    ctx.begin_path();
+                    ctx.move_to(m.x + tx * 2.0, m.y + ty * 2.0);
+                    ctx.line_to(m.x + tx * 12.0, m.y + ty * 12.0);
+                    ctx.stroke();
+                    ctx.set_global_alpha(1.0);
+                    ctx.set_line_width(1.0);
+                }
+            }
+            ctx.set_font("11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
+            ctx.set_text_align("left");
+            ctx.set_text_baseline("middle");
+            ctx.set_line_width(3.0);
+            ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
+            for (i, x, y) in l.marker_labels {
+                let o = &cat.objects[*i];
+                ctx.set_fill_style_str(objects::css_color(o.kind));
+                let _ = ctx.stroke_text(&o.name, *x, *y);
+                let _ = ctx.fill_text(&o.name, *x, *y);
+            }
+        }
         ctx.set_font("600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif");
         ctx.set_text_align("left");
         ctx.set_text_baseline("middle");
         ctx.set_line_width(3.0);
         ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
-        for l in labels {
-            let name = l.body.name();
-            ctx.set_fill_style_str(&css_color(l.body));
-            let _ = ctx.stroke_text(name, l.x, l.y);
-            let _ = ctx.fill_text(name, l.x, l.y);
+        for lb in l.labels {
+            let name = lb.body.name();
+            ctx.set_fill_style_str(&css_color(lb.body));
+            let _ = ctx.stroke_text(name, lb.x, lb.y);
+            let _ = ctx.fill_text(name, lb.x, lb.y);
         }
     }
 

@@ -79,7 +79,7 @@
       body.view-space #sun-toggle, body.view-space #hud-country-row, body.view-space #hud-scale,
       body.view-space #labels { display: none !important; }
       body:not(.view-sky) #figures-toggle, body:not(.view-sky) #survey-toggle { display: none; }
-      body:not(.view-solar) #solar-target { display: none; }
+      body:not(.view-solar) #solar-target, body:not(.view-solar) #objects-toggle { display: none; }
       #solar-target {
         display: block;
         margin-top: 6px;
@@ -598,6 +598,7 @@
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
       <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
       <button id="figures-toggle" aria-pressed="true" title="Constellations (C)" aria-label="Constellation figures">&#10022;</button>
+      <button id="objects-toggle" aria-pressed="true" title="Spacecraft and small bodies: NASA/JPL (O)" aria-label="Spacecraft and small bodies">&#128752;</button>
       <button id="reset" title="Reset view (R)" aria-label="Reset view">⟲</button>
     </div>
     <div id="proj-menu" class="panel" role="group" aria-label="Map projection" hidden>

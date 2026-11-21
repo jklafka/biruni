@@ -5,9 +5,10 @@
 
 use crate::solar::{self, Body, SOLAR_TO_EQ};
 use crate::solar_render::BodyFrame;
+use crate::solar_scene::objects;
 use crate::{
-    ephemeris, scrub, sky, sky_render, solar_scene, stars, App, MILKY_WAY_STRENGTH,
-    SCRUB_HASH_DELAY_MS,
+    data, ephemeris, overlay, scrub, sky, sky_render, solar_scene, space, stars, App,
+    MILKY_WAY_STRENGTH, SCRUB_HASH_DELAY_MS,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -108,17 +109,39 @@ impl App {
         if let Err(e) = self.renderer.draw_solar(&frame, &bodies, &drawn) {
             web_sys::console::error_1(&e);
         }
-        let orbits = solar_scene::orbits(&cam, eye, t, &solar_scene::occluders(&drawn));
+        let occ = solar_scene::occluders(&drawn);
+        let orbits = solar_scene::orbits(&cam, eye, t, &occ);
         let labels = solar_scene::labels(&cam, &drawn);
+        let unix = self.sun_time();
+        let catalog = self.space.clone().filter(|_| self.objects_on);
+        let (paths, marker_labels, markers) = match &catalog {
+            Some(cat) => {
+                let markers = objects::markers(cat, &cam, eye, unix, &occ);
+                let avoid = solar_scene::taken(&drawn, &labels);
+                (
+                    objects::paths(cat, &cam, eye, unix, &occ),
+                    objects::labels(cat, &markers, &avoid),
+                    markers,
+                )
+            }
+            None => (Vec::new(), Vec::new(), Vec::new()),
+        };
         self.overlay.draw_solar(
-            &orbits,
-            &labels,
-            cam.target,
+            &overlay::SolarLabels {
+                orbits: &orbits,
+                labels: &labels,
+                target: cam.target,
+                catalog: catalog.as_deref(),
+                object_paths: &paths,
+                markers: &markers,
+                marker_labels: &marker_labels,
+            },
             (cam.look.width, cam.look.height),
             pw,
             ph,
             dpr,
         );
+        self.solar_markers = markers;
         self.solar_drawn = drawn;
         self.solar_labels = labels;
         if !self.renderer.is_lost() {
@@ -134,8 +157,14 @@ impl App {
         let eye = t.and_then(|t| self.solar_cam.eye(t));
         let cursor = self.cursor.and_then(|(x, y)| {
             let (t, eye) = (t?, eye?);
+            let object = || {
+                let cat = self.space.as_ref()?;
+                let i = objects::hit(&self.solar_markers, x, y)?;
+                objects::describe(cat, i, self.sun_time())
+            };
             match solar_scene::hit(&self.solar_drawn, &self.solar_labels, x, y) {
                 Some(b) => solar_scene::describe(b, eye, t),
+                None if object().is_some() => object(),
                 None => {
                     let d = self.solar_cam.look.pick(x, y)?;
                     let (ra, dec) = sky::vec_radec(sky::mul(&SOLAR_TO_EQ, d));
@@ -180,6 +209,43 @@ impl App {
         let fov = self.solar_cam.look.fov;
         self.solar_cam.look.set(az, alt, fov);
         self.fly_solar(Body::Sun);
+    }
+
+    /// Fetch and decode the spacecraft and small bodies, once.
+    pub(crate) fn load_space(&mut self) {
+        if std::mem::replace(&mut self.space_requested, true) {
+            return;
+        }
+        let Some(app) = self.me.upgrade() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let cat = match data::fetch("space.bin").await {
+                Ok(bytes) => space::decode(&bytes).map_err(JsValue::from),
+                Err(e) => Err(e),
+            };
+            match cat {
+                Ok(cat) => {
+                    let mut a = app.borrow_mut();
+                    let title = format!(
+                        "Spacecraft and small bodies: NASA/JPL, {} (O)",
+                        space::format_as_of(cat.as_of)
+                    );
+                    let _ = a.objects_button.set_attribute("title", &title);
+                    a.space = Some(Rc::new(cat));
+                    a.redraw.mark_render();
+                    a.set_globe_attr("data-space", "1");
+                }
+                Err(e) => web_sys::console::error_1(&e),
+            }
+        });
+    }
+
+    /// Show or hide the spacecraft and small bodies.
+    pub(crate) fn set_objects(&mut self, on: bool) {
+        self.objects_on = on;
+        let _ = self
+            .objects_button
+            .set_attribute("aria-pressed", if on { "true" } else { "false" });
+        self.solar_moved();
     }
 
     /// Show the target in the menu.
@@ -258,6 +324,11 @@ impl App {
             "t" | "T" if plain => {
                 let playing = self.playing;
                 self.set_playing(!playing);
+                return true;
+            }
+            "o" | "O" if plain => {
+                let on = !self.objects_on;
+                self.set_objects(on);
                 return true;
             }
             "`" => {
