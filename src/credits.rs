@@ -89,7 +89,16 @@ pub const JPL_HORIZONS: Credit = Credit {
     text: "Spacecraft positions and the orbits of dwarf planets, asteroids and comets in the solar system view, refreshed weekly. NASA/JPL Solar System Dynamics.",
 };
 
-pub const ALL: [&Credit; 8] = [
+pub const PLANET_MAPS: Credit = Credit {
+    id: "nasa-planetary-maps",
+    name: "NASA and USGS planetary maps",
+    license: "US government works (NASA media guidelines, USGS public domain)",
+    license_url: "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+    source_url: "https://svs.gsfc.nasa.gov/4720",
+    text: "Surfaces of the Moon, Mars, Mercury and Jupiter in the solar system view. Moon: NASA/GSFC Scientific Visualization Studio, CGI Moon Kit (LRO). Mars: USGS Astrogeology and NASA, Viking MDIM 2.1. Mercury: NASA/JHUAPL/Carnegie Institution of Washington (MESSENGER). Jupiter: NASA/JPL/Space Science Institute (Cassini).",
+};
+
+pub const ALL: [&Credit; 9] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -98,6 +107,7 @@ pub const ALL: [&Credit; 8] = [
     &DEEP_STAR_MAPS,
     &DSS,
     &JPL_HORIZONS,
+    &PLANET_MAPS,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -113,7 +123,13 @@ pub fn sky_credits(survey: bool) -> Vec<&'static Credit> {
 /// bodies, the stars and the Milky Way behind them (the planets are
 /// computed from published elements, not a dataset).
 pub fn solar_credits() -> Vec<&'static Credit> {
-    vec![&JPL_HORIZONS, &HYG, &DEEP_STAR_MAPS]
+    vec![
+        &JPL_HORIZONS,
+        &PLANET_MAPS,
+        &BLUE_MARBLE,
+        &HYG,
+        &DEEP_STAR_MAPS,
+    ]
 }
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
@@ -124,7 +140,8 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
-        .filter(|c| !solar_credits().iter().any(|s| s.id == c.id))
+        // The solar view's own data (it shares the Blue Marble with the Earth).
+        .filter(|c| c.id != JPL_HORIZONS.id && c.id != PLANET_MAPS.id)
         .collect()
 }
 

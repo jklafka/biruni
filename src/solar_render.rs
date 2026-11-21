@@ -5,9 +5,16 @@
 //! camera-relative (`solar_scene::Drawn`).
 
 use crate::render::{compile, link, VERT_SRC};
+use crate::solar::Body;
 use crate::solar_scene::{color, Drawn};
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
-use web_sys::{WebGl2RenderingContext as GL, WebGlProgram, WebGlUniformLocation};
+use web_sys::{WebGl2RenderingContext as GL, WebGlProgram, WebGlTexture, WebGlUniformLocation};
+
+/// Surface maps kept on the GPU at once (each 2048x1024 RGBA with mipmaps
+/// is about 11 MB; 2.8 MB on the small tier at 1024x512). The least
+/// recently drawn one goes first; the app decodes it again when needed.
+pub const MAX_MAPS: usize = 2;
 
 const BODY_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/body.frag"));
 
@@ -26,6 +33,14 @@ pub struct BodyProgram {
     rings: Option<WebGlUniformLocation>,
     dot: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
+    meridian: Option<WebGlUniformLocation>,
+    map: Option<WebGlUniformLocation>,
+    map_on: Option<WebGlUniformLocation>,
+    /// Uploaded surface maps and the frame each was last drawn in.
+    maps: HashMap<Body, (WebGlTexture, u64)>,
+    frame: u64,
+    /// A 1x1 texture for the sampler of bodies without a map.
+    blank: WebGlTexture,
 }
 
 /// Screen state for drawing the bodies, device pixels.
@@ -57,15 +72,104 @@ impl BodyProgram {
             rings: bu("u_rings"),
             dot: bu("u_dot"),
             dpr: bu("u_dpr"),
+            meridian: bu("u_meridian"),
+            map: bu("u_map"),
+            map_on: bu("u_mapOn"),
+            maps: HashMap::new(),
+            frame: 0,
+            blank: {
+                let t = gl.create_texture().ok_or("failed to create texture")?;
+                gl.active_texture(GL::TEXTURE0);
+                gl.bind_texture(GL::TEXTURE_2D, Some(&t));
+                gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+                    GL::TEXTURE_2D,
+                    0,
+                    GL::RGBA8 as i32,
+                    1,
+                    1,
+                    0,
+                    GL::RGBA,
+                    GL::UNSIGNED_BYTE,
+                    Some(&[0, 0, 0, 255]),
+                )?;
+                gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+                gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+                t
+            },
             program,
         })
     }
 
+    pub fn has_map(&self, body: Body) -> bool {
+        self.maps.contains_key(&body)
+    }
+
+    /// Upload a body's surface map (mipmapped, repeating in longitude),
+    /// dropping the least recently drawn map beyond [`MAX_MAPS`].
+    pub fn upload_map(
+        &mut self,
+        gl: &GL,
+        body: Body,
+        bitmap: &web_sys::ImageBitmap,
+    ) -> Result<(), JsValue> {
+        let (w, h) = (bitmap.width(), bitmap.height());
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.active_texture(GL::TEXTURE0);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.tex_storage_2d(
+            GL::TEXTURE_2D,
+            crate::imagery::mip_levels(w, h),
+            GL::RGBA8,
+            w as i32,
+            h as i32,
+        );
+        gl.pixel_storei(GL::UNPACK_FLIP_Y_WEBGL, 0);
+        gl.pixel_storei(GL::UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        if let Err(e) = gl.tex_sub_image_2d_with_u32_and_u32_and_image_bitmap(
+            GL::TEXTURE_2D,
+            0,
+            0,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            bitmap,
+        ) {
+            gl.delete_texture(Some(&tex));
+            return Err(e);
+        }
+        gl.generate_mipmap(GL::TEXTURE_2D);
+        gl.tex_parameteri(
+            GL::TEXTURE_2D,
+            GL::TEXTURE_MIN_FILTER,
+            GL::LINEAR_MIPMAP_LINEAR as i32,
+        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+        if let Some((old, _)) = self.maps.insert(body, (tex, self.frame)) {
+            gl.delete_texture(Some(&old));
+        }
+        while self.maps.len() > MAX_MAPS {
+            let oldest = self
+                .maps
+                .iter()
+                .filter(|(b, _)| **b != body)
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(b, _)| *b);
+            match oldest.and_then(|b| self.maps.remove(&b)) {
+                Some((t, _)) => gl.delete_texture(Some(&t)),
+                None => break,
+            }
+        }
+        Ok(())
+    }
+
     /// Draw `bodies` (farthest first) over what is on screen.
-    pub fn draw(&self, gl: &GL, f: &BodyFrame, bodies: &[Drawn]) {
+    pub fn draw(&mut self, gl: &GL, f: &BodyFrame, bodies: &[Drawn]) {
         if bodies.is_empty() {
             return;
         }
+        self.frame += 1;
         gl.bind_framebuffer(GL::FRAMEBUFFER, None);
         gl.viewport(0, 0, f.width as i32, f.height as i32);
         gl.use_program(Some(&self.program));
@@ -108,6 +212,21 @@ impl BodyProgram {
             gl.uniform1f(self.bands.as_ref(), bands);
             let (ri, ro) = b.rings.unwrap_or((0.0, 0.0));
             gl.uniform2f(self.rings.as_ref(), ri, ro);
+            v3(&self.meridian, b.meridian);
+            gl.uniform1i(self.map.as_ref(), 0);
+            gl.active_texture(GL::TEXTURE0);
+            let frame = self.frame;
+            match self.maps.get_mut(&b.body) {
+                Some((tex, used)) => {
+                    *used = frame;
+                    gl.bind_texture(GL::TEXTURE_2D, Some(tex));
+                    gl.uniform1f(self.map_on.as_ref(), 1.0);
+                }
+                None => {
+                    gl.bind_texture(GL::TEXTURE_2D, Some(&self.blank));
+                    gl.uniform1f(self.map_on.as_ref(), 0.0);
+                }
+            }
             gl.uniform3f(
                 self.dot.as_ref(),
                 (b.disk.x * dpr) as f32,

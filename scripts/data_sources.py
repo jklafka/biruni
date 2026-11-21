@@ -29,6 +29,7 @@ LOCK_VERSION = 1
 FIELDS = ("name", "url", "version", "sha256", "size", "license", "notes")
 REQUIRED = ("name", "url", "version", "sha256", "size", "license")
 CHUNK = 1 << 20
+USER_AGENT = "data-sources-fetch"
 
 
 class DataSourceError(Exception):
@@ -134,7 +135,9 @@ def download(url, dest_dir):
     h = hashlib.sha256()
     size = 0
     try:
-        with os.fdopen(fd, "wb") as out, urllib.request.urlopen(url, timeout=120) as resp:
+        # Some hosts (Wikimedia) refuse urllib's default User-Agent.
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with os.fdopen(fd, "wb") as out, urllib.request.urlopen(req, timeout=120) as resp:
             while True:
                 chunk = resp.read(CHUNK)
                 if not chunk:

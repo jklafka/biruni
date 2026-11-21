@@ -1304,10 +1304,29 @@ impl Renderer {
         bodies: &[crate::solar_scene::Drawn],
     ) -> Result<(), JsValue> {
         self.draw_sky(frame)?;
-        if let (false, Some(pass)) = (self.ctx.is_lost(), &self.sky) {
+        if let (false, Some(pass)) = (self.ctx.is_lost(), &mut self.sky) {
             pass.bodies.draw(&self.gl, bodies_frame, bodies);
         }
         Ok(())
+    }
+
+    /// Whether a body's surface map is on the GPU.
+    pub fn solar_has_map(&self, body: crate::solar::Body) -> bool {
+        self.sky.as_ref().is_some_and(|p| p.bodies.has_map(body))
+    }
+
+    pub fn upload_solar_map(
+        &mut self,
+        body: crate::solar::Body,
+        bitmap: &web_sys::ImageBitmap,
+    ) -> Result<(), JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(());
+        }
+        match &mut self.sky {
+            Some(pass) => pass.bodies.upload_map(&self.gl, body, bitmap),
+            None => Ok(()),
+        }
     }
 
     pub fn sky_wants_milky_way(&self) -> bool {

@@ -180,7 +180,7 @@ pub const SOLAR_TO_EQ: Mat3 = {
 
 /// `ephemeris`' equatorial axes (x to the equinox, z to the celestial pole)
 /// to solar space.
-fn equatorial_to_solar([x, y, z]: [f64; 3]) -> [f64; 3] {
+pub fn equatorial_to_solar([x, y, z]: [f64; 3]) -> [f64; 3] {
     // To sky equatorial space (y, z, x), then back through the obliquity.
     mul(&transpose(&SOLAR_TO_EQ), [y, z, x])
 }

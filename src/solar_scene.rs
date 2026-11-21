@@ -63,6 +63,83 @@ pub fn pole_vec(body: Body) -> [f64; 3] {
     )
 }
 
+/// The surface map of a body (`assets/data/planet_<body>.webp`, built by
+/// `scripts/make_planets.py`), if it has one.
+pub fn map_file(body: Body) -> Option<&'static str> {
+    Some(match body {
+        Body::Mercury => "planet_mercury.webp",
+        Body::Earth => "planet_earth.webp",
+        Body::Moon => "planet_moon.webp",
+        Body::Mars => "planet_mars.webp",
+        Body::Jupiter => "planet_jupiter.webp",
+        _ => return None,
+    })
+}
+
+/// Rotation of the prime meridian (IAU WGCCRE: `W = W0 + rate * d`,
+/// degrees, `d` days from J2000 TDB) for the bodies with a map. The Moon is
+/// handled apart: it keeps its prime meridian towards the Earth.
+fn rotation(body: Body) -> Option<(f64, f64)> {
+    Some(match body {
+        Body::Mercury => (329.5988, 6.138_510_8),
+        Body::Earth => (190.147, 360.985_623_5),
+        Body::Mars => (176.630, 350.891_982_26),
+        // System III.
+        Body::Jupiter => (284.95, 870.536),
+        _ => return None,
+    })
+}
+
+/// Unit vector (solar space) from a body's center to where its prime
+/// meridian crosses its equator, at `t` Julian centuries (TT) from J2000,
+/// so a surface point at planetocentric east longitude `lon` lies at angle
+/// `lon` from it, counterclockwise about the pole. `None` for bodies
+/// without a map. The Moon's points at the Earth (its mean near side; the
+/// libration of up to 8 degrees is left out).
+pub fn prime_meridian(body: Body, t: f64) -> Option<[f64; 3]> {
+    let pole = pole_vec(body);
+    let m = if body == Body::Moon {
+        let (moon, earth) = (position(Body::Moon, t)?, position(Body::Earth, t)?);
+        [earth[0] - moon[0], earth[1] - moon[1], earth[2] - moon[2]]
+    } else {
+        let (w0, rate) = rotation(body)?;
+        let w = (w0 + rate * t * 36_525.0).to_radians();
+        // The node of the body's equator on the celestial equator, at right
+        // ascension alpha0 + 90 degrees, then W along the equator.
+        let a = self::pole(body).0.to_radians();
+        let q = crate::solar::equatorial_to_solar([-a.sin(), a.cos(), 0.0]);
+        let e = cross(pole, q);
+        std::array::from_fn(|i| w.cos() * q[i] + w.sin() * e[i])
+    };
+    // On the equator, exactly.
+    let k = m[0] * pole[0] + m[1] * pole[1] + m[2] * pole[2];
+    let m = [m[0] - k * pole[0], m[1] - k * pole[1], m[2] - k * pole[2]];
+    let n = length(m);
+    (n > 0.0).then(|| m.map(|c| c / n))
+}
+
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+/// Planetocentric east longitude and latitude (degrees) of the point of a
+/// body's surface in direction `dir` (solar space) from its center.
+pub fn surface_lon_lat(body: Body, t: f64, dir: [f64; 3]) -> Option<(f64, f64)> {
+    let p = pole_vec(body);
+    let m = prime_meridian(body, t)?;
+    let e = cross(p, m);
+    let d = |a: [f64; 3]| a[0] * dir[0] + a[1] * dir[1] + a[2] * dir[2];
+    let n = length(dir);
+    Some((
+        d(e).atan2(d(m)).to_degrees(),
+        (d(p) / n).asin().to_degrees(),
+    ))
+}
+
 /// A body to draw this frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Drawn {
@@ -77,9 +154,11 @@ pub struct Drawn {
     /// (the rings, or the Sun's glow).
     pub disk: Disk,
     pub reach: Disk,
-    /// Unit vector from the body towards the Sun, and the pole, camera space.
+    /// Unit vector from the body towards the Sun, the pole, and the prime
+    /// meridian on the equator (zero for bodies without a map), camera space.
     pub sun: [f32; 3],
     pub pole: [f32; 3],
+    pub meridian: [f32; 3],
     /// Rings (inner and outer radius in body radii), if any.
     pub rings: Option<(f32, f32)>,
 }
@@ -129,6 +208,7 @@ pub fn drawn(cam: &SolarCamera, eye: [f64; 3], t: f64) -> Vec<Drawn> {
                 reach,
                 sun,
                 pole: to_cam(pole_vec(body)),
+                meridian: prime_meridian(body, t).map_or([0.0; 3], to_cam),
                 rings: rings.map(|(a, b)| (a as f32, b as f32)),
             })
         })
@@ -397,6 +477,30 @@ pub fn hit(drawn: &[Drawn], labels: &[Label], x: f64, y: f64) -> Option<Body> {
         .rev() // nearest first
         .find(|d| (x - d.disk.x).hypot(y - d.disk.y) <= d.disk.r.max(8.0))
         .map(|d| d.body)
+}
+
+/// Where a ray from `eye` along `dir` (solar space) first meets a body's
+/// surface, as planetocentric longitude and latitude (degrees), for bodies
+/// with a map.
+pub fn surface_under(body: Body, t: f64, eye: [f64; 3], dir: [f64; 3]) -> Option<(f64, f64)> {
+    let c = position(body, t)?;
+    let r = body.radius_au();
+    let n = length(dir);
+    let d = dir.map(|v| v / n);
+    let oc = [c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]];
+    let b = oc[0] * d[0] + oc[1] * d[1] + oc[2] * d[2];
+    let perp = [oc[0] - b * d[0], oc[1] - b * d[1], oc[2] - b * d[2]];
+    let h = r * r - (perp[0] * perp[0] + perp[1] * perp[1] + perp[2] * perp[2]);
+    if h < 0.0 || b <= 0.0 {
+        return None;
+    }
+    let s = b - h.sqrt();
+    let hit = [
+        eye[0] + s * d[0] - c[0],
+        eye[1] + s * d[1] - c[1],
+        eye[2] + s * d[2] - c[2],
+    ];
+    surface_lon_lat(body, t, hit)
 }
 
 /// HUD text for a body: its name and the camera's distance from its center.
@@ -672,6 +776,86 @@ mod tests {
         let want = mul(&transpose(&cam.look.basis()), p.map(|c| -c));
         let want = want.map(|c| c / length(p));
         assert!((0..3).all(|i| (s[i] - want[i]).abs() < 1e-6));
+    }
+
+    #[test]
+    fn the_earth_turns_under_the_sun() {
+        // The subsolar point's longitude on the Earth's map agrees with the
+        // terminator's (sun.rs), to the 0.3 degree offset between ICRF and
+        // the equinox of date that W absorbs.
+        for unix in [1_735_689_600.0, 1_750_000_000.0, 1_765_000_000.0] {
+            let t = centuries_tt_from_unix(unix).unwrap();
+            let earth = position(Body::Earth, t).unwrap();
+            let to_sun = earth.map(|c| -c);
+            let (lon, lat) = surface_lon_lat(Body::Earth, t, to_sun).unwrap();
+            let sub = crate::sun::subsolar_point(unix).unwrap();
+            let dlon = (lon - sub.lon.to_degrees() + 540.0).rem_euclid(360.0) - 180.0;
+            assert!(
+                dlon.abs() < 0.6,
+                "{unix}: lon {lon} vs {}",
+                sub.lon.to_degrees()
+            );
+            assert!(
+                (lat - sub.lat.to_degrees()).abs() < 0.3,
+                "{unix}: lat {lat}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_point_under_the_cursor_is_found() {
+        // Looking straight at the Moon from the Earth's side: the center of
+        // the disk is the near side's center, longitude 0.
+        let t = t0();
+        let moon = position(Body::Moon, t).unwrap();
+        let earth = position(Body::Earth, t).unwrap();
+        let (lon, _) = surface_under(
+            Body::Moon,
+            t,
+            earth,
+            [moon[0] - earth[0], moon[1] - earth[1], moon[2] - earth[2]],
+        )
+        .unwrap();
+        assert!(lon.abs() < 1e-6, "{lon}");
+        // A ray that misses.
+        assert!(surface_under(Body::Moon, t, earth, [earth[0] - moon[0], 0.0, 0.0]).is_none());
+        assert!(surface_under(Body::Saturn, t, earth, [1.0, 0.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn the_moon_shows_its_near_side() {
+        let t = t0();
+        let moon = position(Body::Moon, t).unwrap();
+        let earth = position(Body::Earth, t).unwrap();
+        let dir = [earth[0] - moon[0], earth[1] - moon[1], earth[2] - moon[2]];
+        let (lon, lat) = surface_lon_lat(Body::Moon, t, dir).unwrap();
+        assert!(lon.abs() < 1e-9, "{lon}");
+        assert!(lat.abs() < 8.0, "{lat}");
+        // Meridians lie on the equator, and only mapped bodies have one.
+        for b in Body::ALL {
+            match prime_meridian(b, t) {
+                Some(m) => {
+                    let p = pole_vec(b);
+                    assert!((m[0] * p[0] + m[1] * p[1] + m[2] * p[2]).abs() < 1e-12);
+                    assert!((length(m) - 1.0).abs() < 1e-12);
+                    assert!(map_file(b).is_some());
+                }
+                None => assert!(map_file(b).is_none(), "{b:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn mars_turns_once_a_sol() {
+        let t = t0();
+        let day = 1.0 / 36_525.0;
+        let dir = [1.0, 0.2, 0.3];
+        let (a, _) = surface_lon_lat(Body::Mars, t, dir).unwrap();
+        let (b, _) = surface_lon_lat(Body::Mars, t + day, dir).unwrap();
+        // The planet turns 350.892 degrees east a day, so a fixed direction
+        // falls 350.892 degrees west in longitude: 9.108 east, mod 360.
+        let moved = (b - a).rem_euclid(360.0);
+        assert!((moved - (360.0 - 350.891_982_26)).abs() < 1e-6, "{moved}");
     }
 
     #[test]

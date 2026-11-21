@@ -136,6 +136,11 @@ const VIEWS = [
   // 2026-11-20): the inner system, and far out where the Voyagers are.
   { name: "solar-objects", hash: "#40,-74,800&t=1795132800&view=solar&orbit=sun,180,40,4" },
   { name: "solar-objects-far", hash: "#40,-74,800&t=1795132800&view=solar&orbit=sun,250,30,420" },
+  // Surface maps: Mars, the Moon's near side from the Earth's direction,
+  // and Jupiter.
+  { name: "solar-mars", hash: "#40,-74,800&t=1735689600&view=solar&orbit=mars,120,-15,0.00018" },
+  { name: "solar-moon-map", hash: "#40,-74,800&t=1735689600&view=solar&orbit=moon,40,-10,0.00009" },
+  { name: "solar-jupiter", hash: "#40,-74,800&t=1735689600&view=solar&orbit=jupiter,110,-10,0.0038" },
   { name: "solar-phone", hash: "#40,-74,800&t=1735689600&view=solar", viewport: { width: 390, height: 844 } },
   {
     name: "solar-ctxloss",
@@ -298,6 +303,7 @@ try {
     if (/[&#]view=solar/.test(view.hash)) {
       // Space behind the planets: the stars and the Milky Way.
       await page.waitForSelector("#globe[data-solar]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector('#globe[data-maps="settled"]', { state: "attached", timeout: 30_000 });
       if (!/[&#]objects=off/.test(view.hash)) {
         await page.waitForSelector("#globe[data-space]", { state: "attached", timeout: 30_000 });
       }
