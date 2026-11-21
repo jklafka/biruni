@@ -94,6 +94,7 @@ One-time setup for the repository owner:
 | Switch between the Earth, the sky and the solar system | Earth / Sky / Solar system switch beside the title | same | `V` (`Shift`+`V` back) |
 | Societies (D-PLACE), colored by a practice | 👥 button; the menu in the legend picks the practice | same | `K` |
 | Languages (Glottolog), colored by family | 🗣 button | 🗣 button | `W` |
+| Deep time: the continents back to 1000 million years ago | 🦕 button; the age panel's slider and buttons | same | `A`; `,` `.` a million years, `<` `>` ten |
 | Historical borders, 3400 BCE to 2024 | 🏛 button | 🏛 button | `H` |
 | Change the year (historical borders) | slider and −100 / −1 / +1 / +100 buttons | same | `,` `.` a year, `<` `>` a century |
 | Spacecraft and small bodies (solar system view) | satellite button | satellite button | `O` |
@@ -126,6 +127,8 @@ One-time setup for the repository owner:
 **Languages.** The 🗣 button (or `W`) adds the world's languages from Glottolog (see Data) as dots at each language's location, colored by family (the twelve largest families have their own colors, the rest are grey, isolates white; the legend lists them), with names once zoomed in below about 2,500 km. Hovering a dot shows the language, its family and macroarea, and the search box finds languages by name once the layer has loaded. The URL adds `&languages=1`. A dot marks one point for a language, not the area where it is spoken.
 
 **Societies.** The 👥 button (or `K`) shows the 1,291 societies of the Ethnographic Atlas (from D-PLACE, see Data) as dots where each was studied, colored by one coded practice that the menu in the legend picks: subsistence (the dominant activity), descent, marital residence, settlement pattern, political levels above the local community, or class differentiation. The legend counts the societies with each value. Hovering a dot shows the society, its region and focal year, and its value. Each society is coded for one time (mostly the 19th and 20th centuries), not for today. The languages and societies layers share the legend, so turning one on turns the other off. The URL adds `&societies=<variable>` (for example `EA042`).
+
+**Deep time.** The 🦕 button (or `A`) moves today's continents back in time with a plate tectonic model (Merdith et al. 2021, see Data), from the present to 1000 million years ago: the age panel's slider and buttons, or `,` `.` (a million years) and `<` `>` (ten), pick the age, shown with its geological period. Land is colored by where it is today (North America, South America, Europe, northern Asia, Africa, India, the rest of Asia, Australia and Antarctica), so Pangaea and Gondwana read at a glance. The shapes are today's coastlines carried by their plates, not the shorelines of the time (sea level and lost land are not modeled), and before about 320 million years ago the model's longitudes are not constrained. Modern places, borders and the other overlays are hidden. The URL adds `&ma=<age>`.
 
 **Historical borders.** The 🏛 button (or `H`) shows the world's polities at a year from 3400 BCE to 2024, from Cliopatria (see Data), in place of today's countries: their fills, borders and names change with the year panel's slider, its buttons, or `,` `.` (a year) and `<` `>` (a century). The coastlines, lakes and ice stay today's. Hovering shows the polity under the cursor with the years its borders held. The layer picker, the day/night terminator and the country panel are hidden meanwhile. The URL adds `&year=<year>`, negative for BCE (there is no year 0). Borders, names and dates of past polities are often uncertain; Cliopatria is one version of them.
 
@@ -179,6 +182,8 @@ These are for testing, not controls, and have no UI. `?debug=ctxloss` (before th
 - **`src/main.rs`**: wires up the DOM, translates input events (pointer, wheel, keyboard) into `controls::Event`s and runs the animation loop, which only redraws when something changes.
 
 ## Data
+
+Deep time uses `assets/data/paleo_coastlines.bin` (110 KB: the model's present-day coastline polygons with their plate and age range, simplified to 0.1°) and `paleo_rotations.tsv` (190 KB: its 5,943 finite rotations), converted by `scripts/convert_merdith.py` from the Merdith et al. (2021) plate model v1.2.4 (EarthByte, *Earth-Science Reviews* 214; CC BY 4.0). The browser composes the rotations (interpolating between listed ages) to reconstruct any age; tests check reconstructed points against the GPlates Web Service.
 
 The societies are `assets/data/societies.tsv` (80 KB), converted by `scripts/convert_dplace.py` from [D-PLACE](https://d-place.org) 3.3 (Kirby et al. 2016; dplace-cldf), which carries the Ethnographic Atlas (Murdock et al.): its 1,291 societies, their locations and focal years, and six coded variables (EA042, EA043, EA012, EA030, EA033, EA066). D-PLACE is CC BY-NC 4.0: using it depends on Biruni staying non-commercial (see `DATA_LICENSES.md`).
 

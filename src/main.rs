@@ -28,6 +28,8 @@ mod lines;
 mod measure;
 mod moon;
 mod overlay;
+mod paleo;
+mod paleo_app;
 mod projection;
 mod quality;
 mod render;
@@ -207,6 +209,9 @@ struct App {
     /// The historical borders (`&year=`, see `history_app.rs`) and their panel.
     history: history_app::HistoryState,
     year_ui: history_app::YearUi,
+    /// Deep time (`&ma=`, see `paleo_app.rs`) and its ages panel.
+    paleo: paleo_app::PaleoState,
+    ages_ui: paleo_app::AgesUi,
     /// The languages layer (`&languages=1`), its button, and the search box
     /// (which gets the languages as entries).
     langs: languages_app::LanguagesState,
@@ -269,6 +274,9 @@ impl App {
                 if self.history.on {
                     self.history_reapply();
                 }
+                if self.paleo.on {
+                    self.paleo_reapply();
+                }
                 if layers.is_some() {
                     let _ = self.status.class_list().add_1("hidden");
                 } else {
@@ -296,6 +304,9 @@ impl App {
         }
         if self.history.on {
             self.history_reapply(); // the upload put the modern borders back
+        }
+        if self.paleo.on {
+            self.paleo_reapply();
         }
         self.redraw.mark_render();
         Ok(())
@@ -751,7 +762,12 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        if self.view != View::Earth || self.history.on || self.langs.on || self.societies.on {
+        if self.view != View::Earth
+            || self.history.on
+            || self.paleo.on
+            || self.langs.on
+            || self.societies.on
+        {
             let base = page.split('#').next().unwrap_or("");
             return format!("{base}{}", self.view_hash());
         }
@@ -770,6 +786,9 @@ impl App {
         let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
         if self.history.on {
             hash.push_str(&history::format_hash_year(self.history.year));
+        }
+        if self.paleo.on {
+            hash.push_str(&format!("&ma={}", self.paleo.ma));
         }
         if self.langs.on {
             hash.push_str("&languages=1");
@@ -1299,7 +1318,7 @@ impl App {
     /// A country whose outline is within a few pixels counts, so tiny
     /// islands can be hovered and tapped; `coarse` widens that for touch.
     fn country_at(&self, x: f64, y: f64, coarse: bool) -> Option<usize> {
-        if self.history.on {
+        if self.history.on || self.paleo.on {
             return None; // the IDs on the GPU are the year's polities
         }
         self.countries
@@ -1455,6 +1474,7 @@ impl App {
             self.redraw.mark_render();
         }
         self.history_frame();
+        self.paleo_frame();
         let (draw, hud) = self.redraw.take();
         let relayout = self
             .keepout
@@ -1939,6 +1959,8 @@ fn start() -> Result<(), JsValue> {
         planet_failed: Default::default(),
         history: history_app::HistoryState::new(history::parse_hash_year(&initial_hash)),
         year_ui: history_app::YearUi::new(&doc)?,
+        paleo: paleo_app::PaleoState::new(paleo::parse_hash_ma(&initial_hash)),
+        ages_ui: paleo_app::AgesUi::new(&doc)?,
         langs: languages_app::LanguagesState::default(),
         langs_button: element(&doc, "languages-toggle")?,
         search: None,
@@ -1990,6 +2012,10 @@ fn start() -> Result<(), JsValue> {
         if a.history.on {
             a.history.on = false; // set_history acts on a change
             a.set_history(true);
+        }
+        if a.paleo.on {
+            a.paleo.on = false; // set_paleo acts on a change
+            a.set_paleo(true);
         }
         if languages_app::parse_hash(&initial_hash) {
             a.set_languages(true);
@@ -2526,6 +2552,18 @@ fn start() -> Result<(), JsValue> {
                         let on = !a.langs.on;
                         a.set_languages(on);
                     }
+                    "a" | "A" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let on = !a.paleo.on;
+                        a.set_paleo(on);
+                    }
+                    // Deep time: , and . step a million years, Shift (< and
+                    // >) ten.
+                    k @ ("," | "." | "<" | ">")
+                        if a.paleo.on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                    {
+                        let shift = e.shift_key();
+                        a.paleo_key(k, shift);
+                    }
                     "h" | "H" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         let on = !a.history.on;
                         a.set_history(on);
@@ -2653,6 +2691,13 @@ fn start() -> Result<(), JsValue> {
                 if year.is_some() != a.history.on {
                     a.set_history(year.is_some());
                 }
+                let ma = paleo::parse_hash_ma(&hash);
+                if let Some(m) = ma {
+                    a.set_ma(m);
+                }
+                if ma.is_some() != a.paleo.on {
+                    a.set_paleo(ma.is_some());
+                }
                 let langs = languages_app::parse_hash(&hash);
                 if langs != a.langs.on {
                     a.set_languages(langs);
@@ -2700,7 +2745,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 17] = [
+    let buttons: [(&str, Action); 18] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2776,6 +2821,10 @@ fn start() -> Result<(), JsValue> {
             let on = !a.langs.on;
             a.set_languages(on)
         }),
+        ("paleo-toggle", |a| {
+            let on = !a.paleo.on;
+            a.set_paleo(on)
+        }),
         ("history-toggle", |a| {
             let on = !a.history.on;
             a.set_history(on)
@@ -2797,6 +2846,7 @@ fn start() -> Result<(), JsValue> {
     solar_app::wire(&app)?;
     history_app::wire(&app, &doc)?;
     ethnography_app::wire(&app, &doc)?;
+    paleo_app::wire(&app, &doc)?;
 
     // Place search: fly to the chosen place.
     {
@@ -2879,8 +2929,9 @@ fn start() -> Result<(), JsValue> {
                 Ok(list) => {
                     let mut a = app.borrow_mut();
                     a.history.modern_labels = Some(list.clone());
-                    if a.history.on {
+                    if a.history.on || a.paleo.on {
                         a.history_reapply();
+                        a.paleo_reapply();
                     } else {
                         a.labels.set_labels(list);
                     }
@@ -2911,6 +2962,9 @@ fn start() -> Result<(), JsValue> {
                     a.renderer.set_country_colors(&countries.id_colors());
                     if a.history.on {
                         a.history_reapply(); // the year's IDs go back on top
+                    }
+                    if a.paleo.on {
+                        a.paleo_reapply();
                     }
                     // Thematic classes are only known now: set them up after
                     // the countries are stored, below.

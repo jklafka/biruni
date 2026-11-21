@@ -58,6 +58,14 @@
       "license": "hyg"
     },
     {
+      "name": "merdith2021-v124",
+      "url": "https://zenodo.org/api/records/13635864/files/Merdith_etal_2021_ESR_v1.2.4.zip/content",
+      "version": "1.2.4 (Zenodo 13635864)",
+      "sha256": "c08cd59f9fc26a99315a9a28c7a8da33ef7dc16e60c14eaec24e673cb6b78e6e",
+      "size": 8496217,
+      "license": "merdith2021"
+    },
+    {
       "name": "nasa-black-marble-2016",
       "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
       "version": "2016",

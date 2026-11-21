@@ -93,7 +93,9 @@ impl App {
 
     /// The Earth view's credits with the overlays that are on.
     pub(crate) fn earth_credits(&self) -> Vec<&'static credits::Credit> {
-        let base = if self.history.on {
+        let base = if self.paleo.on {
+            credits::paleo_credits()
+        } else if self.history.on {
             credits::history_credits()
         } else {
             credits::visible_credits(self.layers_state.shown())

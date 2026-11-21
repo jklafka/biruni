@@ -237,12 +237,18 @@ impl Timeline {
     /// Indices of the records that hold at `t`, at most 255 (the ID raster
     /// is 8-bit); ID `i + 1` in the raster is `active[i]`.
     pub fn active(&self, t: i64) -> Vec<usize> {
+        let mut v = self.holding(t);
+        v.truncate(255);
+        v
+    }
+
+    /// Indices of all the records that hold at `t`.
+    pub fn holding(&self, t: i64) -> Vec<usize> {
         self.records
             .iter()
             .enumerate()
             .filter(|(_, r)| r.from <= t && t <= r.to)
             .map(|(i, _)| i)
-            .take(255)
             .collect()
     }
 
