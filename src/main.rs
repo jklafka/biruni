@@ -33,6 +33,7 @@ mod share;
 mod sky;
 mod sky_bodies;
 mod sky_render;
+mod solar;
 mod stars;
 mod sun;
 mod survey;

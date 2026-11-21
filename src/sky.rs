@@ -315,6 +315,23 @@ impl SkyCamera {
     }
 }
 
+/// What [`Gestures`] steers: the sky camera, or the solar system's.
+pub trait Look: Copy + PartialEq {
+    /// The pointer moved from `(x0, y0)` to `(x1, y1)` (CSS pixels).
+    fn drag(&mut self, x0: f64, y0: f64, x1: f64, y1: f64);
+    /// Zoom by `factor` (below 1 is in), about `toward` where that applies.
+    fn zoom(&mut self, factor: f64, toward: Option<(f64, f64)>);
+}
+
+impl Look for SkyCamera {
+    fn drag(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+        SkyCamera::drag(self, x0, y0, x1, y1);
+    }
+    fn zoom(&mut self, factor: f64, toward: Option<(f64, f64)>) {
+        SkyCamera::zoom(self, factor, toward);
+    }
+}
+
 /// Compass points on the horizon that are on screen, with their positions
 /// (CSS pixels), for labels just above the horizon line.
 pub fn horizon_labels(cam: &SkyCamera) -> Vec<(f64, f64, &'static str)> {
@@ -382,7 +399,7 @@ impl Gestures {
     }
 
     /// A pointer moved; returns whether the camera changed.
-    pub fn moved(&mut self, cam: &mut SkyCamera, id: i32, x: f64, y: f64) -> bool {
+    pub fn moved<C: Look>(&mut self, cam: &mut C, id: i32, x: f64, y: f64) -> bool {
         if !(x.is_finite() && y.is_finite()) {
             return false;
         }
