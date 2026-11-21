@@ -9,6 +9,7 @@ uniform float u_halfShort;    // half the shorter axis, device pixels
 uniform float u_tanQ;         // tan(fov / 4)
 uniform float u_dpr;
 uniform float u_magLimit;     // faintest magnitude shown
+uniform float u_ground;       // 0 in space (solar view): no horizon to hide stars
 
 layout(location = 0) in vec3 a_dir;
 layout(location = 1) in float a_mag;
@@ -21,7 +22,7 @@ out float v_size;             // gl_PointSize
 void main() {
     vec3 cam = u_eqToCam * a_dir;
     float d = 1.0 - cam.z;
-    float alt = dot(a_dir, u_zenith);
+    float alt = u_ground > 0.5 ? dot(a_dir, u_zenith) : 1.0;
     float dm = u_magLimit - a_mag;
     // Behind the view, below the horizon or too faint: outside the clip box.
     if (d < 1e-6 || alt < 0.0 || dm < 0.0) {

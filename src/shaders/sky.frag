@@ -16,6 +16,7 @@ uniform float u_daylight;     // 0 at night, 1 in full day (sky_bodies::daylight
 uniform sampler2D u_milkyWay; // equirectangular RA/Dec (scripts/make_milky_way.py)
 uniform float u_milkyWayOn;   // strength, 0 until the image is loaded
 uniform float u_milkyWayTexel; // radians per texel of the image's level 0
+uniform float u_ground;       // 1: ground and horizon below altitude 0; 0 in space (solar view)
 
 out vec4 outColor;
 
@@ -47,7 +48,8 @@ void main() {
     float radPerPx = 2.0 * u_tanQ * k / u_halfShort;
     float px = radPerPx * u_dpr; // one CSS pixel
 
-    float alt = asin(clamp(hor.y, -1.0, 1.0));
+    // In space (the solar view) there is no horizon: everything is "up".
+    float alt = u_ground > 0.5 ? asin(clamp(hor.y, -1.0, 1.0)) : 1.5;
     vec3 col = SKY + GLOW * exp(-max(alt, 0.0) / 0.12);
     if (u_milkyWayOn > 0.0) {
         // u = 0.5 - RA / 2pi, v = 0.5 - Dec / pi; the level of detail is
@@ -78,6 +80,6 @@ void main() {
     // Ground below the horizon, antialiased over a pixel, with a thin line.
     float ground = smoothstep(-px, px, -alt);
     col = mix(col, mix(GROUND, DAY_GROUND, u_daylight), ground);
-    col = mix(col, HORIZON, 0.6 * line(abs(alt), 1.5 * px));
+    col = mix(col, HORIZON, 0.6 * line(abs(alt), 1.5 * px) * u_ground);
     outColor = vec4(col, 1.0);
 }

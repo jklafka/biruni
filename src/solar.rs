@@ -33,9 +33,6 @@
 //! Time is the time scrubber's (UTC Unix seconds), turned into TT centuries
 //! by `ephemeris::centuries_tt_from_unix`.
 
-// The view itself arrives with bead maps-ztx.3.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use crate::ephemeris::{self, Planet};
 use crate::moon;
 use crate::sky::{horiz_vec, mul, transpose, Look, Mat3, SkyCamera};
@@ -46,8 +43,6 @@ pub const AU_KM: f64 = 149_597_870.7;
 /// The Earth's mass over the Moon's, to place the Earth and the Moon about
 /// their barycenter (which is what `ephemeris` gives for "Earth").
 const EARTH_MOON_MASS_RATIO: f64 = 81.300_56;
-/// Mean obliquity of the ecliptic at J2000.0 (as in `ephemeris`).
-const OBLIQUITY_J2000_DEG: f64 = 23.439_279_44;
 
 /// Field of view across the shorter screen axis.
 pub const FOV: f64 = 50.0 * PI / 180.0;
@@ -309,6 +304,7 @@ impl SolarCamera {
     }
 
     /// Screen position (CSS pixels) of a point, seen from `eye`.
+    #[cfg(test)]
     pub fn project(&self, eye: [f64; 3], p: [f64; 3]) -> Option<(f64, f64)> {
         self.look.project(sub(p, eye))
     }
@@ -531,24 +527,14 @@ pub fn format_distance(au: f64) -> String {
     }
 }
 
-/// Where the camera hovers for the HUD: the ecliptic longitude and
-/// latitude of the camera seen from its target. The camera is opposite the
-/// look direction, `(-cos alt sin az, -sin alt, cos alt cos az)` in solar
-/// space, so longitude `-az` and latitude `-alt`.
-pub fn format_vantage(cam: &SolarCamera) -> String {
-    let lon = (-cam.look.az.to_degrees()).rem_euclid(360.0);
-    let lat = -cam.look.alt.to_degrees();
-    // Round first so -0.4 does not print as "-0" and 359.6 as "360".
-    let (lon, lat) = (lon.round() % 360.0 + 0.0, lat.round() + 0.0);
-    format!("Ecl. lon {lon:.0}°, lat {lat:+.0}°")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ephemeris::centuries_tt_from_unix;
 
     const DEG: f64 = PI / 180.0;
+    /// Mean obliquity of the ecliptic at J2000.0 (as in `ephemeris`).
+    const OBLIQUITY_J2000_DEG: f64 = 23.439_279_44;
     /// 2025-01-01 00:00 UTC.
     const T0_UNIX: f64 = 1_735_689_600.0;
 
@@ -899,29 +885,6 @@ mod tests {
         assert_eq!(format_distance(3.5), "3.50 au");
         assert_eq!(format_distance(45.25), "45.2 au");
         assert_eq!(format_distance(f64::NAN), "—");
-    }
-
-    #[test]
-    fn the_vantage_names_where_the_camera_hovers() {
-        // Ecliptic longitude and latitude of an `ephemeris`-axes vector.
-        let lonlat = |v: [f64; 3]| {
-            let e = [v[2], v[0], v[1]];
-            (
-                e[1].atan2(e[0]).to_degrees().rem_euclid(360.0),
-                (e[2] / length(e)).asin().to_degrees(),
-            )
-        };
-        for (az, alt, text) in [
-            (0.0, 0.0, "Ecl. lon 0°, lat +0°"),
-            (90.0, -30.0, "Ecl. lon 270°, lat +30°"),
-            (200.0, 45.0, "Ecl. lon 160°, lat -45°"),
-        ] {
-            let cam = SolarCamera::new(Body::Sun, az * DEG, alt * DEG, 1.0);
-            assert_eq!(format_vantage(&cam), text);
-            let (lon, lat) = lonlat(cam.eye(0.0).unwrap());
-            assert!((lon - (-az).rem_euclid(360.0)).abs() < 1e-9, "{lon}");
-            assert!((lat + alt).abs() < 1e-9, "{lat}");
-        }
     }
 
     #[test]

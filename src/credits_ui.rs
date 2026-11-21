@@ -49,6 +49,10 @@ impl CreditsPanel {
         self.show(credits::sky_credits(survey));
     }
 
+    pub fn show_solar(&self) {
+        self.show(credits::solar_credits());
+    }
+
     fn show(&self, list: Vec<&'static credits::Credit>) {
         self.list.set_text_content(None);
         for c in list {

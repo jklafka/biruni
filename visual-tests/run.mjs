@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, "..", "dist");
 const update = process.argv.includes("--update");
+// ONLY=<regex> runs just the views whose names match (for working on one).
+const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 
 // PIXEL_THRESHOLD and MAX_DIFF_FRACTION live in thresholds.mjs.
 
@@ -121,6 +123,23 @@ const VIEWS = [
   // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
   // field and no constellation figures.
   { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
+  // The solar system view on 2025-01-01: the home view (the Sun and the
+  // inner planets from above), the outer planets, Saturn and its rings up
+  // close from the sunlit side, the Earth close up and with the Moon's path,
+  // a phone, and a context restore that must match the Saturn view.
+  { name: "solar-home", hash: "#40,-74,800&t=1735689600&view=solar" },
+  { name: "solar-outer", hash: "#40,-74,800&t=1735689600&view=solar&orbit=sun,200,35,55" },
+  { name: "solar-saturn", hash: "#40,-74,800&t=1735689600&view=solar&orbit=saturn,210,-25,0.0042" },
+  { name: "solar-earth", hash: "#40,-74,800&t=1735689600&view=solar&orbit=earth,100,-20,0.0004" },
+  { name: "solar-moon", hash: "#40,-74,800&t=1735689600&view=solar&orbit=earth,60,-25,0.0075" },
+  { name: "solar-phone", hash: "#40,-74,800&t=1735689600&view=solar", viewport: { width: 390, height: 844 } },
+  {
+    name: "solar-ctxloss",
+    hash: "#40,-74,800&t=1735689600&view=solar&orbit=saturn,210,-25,0.0042",
+    query: "?debug=ctxloss",
+    loseContext: true,
+    reference: "solar-saturn",
+  },
   { name: "sky-phone", hash: "#40,-74,800&t=1735700400&view=sky&look=180,40,90", viewport: { width: 390, height: 844 } },
   {
     name: "sky-ctxloss",
@@ -239,7 +258,7 @@ const browser = await chromium.launch({
 
 let failed = false;
 try {
-  for (const view of VIEWS) {
+  for (const view of VIEWS.filter((v) => !only || only.test(v.name))) {
     // Reduced motion makes label fades instant, so the screenshot is stable.
     const page = await browser.newPage({
       viewport: view.viewport ?? VIEWPORT,
@@ -272,7 +291,12 @@ try {
     if (await page.locator("#loading.error").count()) {
       throw new Error(`${view.name}: map failed to load: ${await page.locator("#loading").innerText()}`);
     }
-    if (/[&#]view=sky/.test(view.hash)) {
+    if (/[&#]view=solar/.test(view.hash)) {
+      // Space behind the planets: the stars and the Milky Way.
+      await page.waitForSelector("#globe[data-solar]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector("#globe[data-stars]", { state: "attached", timeout: 30_000 });
+      await page.waitForSelector("#globe[data-milky-way]", { state: "attached", timeout: 30_000 });
+    } else if (/[&#]view=sky/.test(view.hash)) {
       // The sky draws no Earth labels or countries; it flags its first
       // frame and the star catalog's arrival.
       await page.waitForSelector("#globe[data-sky]", { state: "attached", timeout: 30_000 });

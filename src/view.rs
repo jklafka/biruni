@@ -157,6 +157,41 @@ pub fn parse_hash_proj(hash: &str) -> Projection {
         .unwrap_or_default()
 }
 
+/// The app's three views, in the order of their buttons (and of `V`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum View {
+    #[default]
+    Earth,
+    Sky,
+    Solar,
+}
+
+impl View {
+    pub const ALL: [View; 3] = [View::Earth, View::Sky, View::Solar];
+
+    /// `&view=sky` or `&view=solar`; anything else is the Earth.
+    pub fn from_hash(hash: &str) -> View {
+        match hash
+            .trim_start_matches('#')
+            .split('&')
+            .skip(1)
+            .find_map(|kv| kv.strip_prefix("view="))
+        {
+            Some("sky") => View::Sky,
+            Some("solar") => View::Solar,
+            _ => View::Earth,
+        }
+    }
+
+    pub fn next(self) -> View {
+        View::ALL[(self as usize + 1) % 3]
+    }
+
+    pub fn prev(self) -> View {
+        View::ALL[(self as usize + 2) % 3]
+    }
+}
+
 /// Latitude/longitude (radians) as e.g. `48.86° N  2.35° E`.
 pub fn format_lat_lon(lat: f64, lon: f64) -> String {
     let (lat, lon) = (lat.to_degrees(), wrap_angle(lon).to_degrees());
@@ -481,6 +516,20 @@ pub fn is_phantom_mouse_move(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn views_come_from_the_hash_and_cycle() {
+        assert_eq!(View::from_hash("#1,2,3"), View::Earth);
+        assert_eq!(View::from_hash("#1,2,3&view=sky&look=1,2,3"), View::Sky);
+        assert_eq!(View::from_hash("#1,2,3&t=5&view=solar"), View::Solar);
+        assert_eq!(View::from_hash("#1,2,3&view=mars"), View::Earth);
+        assert_eq!(View::from_hash("#view=solar"), View::Earth, "not a param");
+        for v in View::ALL {
+            assert_eq!(v.next().prev(), v);
+        }
+        assert_eq!(View::Solar.next(), View::Earth);
+        assert_eq!(View::Earth.prev(), View::Solar);
+    }
 
     fn close(a: f64, b: f64, eps: f64) -> bool {
         (a - b).abs() < eps

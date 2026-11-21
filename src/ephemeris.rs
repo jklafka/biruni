@@ -169,10 +169,34 @@ pub fn centuries_tt_from_unix(unix_secs: f64) -> Option<f64> {
     Some(centuries_from_jd(jd_utc + delta_t_seconds(year) / 86_400.0))
 }
 
-/// Heliocentric position in au, in the J2000 ecliptic frame (x towards the
-/// equinox, z towards the north ecliptic pole), at `t` Julian centuries of
-/// TT from J2000.0. `None` outside 3000 BC to 3000 AD, or for NaN.
-pub fn heliocentric_ecliptic(planet: Planet, t: f64) -> Option<[f64; 3]> {
+/// A planet's orbit at one moment: the ellipse of its osculating elements,
+/// and where on it the planet is. Drawing the orbit with [`Orbit::point`]
+/// passes exactly through [`heliocentric_ecliptic`]'s position.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Orbit {
+    /// Semi-major axis (au) and eccentricity.
+    pub a: f64,
+    pub e: f64,
+    /// The planet's eccentric anomaly, radians.
+    pub anomaly: f64,
+    /// Unit vectors towards perihelion and 90 degrees on along the motion,
+    /// in the J2000 ecliptic frame.
+    p: [f64; 3],
+    q: [f64; 3],
+}
+
+impl Orbit {
+    /// Heliocentric position (au, J2000 ecliptic) at eccentric anomaly `ea`.
+    pub fn point(&self, ea: f64) -> [f64; 3] {
+        let xp = self.a * (ea.cos() - self.e);
+        let yp = self.a * (1.0 - self.e * self.e).sqrt() * ea.sin();
+        std::array::from_fn(|k| self.p[k] * xp + self.q[k] * yp)
+    }
+}
+
+/// The orbit of `planet` at `t` Julian centuries of TT from J2000.0. `None`
+/// outside 3000 BC to 3000 AD, or for NaN.
+pub fn orbit(planet: Planet, t: f64) -> Option<Orbit> {
     let in_span = |(lo, hi): (f64, f64)| t >= lo && t <= hi;
     let i = planet.index();
     let (el, extra) = if in_span(TABLE_1_SPAN) {
@@ -189,10 +213,7 @@ pub fn heliocentric_ecliptic(planet: Planet, t: f64) -> Option<[f64; 3]> {
         m += b * t * t + c * ft.cos() + s * ft.sin();
     }
     let m = (m + 180.0).rem_euclid(360.0) - 180.0;
-    let ecc_anomaly = solve_kepler(m.to_radians(), e);
-    // Position in the orbital plane, x towards perihelion.
-    let xp = a * (ecc_anomaly.cos() - e);
-    let yp = a * (1.0 - e * e).sqrt() * ecc_anomaly.sin();
+    let anomaly = solve_kepler(m.to_radians(), e);
     let w = (peri - node).to_radians(); // argument of perihelion
     let (node, inc) = (node.to_radians(), inc.to_radians());
     let (sw, cw, sn, cn, si, ci) = (
@@ -203,11 +224,21 @@ pub fn heliocentric_ecliptic(planet: Planet, t: f64) -> Option<[f64; 3]> {
         inc.sin(),
         inc.cos(),
     );
-    Some([
-        (cw * cn - sw * sn * ci) * xp + (-sw * cn - cw * sn * ci) * yp,
-        (cw * sn + sw * cn * ci) * xp + (-sw * sn + cw * cn * ci) * yp,
-        (sw * si) * xp + (cw * si) * yp,
-    ])
+    Some(Orbit {
+        a,
+        e,
+        anomaly,
+        p: [cw * cn - sw * sn * ci, cw * sn + sw * cn * ci, sw * si],
+        q: [-sw * cn - cw * sn * ci, -sw * sn + cw * cn * ci, cw * si],
+    })
+}
+
+/// Heliocentric position in au, in the J2000 ecliptic frame (x towards the
+/// equinox, z towards the north ecliptic pole), at `t` Julian centuries of
+/// TT from J2000.0. `None` outside 3000 BC to 3000 AD, or for NaN.
+pub fn heliocentric_ecliptic(planet: Planet, t: f64) -> Option<[f64; 3]> {
+    let o = orbit(planet, t)?;
+    Some(o.point(o.anomaly))
 }
 
 /// Eccentric anomaly `E` with `E - e sin E = M` (radians), by Newton's
@@ -310,6 +341,27 @@ mod tests {
         }
         assert!(n >= 1, "{planet:?}: no reference dates in {span:?}");
         out
+    }
+
+    #[test]
+    fn orbits_pass_through_the_planet_and_close() {
+        for planet in Planet::ALL {
+            for t in [-30.0, -1.0, 0.25] {
+                let o = orbit(planet, t).unwrap();
+                assert_eq!(
+                    o.point(o.anomaly),
+                    heliocentric_ecliptic(planet, t).unwrap()
+                );
+                let (a, b) = (o.point(0.0), o.point(2.0 * PI));
+                assert!((0..3).all(|k| (a[k] - b[k]).abs() < 1e-12));
+                // Perihelion and aphelion distances.
+                let r = |v: [f64; 3]| norm(v);
+                assert!((r(o.point(0.0)) - o.a * (1.0 - o.e)).abs() < 1e-12);
+                assert!((r(o.point(PI)) - o.a * (1.0 + o.e)).abs() < 1e-12);
+            }
+        }
+        assert!(orbit(Planet::Mars, f64::NAN).is_none());
+        assert!(orbit(Planet::Mars, 11.0).is_none());
     }
 
     #[test]

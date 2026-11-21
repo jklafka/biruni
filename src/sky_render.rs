@@ -41,6 +41,8 @@ pub struct SkyFrame {
     pub star_count: usize,
     /// The deep-sky survey, when it is on.
     pub survey: Option<SurveyFrame>,
+    /// A horizon and ground (the sky view); none in space (the solar view).
+    pub ground: bool,
 }
 
 /// What of the survey to draw this frame.
@@ -173,6 +175,7 @@ struct StarProgram {
     tan_q: Option<WebGlUniformLocation>,
     dpr: Option<WebGlUniformLocation>,
     mag_limit: Option<WebGlUniformLocation>,
+    ground: Option<WebGlUniformLocation>,
 }
 
 struct StarBuffer {
@@ -195,6 +198,9 @@ pub struct SkyPass {
     milky_way_tex: Option<WebGlUniformLocation>,
     milky_way_on: Option<WebGlUniformLocation>,
     milky_way_texel: Option<WebGlUniformLocation>,
+    ground: Option<WebGlUniformLocation>,
+    /// The solar system view's bodies, drawn over this pass.
+    pub(crate) bodies: crate::solar_render::BodyProgram,
     /// The Milky Way texture and its width, once uploaded.
     milky_way: Option<(WebGlTexture, u32)>,
     stars: StarProgram,
@@ -223,6 +229,7 @@ impl SkyPass {
                 tan_q: su("u_tanQ"),
                 dpr: su("u_dpr"),
                 mag_limit: su("u_magLimit"),
+                ground: su("u_ground"),
                 program,
             }
         };
@@ -261,7 +268,9 @@ impl SkyPass {
             milky_way_tex: ku("u_milkyWay"),
             milky_way_on: ku("u_milkyWayOn"),
             milky_way_texel: ku("u_milkyWayTexel"),
+            ground: ku("u_ground"),
             milky_way: None,
+            bodies: crate::solar_render::BodyProgram::create(gl)?,
             program,
         })
     }
@@ -475,6 +484,8 @@ impl SkyPass {
         gl.uniform1f(self.dpr.as_ref(), f.dpr as f32);
         gl.uniform1f(self.grid_step.as_ref(), f.grid_step as f32);
         gl.uniform1f(self.daylight.as_ref(), f.daylight as f32);
+        let ground = if f.ground { 1.0 } else { 0.0 };
+        gl.uniform1f(self.ground.as_ref(), ground);
         match &self.milky_way {
             Some((tex, w)) => {
                 gl.active_texture(GL::TEXTURE7);
@@ -511,6 +522,7 @@ impl SkyPass {
         gl.uniform1f(sp.tan_q.as_ref(), f.tan_quarter as f32);
         gl.uniform1f(sp.dpr.as_ref(), f.dpr as f32);
         gl.uniform1f(sp.mag_limit.as_ref(), f.mag_limit);
+        gl.uniform1f(sp.ground.as_ref(), ground);
         gl.enable(GL::BLEND);
         gl.blend_func(GL::ONE, GL::ONE);
         gl.bind_vertex_array(Some(&buf.vao));

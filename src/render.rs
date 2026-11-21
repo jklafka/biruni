@@ -1295,6 +1295,21 @@ impl Renderer {
 
     /// Whether the sky view is waiting for the Milky Way image (its pass
     /// exists without it, e.g. after a context restore).
+    /// One solar system frame: the sky pass in space (stars and Milky Way,
+    /// no ground), then the bodies over it.
+    pub fn draw_solar(
+        &mut self,
+        frame: &crate::sky_render::SkyFrame,
+        bodies_frame: &crate::solar_render::BodyFrame,
+        bodies: &[crate::solar_scene::Drawn],
+    ) -> Result<(), JsValue> {
+        self.draw_sky(frame)?;
+        if let (false, Some(pass)) = (self.ctx.is_lost(), &self.sky) {
+            pass.bodies.draw(&self.gl, bodies_frame, bodies);
+        }
+        Ok(())
+    }
+
     pub fn sky_wants_milky_way(&self) -> bool {
         self.sky.as_ref().is_some_and(|p| !p.has_milky_way()) && !self.ctx.is_lost()
     }

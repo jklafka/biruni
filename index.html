@@ -72,15 +72,32 @@
       #views button:hover { color: var(--text); }
       #views button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
       #views button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
-      /* The sky view has no map layers, places, projections or measuring. */
-      body.view-sky #layers, body.view-sky #search, body.view-sky #legend,
-      body.view-sky #measure, body.view-sky #country-info, body.view-sky #proj-button,
-      body.view-sky #proj-menu, body.view-sky #compass, body.view-sky #measure-toggle,
-      body.view-sky #sun-toggle, body.view-sky #hud-country-row, body.view-sky #hud-scale,
-      body.view-sky #labels { display: none !important; }
+      /* The sky and solar system views have no map layers, places, projections or measuring. */
+      body.view-space #layers, body.view-space #search, body.view-space #legend,
+      body.view-space #measure, body.view-space #country-info, body.view-space #proj-button,
+      body.view-space #proj-menu, body.view-space #compass, body.view-space #measure-toggle,
+      body.view-space #sun-toggle, body.view-space #hud-country-row, body.view-space #hud-scale,
+      body.view-space #labels { display: none !important; }
       body:not(.view-sky) #figures-toggle, body:not(.view-sky) #survey-toggle { display: none; }
+      body:not(.view-solar) #solar-target { display: none; }
+      #solar-target {
+        display: block;
+        margin-top: 6px;
+        min-height: 30px;
+        padding: 0 6px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      #solar-target option { background: #10151f; color: var(--text); }
+      #solar-target:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       /* The Earth's map data keeps loading in the background; only a failure matters here. */
-      body.view-sky #loading:not(.error) { visibility: hidden; }
+      body.view-space #loading:not(.error) { visibility: hidden; }
       #title p { margin: 2px 0 0; color: var(--muted); }
       #hud {
         bottom: calc(16px + var(--scrub, 0px));
@@ -497,7 +514,20 @@
       <div id="views" role="group" aria-label="View">
         <button id="view-earth" aria-pressed="true" title="Earth (V switches)">Earth</button>
         <button id="view-sky" aria-pressed="false" title="Sky from the place at the center of the Earth view (V switches)">Sky</button>
+        <button id="view-solar" aria-pressed="false" title="The solar system at the time of the scrubber (V switches)">Solar system</button>
       </div>
+      <select id="solar-target" aria-label="Fly to" title="Fly to (0–9)">
+        <option value="sun">Sun</option>
+        <option value="mercury">Mercury</option>
+        <option value="venus">Venus</option>
+        <option value="earth">Earth</option>
+        <option value="moon">Moon</option>
+        <option value="mars">Mars</option>
+        <option value="jupiter">Jupiter</option>
+        <option value="saturn">Saturn</option>
+        <option value="uranus">Uranus</option>
+        <option value="neptune">Neptune</option>
+      </select>
       <p id="title-hint">Drag to rotate · scroll or pinch to zoom · double-click to fly in</p>
     </div>
     <div id="hud" class="panel">

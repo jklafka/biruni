@@ -218,6 +218,9 @@ pub struct Player {
     pub reduced: bool,
     /// Milliseconds (reduced) or fractional days (year mode) not yet applied.
     acc: f64,
+    /// Year mode runs on into the next year instead of wrapping back to
+    /// January (the solar system view, where the planets would jump).
+    pub continuous: bool,
 }
 
 impl Player {
@@ -226,6 +229,7 @@ impl Player {
             mode,
             reduced,
             acc: 0.0,
+            continuous: false,
         }
     }
 
@@ -245,6 +249,7 @@ impl Player {
             self.acc %= REDUCED_STEP_MS;
             return match self.mode {
                 PlayMode::Day => shift(t, HOUR),
+                PlayMode::Year if self.continuous => shift(t, 7.0 * DAY),
                 PlayMode::Year => year_days(t, 7),
             };
         }
@@ -255,7 +260,11 @@ impl Player {
                 self.acc += dt / 1000.0 / YEAR_PLAY_SECS * len;
                 let whole = self.acc.floor();
                 self.acc -= whole;
-                year_days(t, whole as u32)
+                if self.continuous {
+                    shift(t, whole * DAY)
+                } else {
+                    year_days(t, whole as u32)
+                }
             }
         }
     }
@@ -426,6 +435,27 @@ mod tests {
         // A long frame cannot leave the year.
         let t2 = p.advance(unix(2024, 12, 30, 0, 0), 1e9);
         assert_eq!(civil(t2).unwrap().year, 2024);
+    }
+
+    #[test]
+    fn continuous_year_play_runs_into_the_next_year() {
+        let mut p = Player::new(PlayMode::Year, false);
+        p.continuous = true;
+        let mut t = unix(2024, 12, 20, 6, 30);
+        for _ in 0..120 {
+            t = p.advance(t, 1000.0 / 60.0);
+        }
+        // Two seconds of a 12-second year: about two months on, in 2025.
+        let c = civil(t).unwrap();
+        assert_eq!(c.year, 2025);
+        assert_eq!(c.secs, 6 * 3_600 + 30 * 60);
+        assert!((40..=55).contains(&c.doy), "{}", c.doy);
+        // It stops at the end of the scrubber's range.
+        assert_eq!(p.advance(MAX_T - 10.0, 1e9), MAX_T);
+        let mut r = Player::new(PlayMode::Year, true);
+        r.continuous = true;
+        let d = r.advance(unix(2024, 12, 28, 0, 0), 800.0);
+        assert_eq!(civil(d).unwrap().year, 2025);
     }
 
     #[test]
