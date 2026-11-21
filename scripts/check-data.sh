@@ -20,6 +20,7 @@ python3 scripts/test_fetch_space.py > /dev/null 2>&1 || { python3 scripts/test_f
 python3 scripts/test_hist_format.py > /dev/null 2>&1 || { python3 scripts/test_hist_format.py; exit 1; }
 python3 scripts/test_convert_cliopatria.py > /dev/null 2>&1 || { python3 scripts/test_convert_cliopatria.py; exit 1; }
 python3 scripts/test_convert_glottolog.py > /dev/null 2>&1 || { python3 scripts/test_convert_glottolog.py; exit 1; }
+python3 scripts/test_convert_dplace.py > /dev/null 2>&1 || { python3 scripts/test_convert_dplace.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -56,6 +57,7 @@ for f in assets/data/*; do
   [ "$name" = space.bin ] && continue
   [ "$name" = history_borders.bin ] && continue
   [ "$name" = languages.tsv ] && continue
+  [ "$name" = societies.tsv ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 

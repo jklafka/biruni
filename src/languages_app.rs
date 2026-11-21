@@ -25,32 +25,25 @@ pub fn parse_hash(hash: &str) -> bool {
         .any(|kv| kv == "languages=1")
 }
 
-/// One frame's language marks, owned (the overlay borrows them).
-pub struct Marks {
-    data: Rc<Languages>,
-    dots: Vec<Dot>,
-    names: Vec<(usize, f64, f64)>,
-}
-
-impl Marks {
-    pub fn as_marks(&self) -> crate::overlay::LanguageMarks<'_> {
-        crate::overlay::LanguageMarks {
-            langs: &self.data,
-            dots: &self.dots,
-            names: &self.names,
-        }
-    }
-}
-
 impl App {
     /// The dots and names to draw this frame, while the layer is on and
     /// loaded; remembers the dots for hovering.
-    pub(crate) fn language_marks(&mut self) -> Option<Marks> {
+    pub(crate) fn language_marks(&mut self) -> Option<crate::overlay::PointMarks> {
         let data = self.langs.data.clone().filter(|_| self.langs.on)?;
         let dots = data.dots(&self.camera);
         let names = data.names(&self.camera, &dots, &[]);
-        self.langs.dots = dots.clone();
-        Some(Marks { data, dots, names })
+        let marks = crate::overlay::PointMarks {
+            dots: dots
+                .iter()
+                .map(|d| (d.x, d.y, data.color(d.index)))
+                .collect(),
+            names: names
+                .into_iter()
+                .map(|(i, x, y)| (x, y, data.list[i].name.clone()))
+                .collect(),
+        };
+        self.langs.dots = dots;
+        Some(marks)
     }
 
     pub(crate) fn set_languages(&mut self, on: bool) {
@@ -59,6 +52,9 @@ impl App {
             .langs_button
             .set_attribute("aria-pressed", if on { "true" } else { "false" });
         if on {
+            if self.societies.on {
+                self.set_societies(false);
+            }
             self.load_languages();
         } else {
             self.langs.dots.clear();
@@ -73,7 +69,15 @@ impl App {
     /// The legend: the languages' families while that layer is on, else
     /// the thematic layer's (if any).
     pub(crate) fn sync_legend(&mut self) {
-        match (&self.langs.data, self.langs.on && !self.history.on) {
+        if let Some((title, rows)) = self.societies_legend() {
+            self.legend.show_rows(
+                &title,
+                &rows,
+                "D-PLACE: Ethnographic Atlas (Murdock et al.)",
+            );
+            return;
+        }
+        match (&self.langs.data, self.langs.on) {
             (Some(l), true) => self.legend.show_rows(
                 "Language families",
                 &l.legend(),
@@ -94,7 +98,7 @@ impl App {
         } else {
             credits::visible_credits(self.layers_state.shown())
         };
-        credits::with_overlays(base, self.langs.on)
+        credits::with_overlays(base, self.langs.on, self.societies.on)
     }
 
     fn load_languages(&mut self) {

@@ -1,0 +1,1298 @@
+MAPSSOCIETIES1
+V	EA042	Subsistence: dominant activity	1=Gathering|2=Fishing|3=Hunting|4=Pastoralism|5=Casual agriculture|6=Extensive agriculture|7=Intensive agriculture|8=Two or more sources|9=Agriculture, type unknown
+V	EA043	Descent	1=Patrilineal|2=Duolateral|3=Matrilineal|4=Quasi-lineages|5=Ambilineal|6=Bilateral|7=Mixed
+V	EA012	Marital residence	1=Avunculocal|2=Ambilocal|3=Avuncu-uxorilocal|4=Avuncu-virilocal|5=Matrilocal|6=Neolocal|7=Separate|8=Patrilocal|9=Uxorilocal|10=Virilocal
+V	EA030	Settlement pattern	1=Nomadic|2=Seminomadic|3=Semisedentary|4=Impermanent|5=Dispersed homesteads|6=Hamlets|7=Villages/towns|8=Complex permanent
+V	EA033	Political levels above the community	1=Acephalous|2=One level|3=Two levels|4=Three levels|5=Four levels
+V	EA066	Class differentiation	1=Absence of distinctions|2=Wealth distinctions|3=Elite stratification|4=Dual stratification|5=Complex stratification
+S	Aa1	!Kung	-20.00	21.00	Southern Africa	1950	1	6	2	1	1	1
+S	Aa2	Dorobo	0.00	36.00	East Tropical Africa	1920	3	1	8	1	1	1
+S	Aa3	Nama	-26.00	18.00	Southern Africa	1840	4	1	8	1	2	2
+S	Aa4	Bergdama	-22.00	16.00	Southern Africa	1920	1	6	10			1
+S	Aa5	Mbuti	2.00	28.00	West-Central Tropical Africa	1930	3	6	10	1	1	1
+S	Aa6	Sandawe	-5.00	36.00	East Tropical Africa	1920	6	1	8	5	2	1
+S	Aa7	Naron	-20.00	24.00	Southern Africa	1910	1	6	10	1	1	1
+S	Aa8	/Xam	-30.00	23.00	Southern Africa	1850	1	6	2	1	1	1
+S	Aa9	Hadza	-3.00	35.00	East Tropical Africa	1910	1	6	2	1	1	1
+S	Ab1	Herero	-21.00	16.00	Southern Africa	1900	4	2	10	1	1	2
+S	Ab10	Pondo Xhosa	-31.00	30.00	Southern Africa	1936	8	1	8	5	3	2
+S	Ab11	Xhosa Ngqika	-32.89	27.91	Southern Africa	1850	6	1	8	5	4	4
+S	Ab12	Zulu	-29.00	31.00	Southern Africa	1830	6	1	8	5	4	4
+S	Ab13	Tswana	-24.00	27.00	Southern Africa	1880	6	4	8	8	3	3
+S	Ab14	Lovedu	-24.00	31.00	Southern Africa	1930	7	1	8	6	3	4
+S	Ab15	Pedi	-25.00	30.00	Southern Africa	1860	6	1	8	7	3	2
+S	Ab16	Lenge	-25.00	34.00	South Tropical Africa	1930	6	1	8	6	2	
+S	Ab17	Ndau	-20.00	34.00	South Tropical Africa	1920	9	2	8			
+S	Ab18	Shona	-19.00	31.00	South Tropical Africa	1920	6	7	8	6	3	
+S	Ab19	Ambo	-17.00	16.00	South Tropical Africa	1910	6	3	10	5	3	4
+S	Ab2	Swazi	-27.00	32.00	Southern Africa	1880	6	1	8	6	4	4
+S	Ab20	Ngumbi	-15.00	15.00	South Tropical Africa	1880	9	3	10			4
+S	Ab21a	Kisama	-10.00	14.00	South Tropical Africa	1930	6	1	8	5	2	1
+S	Ab21b	Bomvana	-32.17	28.93	Southern Africa	1925	9	1	8			
+S	Ab22	Chopi	-24.76	34.47	South Tropical Africa	1920	9	1	8			
+S	Ab3	Lozi	-15.00	23.00	South Tropical Africa	1890	7	5	10	3	4	4
+S	Ab4	Tsonga	-24.00	32.00	South Tropical Africa	1920	6	1	8	7	3	4
+S	Ab5	Mbundu	-12.00	16.00	South Tropical Africa	1930	6	2	8	7	3	4
+S	Ab6	Venda	-23.00	30.00	Southern Africa	1900	7	2	8	7	3	4
+S	Ab7	Nyaneka	-15.00	14.00	South Tropical Africa	1920	8	3	1	6	3	4
+S	Ab8	Sotho	-29.00	28.00	Southern Africa	1860	7	1	8	6	4	4
+S	Ab9	Ndebele	-20.00	28.00	South Tropical Africa	1870	6	1	8	8	4	3
+S	Ac1	Ila	-16.00	27.00	South Tropical Africa	1920	6	2	10	3	2	2
+S	Ac10	Chewa	-14.00	33.00	South Tropical Africa	1920	6	3	1	7	3	1
+S	Ac11	Luvale	-12.00	22.00	South Tropical Africa	1930	6	3	1	7	2	1
+S	Ac12	Chokwe	-10.00	21.00	South Tropical Africa	1920	6	3	1	7	3	4
+S	Ac13	Tonga	-12.00	34.00	South Tropical Africa	1950	8	3	1	6	1	1
+S	Ac14	Bakongo	-7.00	15.00	South Tropical Africa	1900	6	3	1	7	2	4
+S	Ac15	Mbala	-5.00	18.00	West-Central Tropical Africa	1900	9	3	1			1
+S	Ac16	Mitsogho	-1.00	12.00	West-Central Tropical Africa	1940	6	3	1	7	1	
+S	Ac17	Suku	-6.00	18.00	West-Central Tropical Africa	1910	6	3	10	7	4	4
+S	Ac18	Sundi	-5.00	14.00	West-Central Tropical Africa	1910	6	3	1	7	2	
+S	Ac19	Teke	-3.00	15.00	West-Central Tropical Africa	1880	6	3	10	7	1	
+S	Ac2	Pende	-6.00	20.00	West-Central Tropical Africa	1920	6	3	1	7	2	4
+S	Ac20	Yaka	-7.00	17.00	West-Central Tropical Africa	1920	6	3	1	5	2	
+S	Ac21	Bunda	-5.00	19.00	West-Central Tropical Africa	1910	6	3	1	5	3	4
+S	Ac22	Dzing	-4.00	20.00	West-Central Tropical Africa	1930	6	3	1	4	2	
+S	Ac23	Lele	-5.00	21.00	West-Central Tropical Africa	1950	6	3	1	7	2	4
+S	Ac24	Sakata	-3.00	18.00	West-Central Tropical Africa	1910	6	3	1	7	2	1
+S	Ac25	Songo	-5.00	18.00	West-Central Tropical Africa	1930	6	3	1	7	2	1
+S	Ac26	Yanzi	-4.00	18.00	West-Central Tropical Africa	1920	6	3	1	6	2	1
+S	Ac27	Luchazi	-13.00	23.00	South Tropical Africa	1930	6	3	1	4	2	1
+S	Ac28	Luimbe	-12.00	18.00	South Tropical Africa	1930	2	3	4	7	2	
+S	Ac29	Luwa	-7.00	19.00	West-Central Tropical Africa	1930	9	3	1			
+S	Ac3	Bemba	-11.00	31.00	South Tropical Africa	1900	6	7	3	4	3	4
+S	Ac30	Plateau Tonga	-18.00	28.00	South Tropical Africa	1940	6	3	4	6	1	1
+S	Ac31	Buye	-7.00	28.00	West-Central Tropical Africa	1910	6	3	1	7	3	4
+S	Ac32	Kaonde	-13.00	26.00	South Tropical Africa	1920	6	3	1	7	2	1
+S	Ac33	Lala	-15.00	31.00	South Tropical Africa	1940	6	3	1	7	2	4
+S	Ac34	Luapula	-10.00	29.00	South Tropical Africa	1940	6	3	1	7	3	4
+S	Ac35	Shila	-10.00	28.00	West-Central Tropical Africa	1900	9	3	1			
+S	Ac36	Tumbuka	-12.00	34.00	South Tropical Africa	1920	6	1	8	7	3	4
+S	Ac37	Kunda	-15.00	32.00	South Tropical Africa	1950	6	3	3	7	3	1
+S	Ac38	Nyanja	-16.00	36.00	South Tropical Africa	1910	6	3	5	5	2	1
+S	Ac39	Nyasa	-13.00	35.00	South Tropical Africa	1920	9	3	5			1
+S	Ac4	Kuba	-5.00	22.00	West-Central Tropical Africa	1910	6	3	1	4	3	4
+S	Ac40	Sena	-18.00	35.00	South Tropical Africa	1900	6	3	5	7	2	1
+S	Ac41	Makonde	-11.00	40.00	South Tropical Africa	1900	6	3	1	6	1	1
+S	Ac42	Makua	-15.00	39.00	South Tropical Africa	1900	9	3	3			1
+S	Ac43	Mambwe	9.00	32.00	Northeast Tropical Africa	1910	6	1	8	7	2	
+S	Ac5	Lamba	-13.00	28.00	South Tropical Africa	1920	6	3	3	7	3	1
+S	Ac6	Ndembu	-11.00	26.00	West-Central Tropical Africa	1930	6	3	1	4	3	
+S	Ac7	Yao	-13.00	36.00	South Tropical Africa	1920	6	3	5	6	2	1
+S	Ac8	Yombe	-5.00	13.00	West-Central Tropical Africa	1930	6	3	1	7	2	4
+S	Ac9	Ngoni	-12.00	33.00	South Tropical Africa	1940	6	4	10	7	4	4
+S	Ad1	Bajuni	-2.00	41.00	East Tropical Africa	1950	8	1	6	7	1	1
+S	Ad10	Shambaa	-5.00	38.00	East Tropical Africa	1910	7	1	8	7	3	4
+S	Ad11	Bena	-9.00	36.00	East Tropical Africa	1930	7	7	6	7	3	4
+S	Ad12	Gusii	-1.00	35.00	East Tropical Africa	1940	6	1	8	5	2	1
+S	Ad13	Kiga	-3.00	30.00	West-Central Tropical Africa	1930	6	1	8	5	1	1
+S	Ad14	Luguru	-8.00	38.00	East Tropical Africa	1930	6	3	5	6	1	1
+S	Ad15	Iwa	-10.00	32.00	South Tropical Africa	1900	6	1	8	7	3	4
+S	Ad16	Ngonde	-10.00	34.00	South Tropical Africa	1920	7	1	6	7	3	4
+S	Ad17	Safwa	-8.00	33.00	East Tropical Africa	1920	6	1	8	7	2	4
+S	Ad18	Bende	-7.00	31.00	East Tropical Africa	1910	6	1	8	7	3	
+S	Ad19	Fipa	-8.00	31.00	East Tropical Africa	1910	6	1	8	7	3	4
+S	Ad2	Nyoro	2.00	32.00	East Tropical Africa	1950	7	1	8	5	4	4
+S	Ad20	Nyamwezi	-5.00	33.00	East Tropical Africa	1920	6	5	10	6	3	4
+S	Ad21	Pimbwe	-7.00	31.00	East Tropical Africa	1930	6	1	8	7	3	4
+S	Ad22	Sukuma	-3.00	34.00	East Tropical Africa	1950	7	5	10	5	3	4
+S	Ad23	Sangu	-8.00	34.00	East Tropical Africa	1910	4	1	8	7	3	4
+S	Ad24	Gogo	-7.00	36.00	East Tropical Africa	1910	6	1	8	5	2	4
+S	Ad25	Rangi	-5.00	36.00	East Tropical Africa	1900	6	3	8	5	2	1
+S	Ad26	Turu	-5.00	34.00	East Tropical Africa	1910	8	1	8	5	1	1
+S	Ad27	Kwere	-7.00	39.00	East Tropical Africa	1880	6	3	5	6	1	1
+S	Ad28	Zigula	-5.84	38.79	East Tropical Africa	1880	6	3	5	6	1	1
+S	Ad29	Hadimu	-6.07	39.43	East Tropical Africa	1930	6	5	8	7	4	4
+S	Ad3	Chagga	-3.00	37.00	East Tropical Africa	1910	7	1	8	5	2	4
+S	Ad30	Digo	-4.00	39.00	East Tropical Africa	1890	6	2	8	7	2	
+S	Ad31	Duruma	-4.00	39.00	East Tropical Africa	1910	9	2	8			
+S	Ad32	Giriama	-3.00	40.00	East Tropical Africa	1900	6	1	8	7	4	1
+S	Ad33	Pokomo	-1.00	40.00	East Tropical Africa	1900	7	1	8	7	2	1
+S	Ad34	Kamba	-2.00	38.00	East Tropical Africa	1910	7	1	8	6	2	
+S	Ad35	Meru	0.00	35.00	East Tropical Africa	1940	6	1	8	5	1	1
+S	Ad36	Pare	-4.00	38.00	East Tropical Africa	1890	7	1	8	5	1	4
+S	Ad37	Teita	-4.00	39.00	East Tropical Africa	1940	7	1	8	5	2	1
+S	Ad38	Kara	-2.00	33.00	East Tropical Africa	1910	7	1	8	6	1	1
+S	Ad39	Sonjo	-3.00	36.00	East Tropical Africa	1950	7	1	8	7	1	3
+S	Ad4	Kikuyu	-1.00	37.00	East Tropical Africa	1930	7	1	8	7	1	2
+S	Ad40	Tiriki	0.00	35.00	East Tropical Africa	1950	7	1	8	5	2	
+S	Ad41	Vugusu	1.00	35.00	East Tropical Africa	1930	6	1	8	5	1	2
+S	Ad42	Haya	-1.00	32.00	East Tropical Africa	1900	7	1	8	5	3	4
+S	Ad43	Kerewe	-3.00	33.00	East Tropical Africa	1900	7	1	8	5	3	4
+S	Ad44	Konjo	-1.00	30.00	East Tropical Africa	1920	6	1	8	5	1	1
+S	Ad45	Nyankole	0.00	31.00	East Tropical Africa	1920	6	7	8	5	4	3
+S	Ad46	Soga	1.00	33.00	East Tropical Africa	1950	7	1	8	5	3	4
+S	Ad47	Sumbwa	-4.00	32.00	East Tropical Africa	1900	7	1	8	5	3	4
+S	Ad48	Toro	1.00	31.00	East Tropical Africa	1950	6	1	8	5	4	4
+S	Ad49	Zinza	-3.00	31.00	East Tropical Africa	1950	6	1	8	5	4	4
+S	Ad5	Mbugwe	-4.00	36.00	East Tropical Africa	1940	8	2	8			2
+S	Ad50	Kaguru	-6.00	37.00	East Tropical Africa	1900	6	3	5	7	2	1
+S	Ad51	Ngulu	-6.00	38.00	East Tropical Africa	1930	6	3	1	7	1	1
+S	Ad6	Nyakyusa	-9.00	34.00	East Tropical Africa	1930	7	7	6	7	3	1
+S	Ad7	Ganda	1.00	32.00	East Tropical Africa	1880	7	1	6	7	4	4
+S	Ad8	Hehe	-8.00	35.00	East Tropical Africa	1910	7	1	8	5	3	4
+S	Ad9	Gisu	1.00	34.00	East Tropical Africa	1900	6	1	8	5	2	2
+S	Ae1	Amba	1.00	30.00	West-Central Tropical Africa	1950	6	1	8	6	1	1
+S	Ae10	Banyaruanda	-2.00	30.00	West-Central Tropical Africa	1910	7	1	8	5	4	5
+S	Ae11	Songola	-4.00	26.00	West-Central Tropical Africa	1900	2	1	8	7	2	1
+S	Ae12	Duala	4.00	10.00	West-Central Tropical Africa	1940	6	1	8	7	3	2
+S	Ae13	Bashi	-2.00	29.00	West-Central Tropical Africa	1920	9	1	8			4
+S	Ae14	Ha	-5.00	30.00	East Tropical Africa	1950	7	1	8	5	3	4
+S	Ae15	Hunde	-2.00	28.00	West-Central Tropical Africa	1940	7	1	8	7	3	5
+S	Ae16	Lulua	-6.00	23.00	West-Central Tropical Africa	1910	9	1	8			
+S	Ae17	Rega	-3.00	28.00	West-Central Tropical Africa	1900	6	1	8	8	2	1
+S	Ae18	Songye	-6.00	25.00	West-Central Tropical Africa	1900	6	1	8	8	1	2
+S	Ae19	Garanganze	-11.00	28.00	West-Central Tropical Africa	1930	9	1	10			4
+S	Ae2	Kpe	4.22	9.27	West-Central Tropical Africa	1950	6	2	8	7	1	2
+S	Ae20	Ekonda	-2.00	18.00	West-Central Tropical Africa	1940	6	1	8	6	2	2
+S	Ae21	Kela	-3.00	23.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ae22	Kutsu	-4.00	22.00	West-Central Tropical Africa	1900	6	1	8	7	2	1
+S	Ae23	Lalia	-1.00	23.00	West-Central Tropical Africa	1930	9	1	8			1
+S	Ae24	Mongo	1.00	22.00	West-Central Tropical Africa	1920	9	1	8			1
+S	Ae25	Tetela	-4.00	25.00	West-Central Tropical Africa	1920	9	1	8			2
+S	Ae26	Topoke	0.00	24.00	West-Central Tropical Africa	1910	6	1	8	7	3	4
+S	Ae27	Lokele	1.00	25.00	West-Central Tropical Africa	1910	2	1	8	7	1	
+S	Ae28	Ngala	1.00	18.00	West-Central Tropical Africa	1900	8	1	8	7	2	2
+S	Ae29	Poto	2.00	22.00	West-Central Tropical Africa	1900	2	1	8	7	2	1
+S	Ae3	Fang	1.00	11.00	West-Central Tropical Africa	1910	6	1	8	7	1	2
+S	Ae30	Bira	1.00	29.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ae31	Budu	2.00	28.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ae32	Kumu	-1.00	27.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ae33	Ndaka Babali	1.00	27.00	West-Central Tropical Africa	1920	6	1	8	7	3	1
+S	Ae34	Plains Bira	1.00	30.00	West-Central Tropical Africa	1920	6	1	8	5	1	1
+S	Ae35	Rumbi	0.00	28.00	West-Central Tropical Africa	1900	6	1	8	7	1	1
+S	Ae36	Bombesa	1.00	23.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ae37	Budja	3.00	23.00	West-Central Tropical Africa	1930	9	1	8			1
+S	Ae38	Ndoko	2.00	21.00	West-Central Tropical Africa	1920	6	3	4	7	1	1
+S	Ae39	Ngombe	2.00	20.00	West-Central Tropical Africa	1920	6	1	8	7	2	1
+S	Ae4	Nkundo	0.00	20.00	West-Central Tropical Africa	1930	6	2	8	6	3	1
+S	Ae40	Dzem	3.00	14.00	West-Central Tropical Africa	1910	6	2	8	7	1	
+S	Ae41	Kota	1.00	14.00	West-Central Tropical Africa	1940	6	1	8	7	1	1
+S	Ae42	Ngumba	3.00	11.00	West-Central Tropical Africa	1900	6	1	8	7	1	1
+S	Ae43	Sanga	2.00	16.00	West-Central Tropical Africa	1900	6	1	8	7	1	1
+S	Ae44	Bubi	3.54	8.72	West-Central Tropical Africa	1920	6		8	7	5	4
+S	Ae45	Kundu	10.00	9.00	West Tropical Africa	1900	6	1	8	7	1	1
+S	Ae46	Mpongwe	-2.00	10.00	West-Central Tropical Africa	1870	6	3	10	7	1	
+S	Ae47	Puku	2.00	10.00	West-Central Tropical Africa	1900	6	1	8	7	2	1
+S	Ae48	Bafia	5.00	11.00	West-Central Tropical Africa	1930	6	1	8	5	1	1
+S	Ae49	Bali Nyonga	6.00	10.00	West-Central Tropical Africa	1900	9	1	8			
+S	Ae5	Bamileke	5.00	10.00	West-Central Tropical Africa	1910	6	1	8	6	3	4
+S	Ae50	Bamum	6.00	11.00	West-Central Tropical Africa	1920	6	1	8	7	4	4
+S	Ae51	Banen	5.00	11.00	West-Central Tropical Africa	1940	6	1	8	5	1	1
+S	Ae52	Fungom	7.00	10.00	West Tropical Africa	1950	9	1	8			
+S	Ae53	Koko	4.00	11.00	West-Central Tropical Africa	1920	9	1	8			
+S	Ae54	Kom	6.00	10.00	West-Central Tropical Africa	1950	9	3	1			
+S	Ae55	Ndob	6.00	10.00	West-Central Tropical Africa	1950	6	1	8	7	2	
+S	Ae56	Nsaw	6.00	11.00	West-Central Tropical Africa	1950	6	1	8	7	3	4
+S	Ae57	Nsungli	6.00	11.00	West-Central Tropical Africa	1930	6	1	8	7	2	
+S	Ae58	Tikar	6.00	12.00	West-Central Tropical Africa	1910	6	1	8	7	2	4
+S	Ae59	Widikum	6.00	10.00	West-Central Tropical Africa	1950	9	1	8			1
+S	Ae6	Luba	-8.00	26.00	West-Central Tropical Africa	1930	6	1	8	7	4	4
+S	Ae7	Baboa	3.00	25.00	West-Central Tropical Africa	1910	6	1	8	6	3	1
+S	Ae8	Rundi	-3.00	30.00	West-Central Tropical Africa	1910	7	1	8	5	4	5
+S	Ae9	Fut	6.00	10.00	West-Central Tropical Africa	1950	6	1	8	7	2	4
+S	Af1	Fon	7.00	2.00	West Tropical Africa	1890	6	1	8	7	4	4
+S	Af10	Igbo	6.00	7.00	West Tropical Africa	1930	6	1	8	6	2	1
+S	Af11	Toma	11.00	-9.00	West Tropical Africa	1920	6	1	8	7	2	1
+S	Af12	Akyem	7.00	-1.00	West Tropical Africa	1930	6	3		7	3	
+S	Af13	Ebira	8.00	7.00	West Tropical Africa	1920	6	1	8	7	2	4
+S	Af14	Sherbro	7.52	-12.69	West Tropical Africa	1930	6	3	10	7	3	
+S	Af15	Kpelle	7.00	-9.00	West Tropical Africa	1920	6	1	8	7	2	2
+S	Af16	Banyang	6.00	9.00	West Tropical Africa	1910	6	1	8	7	2	1
+S	Af17	Boki	6.00	9.00	West Tropical Africa	1900	6		8	7	1	
+S	Af18	Ekoi	6.00	8.00	West Tropical Africa	1900	6	1	8	7	1	
+S	Af19	Efik	5.00	8.00	West Tropical Africa	1950	6	1	8	7	2	2
+S	Af2	Kissi	9.00	-10.00	West Tropical Africa	1950	6	1	8	7	2	1
+S	Af20	Ibibio	5.00	8.00	West Tropical Africa	1910	6	1	8	6	2	2
+S	Af21	Ijaw	4.37	6.58	West Tropical Africa	1920	6	5	10	7	3	4
+S	Af22	Itsekiri	6.00	5.00	West Tropical Africa	1940	2	7	8	7	2	4
+S	Af23	Afikpo	6.00	8.00	West Tropical Africa	1950	7	2	8	7	2	2
+S	Af24	Edo	6.00	6.00	West Tropical Africa	1900	6	1	8	7	4	4
+S	Af25	Isoko	5.00	6.00	West Tropical Africa	1930	6	1	8	8	2	2
+S	Af26	Kukuruku	7.00	6.00	West Tropical Africa	1900	6	5	10	7	2	2
+S	Af27	Eloyi	8.00	8.00	West Tropical Africa	1950	6	1	8	7	1	2
+S	Af28	Gbagyi	10.00	10.00	West Tropical Africa	1910	7	1	8	7	2	
+S	Af29	Idoma	7.00	8.00	West Tropical Africa	1950	6	1	8	5	2	1
+S	Af3	Ashanti	7.00	-2.00	West Tropical Africa	1900	6	2	1	7	3	4
+S	Af30	Igala	7.00	7.00	West Tropical Africa	1920	6	1	8		4	
+S	Af31	Koro	18.00	8.00	West Tropical Africa	1960	9	1	8			1
+S	Af32	Egba	7.00	3.00	West Tropical Africa	1920	6	1	8	7	3	4
+S	Af33	Ekiti	8.00	5.00	West Tropical Africa	1950	6	1	8	7	3	4
+S	Af34	Ife	7.00	5.00	West Tropical Africa	1930	6	1	8	7	4	4
+S	Af35	Adangme	6.00	0.00	West Tropical Africa	1940	6	2	8	7	2	
+S	Af36	Ewe	7.00	1.00	West Tropical Africa	1900	6	1	8	8	3	4
+S	Af37	Buem	7.22	0.46	West Tropical Africa	1900	6	1	8	7	2	1
+S	Af38	Abron	7.53	-2.15	West Tropical Africa	1900	6	3	10	7	3	
+S	Af39	Anyi	7.00	-4.00	West Tropical Africa	1900	6	3	10	5	3	4
+S	Af4	Yako	6.00	8.00	West Tropical Africa	1930	6	2	8	7	1	1
+S	Af40	Assini	5.27	-3.58	West Tropical Africa	1890	6	3	10	7	3	4
+S	Af41	Attie	6.00	-4.00	West Tropical Africa	1890	6		10	7	2	3
+S	Af42	Fante	6.00	-1.00	West Tropical Africa	1900	6	2	4	7	2	4
+S	Af43	Ga	6.00	0.00	West Tropical Africa	1930	8	1	7	8	1	
+S	Af44	Alagya	5.22	-4.42	West Tropical Africa	1900	2	3	1			1
+S	Af45	Avikam	5.15	-5.25	West Tropical Africa	1900	8	3	10	7	2	1
+S	Af46	Bakwe	5.00	-7.00	West Tropical Africa	1900	6	1	8	7	2	
+S	Af47	Krahn	6.00	-8.00	West Tropical Africa	1940	6	1	8	7	2	1
+S	Af48	Kru	5.00	-9.00	West Tropical Africa	1850	6	1	8	7	2	
+S	Af49	Sapo	6.00	-9.00	West Tropical Africa	1940	6	1	8	7	2	1
+S	Af5	Mende	8.00	-11.00	West Tropical Africa	1930	6	1	8	8	2	4
+S	Af50	Dan	8.00	-8.00	West Tropical Africa	1920	6	1	8	7	2	
+S	Af51	Gagu	7.00	-6.00	West Tropical Africa	1920	6	1	8	7	1	1
+S	Af52	Guro	7.00	-6.00	West Tropical Africa	1920	6	1	8	7	2	2
+S	Af53	Tura	8.00	-7.00	West Tropical Africa	1950	6	1	8	7		
+S	Af54	Gbande	8.00	-10.00	West Tropical Africa	1930	6	1	8	7	2	1
+S	Af55	Gola	7.00	-11.00	West Tropical Africa	1950	6	1	8	8	2	2
+S	Af56	Ngere	7.00	-8.00	West Tropical Africa	1930	6	1	8	7	2	
+S	Af57	Temne	8.46	-12.64	West Tropical Africa	1910	6	1	8	8	3	
+S	Af58	Vai	6.89	-11.20	West Tropical Africa	1900	6	1	8	7	2	
+S	Af6	Oyo Yoruba	8.00	4.00	West Tropical Africa	1950	6	7	8	7	4	5
+S	Af7	Bete	6.00	-7.00	West Tropical Africa	1950	6	1	8	7	1	1
+S	Af8	Nupe	9.00	6.00	West Tropical Africa	1930	6	1	8	6	3	5
+S	Af9	Baule	8.00	-5.00	West Tropical Africa	1900	6	3	1	7	2	1
+S	Ag1	Bambara	13.00	-7.00	West Tropical Africa	1920	7	1	8	7	2	4
+S	Ag10	Konkomba	10.00	0.00	West Tropical Africa	1940	6	1	8	6	1	1
+S	Ag11	Lobi	10.00	-4.00	West Tropical Africa	1910	6	3	10	5	1	1
+S	Ag12	Nankanse	10.00	-1.00	West Tropical Africa	1910	6	2	8	5	1	1
+S	Ag13	Kasena	11.00	-1.00	West Tropical Africa	1910	6	1	8	7	2	
+S	Ag14	Baga	10.00	-14.00	West Tropical Africa	1950	6	1	8	7	2	1
+S	Ag15	Balanta	12.00	-16.00	West Tropical Africa	1930	6	1	8	7	1	1
+S	Ag16	Banyun	12.00	-16.00	West Tropical Africa	1930	6	1	8	5	1	1
+S	Ag17	Biafada	12.00	-15.00	West Tropical Africa	1940	6	1	8	7	1	3
+S	Ag18	Bijogo	11.10	-16.15	West Tropical Africa	1930	6	3	5	7	2	1
+S	Ag19	Diola	12.88	-16.19	West Tropical Africa	1930	6	1	8	7	2	1
+S	Ag2	Mossi (Yatenga)	13.00	-2.00	West Tropical Africa	1950	7	1	8	5	3	5
+S	Ag20	Papel	12.00	-16.00	West Tropical Africa	1930	6	1	8	5		1
+S	Ag21	Bassari	12.00	-13.00	West Tropical Africa	1910	6	3	8	7	2	1
+S	Ag22	Serer	14.00	-12.00	West Tropical Africa	1920	6	2	8	5	3	4
+S	Ag23	Kasonke	13.00	-11.00	West Tropical Africa	1910	6	1	8	7	3	2
+S	Ag24	Koranko	9.00	-11.00	West Tropical Africa	1910	6	1	8	7	2	
+S	Ag25	Soninke	15.00	10.00	West Tropical Africa	1900	6	1	8	7	3	4
+S	Ag26	Susu	15.00	-13.00	West Tropical Africa	1930	6	1	8	7	2	
+S	Ag27	Diula	9.00	-4.00	West Tropical Africa	1910	6	1	8	7	2	2
+S	Ag28	Nononke	14.00	-4.00	West Tropical Africa	1930	7		8	7	2	5
+S	Ag29	Samo	13.00	-3.00	West Tropical Africa	1910	7	1	8	7	1	
+S	Ag3	Dogon	15.00	-3.00	West Tropical Africa	1930	7	1	8	7	2	2
+S	Ag30	Bobo	13.00	-4.00	West Tropical Africa	1910	6	1	8	5	1	1
+S	Ag31	Minianka	12.00	-6.00	West Tropical Africa	1910	6	1	8	7	3	1
+S	Ag32	Senufo	10.00	-6.00	West Tropical Africa	1900	7	1	8	7	2	1
+S	Ag33	Dyan	11.00	-3.00	West Tropical Africa	1920	6		8	5		
+S	Ag34	Dorosie	11.00	-4.00	West Tropical Africa	1930	6	3	8	5	1	1
+S	Ag35	Kulango	7.00	-3.00	West Tropical Africa	1910	6	3	4	7	1	1
+S	Ag36	Lowiili	11.00	-3.00	West Tropical Africa	1950	7	2	8	5		
+S	Ag37	Awuna	11.00	-2.00	West Tropical Africa	1910	6	1	8	6	1	1
+S	Ag38	Builsa	11.00	-2.00	West Tropical Africa	1910	6	2	8	6	1	1
+S	Ag39	Dagara	11.00	-3.00	West Tropical Africa	1910	6	2	8	5	2	1
+S	Ag4	Tallensi	11.00	-1.00	West Tropical Africa	1930	7	2	8	5	1	2
+S	Ag40	Isala	10.00	-2.00	West Tropical Africa	1910	6	2	8	7	1	2
+S	Ag41	Kusasi	11.00	0.00	West Tropical Africa	1920	7	2	8	5	1	1
+S	Ag42	Nunuma	12.00	-3.00	West Tropical Africa	1910	7	1	8	5	2	1
+S	Ag43	Vagala	8.00	-2.00	West Tropical Africa	1920	6	1	8	7		
+S	Ag44	Dagomba	9.00	0.00	West Tropical Africa	1910	6	2		7	4	4
+S	Ag45	Gurma	12.00	2.00	West Tropical Africa	1930	6	1	8	7	3	4
+S	Ag46	Manprusi	10.00	-1.00	West Tropical Africa	1920	7	2	8	7	3	
+S	Ag47	Mossi (Ouagadougou)	12.00	-2.00	West Tropical Africa	1900	6	1	8	5	4	4
+S	Ag48	Basari	9.00	1.00	West Tropical Africa	1890	7	1	8	7	2	1
+S	Ag49	Kabre	10.00	2.00	West Tropical Africa	1930	7	1	8	6	1	1
+S	Ag5	Birifor	10.00	-3.00	West Tropical Africa	1930	6	2	8	5	1	1
+S	Ag50	Moba	11.00	1.00	West Tropical Africa	1910	6	1	8	6	2	1
+S	Ag51	Somba	11.00	1.00	West Tropical Africa	1940	6	1	8	7	1	1
+S	Ag52	Tem	11.00	1.00	West Tropical Africa	1950	7	1	8	7	3	
+S	Ag53	Bisa	12.00	0.00	West Tropical Africa	1960	6	1	8	7	2	
+S	Ag54	Yalunka	10.00	-12.00	West Tropical Africa	1910	6	1	8	8	2	1
+S	Ag6	Futajalonke	11.00	-13.00	West Tropical Africa	1890	8	1	8	8	3	4
+S	Ag7	Bozo	14.00	-5.00	West Tropical Africa	1930	2	1	8	3	2	1
+S	Ag8	Coniagui	13.00	-13.00	West Tropical Africa	1910	6	3	1	7	2	1
+S	Ag9	Malinke	11.00	-9.00	West Tropical Africa	1930	6	1	8	7	2	4
+S	Ah1	Katab	10.00	8.00	West Tropical Africa	1930	7	1	8	7	1	1
+S	Ah10	Chawai	10.00	9.00	West Tropical Africa	1920	6	1	8	7	2	1
+S	Ah11	Basa	8.00	8.00	West Tropical Africa	1950	6	1	8	6	2	
+S	Ah12	Basakomo	8.00	7.00	West Tropical Africa	1920	6	1	8	6	2	
+S	Ah13	Dakakari	12.00	5.00	West Tropical Africa	1930	6		8	3	1	1
+S	Ah14	Kamuku	11.00	6.00	West Tropical Africa	1920	7	1	8	5		1
+S	Ah15	Reshe	11.00	5.00	West Tropical Africa	1920	7	1	8	7	3	2
+S	Ah16	Angas	9.00	9.00	West Tropical Africa	1900	7	1	8	5	2	4
+S	Ah17	Birom	10.00	9.00	West Tropical Africa	1930	6	1	8	5	2	
+S	Ah18	Burmawa	10.00	10.00	West Tropical Africa	1930	7	1	8	5		
+S	Ah19	Adara	10.00	8.00	West Tropical Africa	1930	7	1	8	7	2	1
+S	Ah2	Jukun	8.00	10.00	West Tropical Africa	1920	6	5	4	7	1	4
+S	Ah20	Kagoro	10.00	8.00	West Tropical Africa	1920	7	1	8	7	2	1
+S	Ah21	Kurama	10.00	9.00	West Tropical Africa	1920	6	1	8	7	1	
+S	Ah22	Yergum	9.00	10.00	West Tropical Africa	1900	9		8			1
+S	Ah23	Jibu	8.00	11.00	West Tropical Africa	1920	9	5	9			
+S	Ah24	Kentu	7.00	10.00	West Tropical Africa	1920	9	1	8			1
+S	Ah25	Tigon	17.00	11.00	West Tropical Africa	1920	6	1	8	7	1	1
+S	Ah26	Ndoro	7.00	11.00	West Tropical Africa	1920	6	3	1	7	1	1
+S	Ah27	Zuande	7.00	11.00	West Tropical Africa	1920	6	1	8	7	1	
+S	Ah28	Chamba	8.00	11.00	West Tropical Africa	1920	6	2	4	7	2	1
+S	Ah29	Daka	8.00	11.00	West Tropical Africa	1920	6	3	5	7	1	1
+S	Ah3	Tiv	7.00	9.00	West Tropical Africa	1920	6	7	10	5	2	1
+S	Ah30	Longuda	10.00	12.00	West Tropical Africa	1920	7	3	1	6	1	1
+S	Ah31	Mumuye	9.00	12.00	West Tropical Africa	1910	7	1	8	7	2	1
+S	Ah32	Vere	9.00	13.00	West-Central Tropical Africa	1920	7	5	4	7	1	1
+S	Ah33	Yungur	10.00	12.00	West Tropical Africa	1920	7	1	8	6	2	1
+S	Ah34	Bata	10.00	13.00	West Tropical Africa	1920	7	1	8	6	2	4
+S	Ah35	Bura	10.00	12.00	West Tropical Africa	1920	7	1	8	6	1	1
+S	Ah36	Gude	10.00	13.00	West Tropical Africa	1920	7	1	8	7	1	4
+S	Ah37	Hwana	10.00	13.00	West Tropical Africa	1920	7	1	8	6	1	1
+S	Ah38	Kapsiki	11.00	14.00	West-Central Tropical Africa	1930	7	1	8	7	2	1
+S	Ah39	Podokwo	11.00	14.00	West-Central Tropical Africa	1950	7	1	8	7	2	1
+S	Ah4	Mambila	7.00	12.00	West-Central Tropical Africa	1920	7	5	10	6	1	1
+S	Ah5	Margi	11.00	13.00	West Tropical Africa	1930	7	1	8	6	2	1
+S	Ah6	Gure	10.00	8.00	West Tropical Africa	1920	6	3	1	6	1	1
+S	Ah7	Mafa	11.00	14.00	West-Central Tropical Africa	1940	7	1	8	6	1	1
+S	Ah8	Bafute	6.00	12.00	West-Central Tropical Africa	1910	6	1	8	7	2	4
+S	Ah9	Anaguta	10.00	9.00	West Tropical Africa	1920	6	1	8	6	1	1
+S	Ai1	Banda	7.00	22.00	West-Central Tropical Africa	1920	6	1	8	5	1	1
+S	Ai10	Otoro	12.00	31.00	Northeast Tropical Africa	1940	7	1	8	6	2	2
+S	Ai11	Mangbetu	3.00	28.00	West-Central Tropical Africa	1900	6	1	10	5	3	4
+S	Ai12	Fali	10.00	14.00	West-Central Tropical Africa	1950	6	1	8	6	1	1
+S	Ai13	Laka	8.00	16.00	Northeast Tropical Africa	1920	6	1	8	7	1	1
+S	Ai14	Mbum	7.00	14.00	West-Central Tropical Africa	1920	6	1	8	5	2	
+S	Ai15	Mundang	10.00	14.00	West-Central Tropical Africa	1900	6	1	8	7	2	
+S	Ai16	Namshi	9.00	13.00	West-Central Tropical Africa	1910	6		8	7		
+S	Ai17	Gisiga	10.00	14.00	West-Central Tropical Africa	1930	6	1	8	7	2	
+S	Ai18	Kotoko	12.00	15.00	West-Central Tropical Africa	1880	7		8	7	3	4
+S	Ai19	Musgu	11.00	15.00	West-Central Tropical Africa	1910	7	1	8	7		
+S	Ai2	Nyaro	11.00	31.00	Northeast Tropical Africa	1940	9	2	8			1
+S	Ai20	Tupuri	10.00	15.00	West-Central Tropical Africa	1910	6	1	8	5	1	1
+S	Ai21	Bagirmi	11.00	17.00	Northeast Tropical Africa	1880	6	1	8	7	4	4
+S	Ai22	Sara	9.00	18.00	Northeast Tropical Africa	1890	6	1	8	5	1	1
+S	Ai23	Bwaka	3.00	19.00	West-Central Tropical Africa	1920	6	1	8	7	2	1
+S	Ai24	Mandja	6.00	18.00	West-Central Tropical Africa	1900	6	1	8	5	1	1
+S	Ai25	Mbandja	4.00	21.00	West-Central Tropical Africa	1950	6	1		7		1
+S	Ai26	Ngbandi	4.00	22.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ai27	Abarambo	4.00	27.00	West-Central Tropical Africa	1890	6	1	8	5	2	
+S	Ai28	Popoi	2.00	26.00	West-Central Tropical Africa	1910	6	1	8	7	2	1
+S	Ai29	Lendu	2.00	30.00	West-Central Tropical Africa	1920	6	1	8	7	2	1
+S	Ai3	Azande	5.00	27.00	West-Central Tropical Africa	1920	6	1	10	5	3	4
+S	Ai30	Lese	2.00	29.00	West-Central Tropical Africa	1920	6	1	8	7	2	1
+S	Ai31	Logo	3.00	30.00	West-Central Tropical Africa	1920	6	1	8	5	2	4
+S	Ai32	Lugbara	3.00	32.00	East Tropical Africa	1920	6	1	8	6	2	1
+S	Ai33	Madi	4.00	32.00	Northeast Tropical Africa	1940	6	1	8	5	2	1
+S	Ai34	Moru	5.00	30.00	Northeast Tropical Africa	1880	6	1	8	5	2	1
+S	Ai35	Bongo	7.00	29.00	Northeast Tropical Africa	1870	6	1	8	5	2	1
+S	Ai36	Jur	8.00	28.00	Northeast Tropical Africa	1920	6	1	8	5	2	1
+S	Ai37	Koalib	12.00	31.00	Northeast Tropical Africa	1940	7	1	8	6	2	1
+S	Ai38	Korongo	10.00	30.00	Northeast Tropical Africa	1930	6	3	1	6	1	2
+S	Ai39	Mesakin	11.00	30.00	Northeast Tropical Africa	1940	6	3	1	6	2	2
+S	Ai4	Ingassana	11.00	34.00	Northeast Tropical Africa	1920	7	5	2	5	1	
+S	Ai40	Moro	11.00	30.00	Northeast Tropical Africa	1940	7	1	8	6	1	2
+S	Ai41	Tira	11.00	30.00	Northeast Tropical Africa	1930	7	1	8	6	2	1
+S	Ai42	Tullishi	12.00	29.00	Northeast Tropical Africa	1940	6	2	8	6	2	1
+S	Ai43	Nyimang	12.00	29.00	Northeast Tropical Africa	1930	7	1	8	6	1	1
+S	Ai44	Anuak	8.00	34.00	Northeast Tropical Africa	1920	7	1	8	7	2	4
+S	Ai45	Meban	10.00	34.00	Northeast Tropical Africa	1930	6	1	8	6	1	
+S	Ai46	Koma	9.00	35.00	Northeast Tropical Africa	1930	6	1	8	7	1	1
+S	Ai47	Mao	9.00	35.00	Northeast Tropical Africa	1939	6	1	8	7	2	1
+S	Ai5	Mamvu	3.00	29.00	West-Central Tropical Africa	1920	6	1	8	7	1	1
+S	Ai6	Shilluk	10.00	32.00	Northeast Tropical Africa	1900	6	1	8	6	2	5
+S	Ai7	Gbaya	6.00	16.00	West-Central Tropical Africa	1910	6	1	8	7	1	1
+S	Ai8	Dilling	12.00	30.00	Northeast Tropical Africa	1930	7	1	8	6	2	1
+S	Ai9	Masa	10.00	16.00	Northeast Tropical Africa	1910	7	1	8	5	1	1
+S	Aj1	Teso	2.00	34.00	East Tropical Africa	1950	6	1	8	5	2	1
+S	Aj10	Acholi	3.00	32.00	East Tropical Africa	1920	6	1	8	6	2	1
+S	Aj11	Dinka	9.00	29.00	Northeast Tropical Africa	1900	4	1	8	2	2	1
+S	Aj12	Lotuko	4.00	33.00	Northeast Tropical Africa	1920	6	1	8	7	2	2
+S	Aj13	Pojulu	4.00	31.00	Northeast Tropical Africa	1930	6	1	8	7	1	3
+S	Aj14	Kakwa	4.00	31.00	Northeast Tropical Africa	1931	6	1	8	7	2	1
+S	Aj15	Kuku	4.00	32.00	Northeast Tropical Africa	1900	7	1	8	5	2	3
+S	Aj16	Mondari	6.00	31.00	Northeast Tropical Africa	1930	6	1	8	3	1	2
+S	Aj17	Alur	2.00	31.00	West-Central Tropical Africa	1890	6	1	8	6	2	4
+S	Aj18	Bodi	5.00	35.00	Northeast Tropical Africa	1950	4	1		6	2	
+S	Aj19	Didinga	4.00	34.00	East Tropical Africa	1920	8	1	8	2	3	1
+S	Aj2	Maasi	-2.00	36.00	East Tropical Africa	1900	4	1	8	1	2	1
+S	Aj20	Suri	6.00	35.00	Northeast Tropical Africa	1940	6	1	8	7	2	
+S	Aj21	Jie	3.00	34.00	East Tropical Africa	1930	6	1	8	3	2	2
+S	Aj22	Labwor	3.00	34.00	East Tropical Africa	1930	6	1		7	2	
+S	Aj23	Plains Suk	1.00	36.00	East Tropical Africa	1950	4	1	8	2	2	1
+S	Aj24	Toposa	5.00	34.00	Northeast Tropical Africa	1930	4	1	8	3	2	
+S	Aj25	Keyu	0.00	36.00	East Tropical Africa	1920	8	1	8	6	2	2
+S	Aj26	Hill Suk	1.00	36.00	East Tropical Africa	1910	7	1	8	5	2	1
+S	Aj27	Sapei	1.00	35.00	East Tropical Africa	1920	8	1	8	6	2	
+S	Aj28	Tatoga	-5.00	35.00	East Tropical Africa	1940	4	1	8	2	2	1
+S	Aj29	Samburu	1.00	37.00	East Tropical Africa	1950	4	1	8	1	3	1
+S	Aj3	Nuer	8.00	32.00	Northeast Tropical Africa	1930	4	1	10	2	1	1
+S	Aj30	Karamojong	2.00	34.00	East Tropical Africa	1950	4	1	8			
+S	Aj31	Pari	5.00	33.00	Northeast Tropical Africa	1920	9	1	8			
+S	Aj4	Lango	2.00	33.00	East Tropical Africa	1920	6	1	8	7	1	2
+S	Aj5	Turkana	4.00	35.00	East Tropical Africa	1920	6	1	8	2	1	1
+S	Aj6	Luo	-1.00	34.00	East Tropical Africa	1940	7	1	8	5	2	2
+S	Aj7	Nandi	0.00	35.00	East Tropical Africa	1910	8	7	8	5	2	1
+S	Aj8	Bari	5.00	32.00	Northeast Tropical Africa	1920	6	1	8	5	1	2
+S	Aj9	Kipsigis	-1.00	36.00	East Tropical Africa	1920	7	1	8	5	3	1
+S	Ca1	Konso	6.00	37.00	Northeast Tropical Africa	1930	7	1	6	7	1	2
+S	Ca10	Somali (Esa)	10.00	43.00	Northeast Tropical Africa	1880	4	1	8	1	4	2
+S	Ca11	Arusi	8.00	40.00	Northeast Tropical Africa	1890	4	1	8	3	3	1
+S	Ca12	Gibe	8.00	37.00	Northeast Tropical Africa	1880	7	1	8	5	4	4
+S	Ca13	Macha	9.00	37.00	Northeast Tropical Africa	1950	7	7	8	5	3	
+S	Ca14	Burji	5.00	38.00	Northeast Tropical Africa	1950	7	1	8	5		1
+S	Ca15	Darasa	6.00	38.00	Northeast Tropical Africa	1930	7	1	8	5	3	
+S	Ca16	Sidama	7.00	38.00	Northeast Tropical Africa	1930	7	1	8	5	2	
+S	Ca17	Tsamai	5.00	37.00	Northeast Tropical Africa	1950	7	1	8	5	2	1
+S	Ca18	Arbore	5.00	37.00	Northeast Tropical Africa	1940	6	1	8	7	2	
+S	Ca19	Banna	6.00	36.00	Northeast Tropical Africa	1950	4	1	8	6	2	1
+S	Ca2	Somali (Dolbahanta)	8.00	48.00	Northeast Tropical Africa	1950	4	1	8	1	3	2
+S	Ca20	Galab	5.00	36.00	Northeast Tropical Africa	1890	4	1	8	3	2	
+S	Ca21	Hamar	5.00	36.00	Northeast Tropical Africa	1950	4	1	8	6	2	1
+S	Ca22	Male	6.00	37.00	Northeast Tropical Africa	1950	8	1	8	5	3	1
+S	Ca23	Bako	6.00	37.00	Northeast Tropical Africa	1950	7	1	8	5	3	
+S	Ca24	Dime	6.00	36.00	Northeast Tropical Africa	1950	7	1	8	5	2	
+S	Ca25	Shangama	6.00	37.00	Northeast Tropical Africa	1950	7	1	8	5	2	
+S	Ca26	Ubamer	6.00	37.00	Northeast Tropical Africa	1950	7	1	8	5	3	
+S	Ca27	Anfillo	9.00	35.00	Northeast Tropical Africa	1930	6	1	8	5	3	3
+S	Ca28	Basketo	6.00	37.00	Northeast Tropical Africa	1950	7	1	8	5	2	4
+S	Ca29	Yem	8.00	38.00	Northeast Tropical Africa	1920	7	1	8	5	4	4
+S	Ca3	Tigrinya	14.00	39.00	Northeast Tropical Africa	1950	7	7	8	7	3	5
+S	Ca30	Kafa	7.00	36.00	Northeast Tropical Africa	1890	7	1	8	5	5	4
+S	Ca31	Beta Israel	12.00	37.00	Northeast Tropical Africa	1860	7	6	10	7		2
+S	Ca32	Nara	16.00	38.00	Northeast Tropical Africa	1860	6	3	6	7	1	1
+S	Ca33	Kunama	15.00	37.00	Northeast Tropical Africa	1860	6	3	6	7	1	1
+S	Ca34	Ababda	24.00	34.00	Northern Africa	1920	4	1	8	1	2	
+S	Ca35	Amarar	20.00	36.00	Northeast Tropical Africa	1930	4	1	8	2	2	
+S	Ca36	Beni-Amer	18.00	38.00	Northeast Tropical Africa	1860	4	1	8	1	3	3
+S	Ca37	Blin	16.00	36.00	Northeast Tropical Africa	1850	4		8	2	2	3
+S	Ca38	Tigre	17.00	39.00	Northeast Tropical Africa	1860	4	1	8	2	2	3
+S	Ca39	Jimma	8.00	37.00	Northeast Tropical Africa	1930	7	1	8	5	4	5
+S	Ca4	Iraqw	-4.00	35.00	East Tropical Africa	1950	8	2	8	5	2	2
+S	Ca40	Baditu	6.00	38.00	Northeast Tropical Africa	1950	7	1	8	5	3	2
+S	Ca41	Dorse	6.00	38.00	Northeast Tropical Africa	1950	7	1	8	5	3	2
+S	Ca42	Shako	7.00	36.00	Northeast Tropical Africa	1950	7	1	8	6	3	4
+S	Ca43	Hadendowa	18.00	36.00	Northeast Tropical Africa	1930	4	1	8			
+S	Ca5	Bisharin	20.00	35.00	Northeast Tropical Africa	1930	4	1	8	2	2	1
+S	Ca6	Afar	12.00	42.00	Northeast Tropical Africa	1880	4	1	8	2	3	2
+S	Ca7	Amhara	13.00	38.00	Northeast Tropical Africa	1950	7	6	10	6	4	5
+S	Ca8	Gurage	8.00	38.00	Northeast Tropical Africa	1940	7	1	8	7	1	
+S	Ca9	Goroa	-4.00	36.00	East Tropical Africa	1890	8	1	8	5	1	
+S	Cb1	Maguzawa	12.00	10.00	West Tropical Africa	1940	9	1	8			4
+S	Cb10	Karekare	12.00	11.00	West Tropical Africa	1920	6	1	8	6	2	1
+S	Cb11	Midobi	16.00	27.00	Northeast Tropical Africa	1900	4	3		2	2	
+S	Cb12	Gimma	13.00	32.00	Northeast Tropical Africa	1920	4	1	8	2		
+S	Cb13	Habbaniya	11.00	25.00	Northeast Tropical Africa	1930	4	1	8	1		
+S	Cb14	Hemat	11.00	20.00	Northeast Tropical Africa	1910	8	1	8	2	2	
+S	Cb15	Messiria Humr	11.00	28.00	Northeast Tropical Africa	1940	4	1	8	1	4	2
+S	Cb16	Shuwa	13.00	15.00	Northeast Tropical Africa	1920	4	1	8	1	3	
+S	Cb17	Fur	12.00	24.00	Northeast Tropical Africa	1880	7	3	7	7	4	4
+S	Cb18	Kanembu	14.00	14.00	Northeast Tropical Africa	1930	7	6	10	7	2	4
+S	Cb19	Kanuri	12.00	13.00	West Tropical Africa	1870	7	6	10	8	4	4
+S	Cb2	Wolof	15.00	-17.00	West Tropical Africa	1950	6	2	8	7	3	5
+S	Cb20	Zerma	13.00	3.00	West Tropical Africa	1920	7	1		7	3	
+S	Cb21	Djafun	8.00	13.00	West-Central Tropical Africa	1930	4	1	8	1		1
+S	Cb22	Liptako	14.00	0.00	West Tropical Africa	1920	6	1	8	7	3	3
+S	Cb23	Tukulor	14.73	-14.32	West Tropical Africa	1930	6	1	8	7	2	4
+S	Cb24	Wodaabe Fulani	12.00	12.00	West Tropical Africa	1950	4	1	8	1	2	1
+S	Cb25	Tazarawa Hausa	14.00	8.00	West Tropical Africa	1930	6	1	8	7	3	2
+S	Cb26	Zazzagawa Hausa	11.00	8.00	West Tropical Africa	1950	7	1	8	7	4	5
+S	Cb27	Bachama	10.00	12.00	West Tropical Africa	1920	7	1	8	7	3	
+S	Cb28	Dera	10.00	12.00	West Tropical Africa	1920	7	2	8	7	2	
+S	Cb29	Ngizim	12.00	10.00	West Tropical Africa	1920	9	1	8			
+S	Cb3	Songhai	17.00	-1.00	West Tropical Africa	1940	7	1	8	7	4	5
+S	Cb4	Hasania	14.00	32.00	Northeast Tropical Africa	1920	8	1	8	2		2
+S	Cb5	Buduma	13.00	15.00	Northeast Tropical Africa	1910	8	1	8	5	2	1
+S	Cb6	Tera	11.00	12.00	West Tropical Africa	1920	6	1	8	7	2	4
+S	Cb7	Bolewa	11.00	11.00	West Tropical Africa	1920	6	1	8	7	3	4
+S	Cb8	Bororo Fulani	13.00	5.00	West Tropical Africa	1920	4	6	10	3	1	2
+S	Cb9	Hausa Kanawa	12.00	9.00	West Tropical Africa	1940	6	1	8	7	3	4
+S	Cc1	Regeibat	22.00	-13.00	West Tropical Africa	1950	4	1	8	2	4	5
+S	Cc10	Asben	18.00	8.00	West Tropical Africa	1900	4	3	10	2	3	3
+S	Cc11	Azjer	25.00	10.00	Northern Africa	1860	4	3		1	3	3
+S	Cc12	Ifora	20.00	2.00	West Tropical Africa	1944	4		10	1	3	3
+S	Cc13	Udalan Tuareg	16.00	0.00	West Tropical Africa	1920	7	3	1	1	3	3
+S	Cc14	Daza	17.00	18.00	Northeast Tropical Africa	1880	8	1	8	2	1	4
+S	Cc15	Drawa	31.00	-7.00	Northern Africa	1920	9	1				3
+S	Cc16	Chaambra	32.00	3.00	Northern Africa	1930	4	1	8	2	3	3
+S	Cc17	Delim	22.00	-15.00	Northern Africa	1930	4	1	8	1	4	3
+S	Cc18	Kunta	19.00	-1.00	West Tropical Africa	1910	4	1	8	2	2	3
+S	Cc19	Trarza	18.00	-15.00	West Tropical Africa	1950	4	1	8	2	4	3
+S	Cc2	Teda	21.00	17.00	Northeast Tropical Africa	1950	7	1	8	2	2	4
+S	Cc20	Zenaga	18.00	-8.00	West Tropical Africa	1910	4	1	8	2	3	3
+S	Cc3	Siwans	29.00	26.00	Northern Africa	1920	7	1	8	8	2	2
+S	Cc4	Mzab	33.00	4.00	Northern Africa	1920	7	1	8	7	1	4
+S	Cc5	Kel Antessar	18.00	-3.00	West Tropical Africa	1910	4	3	10	1	2	3
+S	Cc6	Kababish	17.00	31.00	Northeast Tropical Africa	1910	4	1	8	1	3	2
+S	Cc7	Barabish	20.00	-5.00	West Tropical Africa	1950	4	1	8	1	2	3
+S	Cc8	Aulliminden	8.00	2.00	West Tropical Africa	1890	4					3
+S	Cc9	Tuareg Ahaggar	23.00	6.00	Northern Africa	1920	4	3	4	2	3	3
+S	Cd1	Barabra	23.00	33.00	Northern Africa	1920	7	1	8	7	1	2
+S	Cd10	Zekara	34.00	-2.00	Northern Africa	1900	8	1	8	3	3	2
+S	Cd11	Guanche	27.99	-15.62	Macaronesia	1500	6	3	10	7	3	4
+S	Cd12	Algerians	31.00	2.00	Northern Africa	1870	7	1	8	7		5
+S	Cd13	Hamama	30.00	9.00	Northern Africa	1930	4	1	8	3	4	2
+S	Cd14	Hamyan	35.00	2.00	Northern Africa	1870	4	1	8	1	4	
+S	Cd15	Jebala	35.00	-5.00	Northern Africa	1910	7	1	8	7	3	2
+S	Cd16	Moroccans	33.00	-8.00	Northern Africa	1930	7	1	8	7	5	5
+S	Cd17	Nail	35.00	5.00	Northern Africa	1920	4	1	8	2	2	2
+S	Cd18	Saadi	30.00	28.00	Northern Africa	1920	4	1	8	2	2	3
+S	Cd19	Sahel	35.00	10.94	Northern Africa	1920	7	1	8	7	4	5
+S	Cd2	Egyptians	25.00	33.00	Northern Africa	1950	7	1	8	7	4	5
+S	Cd20	Sanusi	31.00	22.00	Northern Africa	1940	4	1	8	2	4	
+S	Cd21	Tunisians	37.00	10.00	Northern Africa	1930	7	1	8	7	5	5
+S	Cd3	Riffians	35.00	-4.00	Northern Africa	1920	7	1	8	7	2	2
+S	Cd4	Kabyle	36.00	4.00	Northern Africa	1890	7	1	8	7	4	1
+S	Cd5	Shluh	30.00	-9.00	Northern Africa	1920	7	1	8	6	2	1
+S	Cd6	Ancient Egyptians	30.00	31.00	Northern Africa	-1400	7	6	6	7	5	5
+S	Cd7	Beraber	33.00	-7.00	Northern Africa	1910	7	1	8	3	3	2
+S	Cd8	Shawiya	36.00	7.00	Northern Africa	1910	7	1	8	3		1
+S	Cd9	Tekna	28.00	-11.00	Northern Africa	1900	7	1	8	3	2	
+S	Ce1	Gheg	42.00	20.00	Southeastern Europe	1900	7	7	8	5	3	1
+S	Ce2	Portuguese	42.00	-7.00	Southwestern Europe	1950	9	6	10			5
+S	Ce3	Ancient Romans	42.00	12.00	Southeastern Europe	100	7	6	6	7	5	5
+S	Ce4	French Basques	43.00	-1.00	Southwestern Europe	1930	7	6	2	5		5
+S	Ce5	Neapolitans	40.89	14.25	Southeastern Europe	1960	7	6	6	8	4	5
+S	Ce6	Spaniards	37.00	-6.00	Southwestern Europe	1950	7	6	6	7	4	5
+S	Ce7	Greeks	39.00	23.00	Southeastern Europe	1950	7	6	10	7	4	5
+S	Ce8	Spanish Basques	43.00	-2.00	Southwestern Europe	1934	7	6	10	8	4	5
+S	Cf1	New Englanders	42.00	-73.00	Northeastern U.S.A.	1920	7	6	6	8	4	5
+S	Cf2	Boers	-16.00	28.00	South Tropical Africa	1850	4	6	10	5	3	3
+S	Cf3	Tristan da Cunha	-37.11	-12.27	Subantarctic Islands	1930	7	6	6	7	1	1
+S	Cf4	Brazilians	-23.68	-46.64	Brazil	1940	7	6	6	7	5	5
+S	Cf5	French Canadians	47.00	-72.00	Eastern Canada	1930	7	6	6	7	4	5
+S	Cg1	Dutch	53.00	7.00	Middle Europe	1950	7	6	2	7	4	5
+S	Cg2	Icelanders	64.00	-20.00	Northern Europe	1100	4	6	10	7	3	3
+S	Cg3	Irish	53.00	-9.00	Northern Europe	1930	7	6	10	5	3	5
+S	Cg4	Sami	68.00	22.00	Northern Europe	1950	4	6	10	1	1	2
+S	Cg5	Walloons	50.00	5.00	Middle Europe	1950	7	6	6	7	5	5
+S	Ch1	Serbs	44.00	20.00	Southeastern Europe	1950	7	1	8	8	4	5
+S	Ch10	Romanians	45.00	26.00	Southeastern Europe	1910	9	6	6			
+S	Ch11	Russians	53.00	41.00	Eastern Europe	1955	7	6	6	7	5	5
+S	Ch2	Hutsuls	49.00	24.00	Eastern Europe	1890	8	6	6	5		2
+S	Ch3	Czechs	50.00	16.00	Middle Europe	1940	7	6	10	7	4	5
+S	Ch4	Mari	56.50	48.00	Eastern Europe	1900	7	6	6	6	2	3
+S	Ch5	Bulgarians	43.00	24.00	Southeastern Europe	1940	7	6	10	7	4	5
+S	Ch6	Byelorussians	55.00	28.00	Eastern Europe	1910	7	6	2	7	5	5
+S	Ch7	Ukrainians	48.00	36.00	Eastern Europe	1930	7	6	10	7	5	5
+S	Ch8	Magyar	47.00	20.00	Middle Europe	1940	7	6	10	7	4	5
+S	Ch9	Lithuanians	55.00	24.00	Eastern Europe	1930	7	6	10	7	4	5
+S	Ci1	Kalmyk	46.00	46.00	Eastern Europe	1920	4	1	8	2	4	4
+S	Ci10	Armenians	40.00	45.00	Caucasus	1900	7	6	10	7	4	2
+S	Ci11	Kurd	32.00	44.00	Western Asia	1940	7	7	8	3	3	4
+S	Ci12	Abkhaz	43.00	41.00	Caucasus	1880	4	1	8	5	2	5
+S	Ci2	Khevsur	43.00	45.00	Caucasus	1930	7	1	8	7	1	1
+S	Ci3	Kumyk	42.00	48.00	Caucasus	1900	7	6	6	7		
+S	Ci4	Cherkess	44.00	42.00	Caucasus	1920	7	1	8	6	2	4
+S	Ci5	Turks	38.00	30.00	Western Asia	1950	7	1	8	7	4	5
+S	Ci6	Ossetians	43.00	44.00	Caucasus	1880	4	1	8	7	2	4
+S	Ci7	Chechen	43.00	46.00	Caucasus	1900	8	1	8	7		
+S	Ci8	Georgians	42.00	45.00	Caucasus	1850	7		8	7	3	4
+S	Ci9	Svan	43.00	43.00	Caucasus	1910	8	1	8	7		
+S	Cj1	Syrians	36.00	36.00	Western Asia	1950	7	1	8	7	3	3
+S	Cj10	Madan	31.00	47.00	Western Asia	1950	8	1	8	7		4
+S	Cj2	Rwala	33.00	37.00	Western Asia	1920	4	7	8	1	2	2
+S	Cj3	Hebrews	32.00	35.00	Western Asia	-800	7	1	8	7	3	4
+S	Cj4	Babylonians	32.00	45.00	Western Asia	-2000	7	6	2	7	4	5
+S	Cj5	Mutair	28.00	47.00	Arabian Peninsula	1930	4	1	8	1	2	
+S	Cj6	Jordanians	32.00	36.00	Western Asia	1950	7	1	8	7	3	5
+S	Cj7	Lebanese	34.00	36.00	Western Asia	1950	7	1	8	7	4	5
+S	Cj8	Druze	32.77	35.03	Western Asia	1930	7	1	8	7	2	1
+S	Cj9	Yemeni	15.00	45.00	Arabian Peninsula	1950	7	1	8	7	4	4
+S	Ea1	Sindhi	25.00	68.00	Indian Subcontinent	1950	7	1	8	7	4	3
+S	Ea10	Marri	30.00	69.00	Indian Subcontinent	1950	4	1	8	2	3	4
+S	Ea11	Ghilzai	33.00	68.00	Western Asia	1950	7	1	8	7	4	5
+S	Ea12	Qashqui	30.00	52.00	Western Asia	1940	4	1	8	1	3	4
+S	Ea13	Punjabi	32.00	73.00	Indian Subcontinent	1950	7	1	8	8	5	4
+S	Ea2	Yusufzai	35.00	72.00	Indian Subcontinent	1950	7	7	8	7	3	5
+S	Ea3	Hazara	35.00	66.00	Western Asia	1930	8	1	8	3	2	2
+S	Ea4	Kohistani	35.00	73.00	Indian Subcontinent	1950	8	1	8	3	2	3
+S	Ea5	Nuristani	36.00	71.00	Western Asia	1890	7	1	8	7	2	2
+S	Ea6	Basseri	30.00	54.00	Western Asia	1958	4	1	8	1	2	2
+S	Ea7	Moghol	34.00	63.00	Western Asia	1950	7	1	8	6		2
+S	Ea8	Bakhtiari	33.00	48.00	Western Asia	1920	4	1	8	1	3	4
+S	Ea9	Iranians	36.00	52.00	Western Asia	1950	7	1	10	7	5	3
+S	Eb1	Kazakh	48.00	70.00	Middle Asia	1910	4	1	8	2	4	4
+S	Eb2	Tu	39.00	100.00	China	1920	7	1	8	6	2	4
+S	Eb3	Khalka	46.00	97.00	Mongolia	1940	4	7	8	2	4	4
+S	Eb4	Dagur	49.00	125.00	China	1940	9	1	8			1
+S	Eb5	Turkmen	38.00	62.00	Middle Asia	1910	7	1	8	7	4	4
+S	Eb6	Buryat	52.00	107.00	Siberia	1900	4	1	8			4
+S	Eb7	Chahar	41.00	115.00	China	1930	4	1	8	3	3	4
+S	Eb8	Uzbek	43.00	60.00	Middle Asia	1800	4	1	8			
+S	Ec1	Nivkh	53.00	142.00	Russian Far East	1920	2	1	8	2	1	1
+S	Ec10	Ob Ostyak	62.00	74.00	Siberia	1880	2	1	8	2	1	2
+S	Ec11	Selkup	59.00	90.00	Siberia	1900	8	1	8	2	1	2
+S	Ec2	Yakut	65.00	125.00	Siberia	1900	4	1	8	2	3	2
+S	Ec3	Chukchi	66.00	177.00	Russian Far East	1900	4	6	10	1	1	2
+S	Ec4	Yurak-Samoyeds	68.00	75.00	Siberia	1900	4	1	8	1	1	2
+S	Ec5	Koryak	61.99	164.24	Russian Far East	1900	2	6	10	3	1	2
+S	Ec6	Yukaghir	70.00	145.00	Siberia	1850	3	6	9	2	1	1
+S	Ec7	Ainu	44.00	144.00	Eastern Asia	1900	2	3	10	3	2	1
+S	Ec8	Ket	62.00	90.00	Siberia	1900	2	1	10	2	1	1
+S	Ec9	Nanai	47.00	132.00	China	1920	2	1	8	7	2	1
+S	Ed1	Koreans	38.13	126.96	Eastern Asia	1950	7	1	8	7	3	5
+S	Ed10	Shantung	37.00	118.00	China	1930	7	1	8	7	5	5
+S	Ed13	Ishigakians	24.46	124.14	Eastern Asia	1940	9	1	8			
+S	Ed14	Man	22.00	105.00	Indo-China		9	1	8			
+S	Ed15a	Miyakans	24.79	125.32	Eastern Asia	1950	9	6	8			
+S	Ed15b	Kiangsu	31.00	120.00	China	1936	7	1	6	7	5	5
+S	Ed16	Cantonese	23.00	113.00	China	1940	9	1	8			
+S	Ed2	Lolo	29.00	103.00	China	1940	7	1	8	7	1	4
+S	Ed3	Manchu	45.00	126.00	China	1920	7	1	8	7		2
+S	Ed4	Miao	26.00	107.00	China	1940	7	7	8	6	2	1
+S	Ed5	Japanese	35.00	136.00	Eastern Asia	1950	7	6	10	8	5	5
+S	Ed6	Min Chinese	24.00	115.00	China	1920	7	1	8	7	5	5
+S	Ed7	Okinawans	26.16	127.80	Eastern Asia	1950	7	7	8	7	3	4
+S	Ed8	Minchia	26.00	100.00	China	1930	7	1	8	7	2	2
+S	Ed9	Li	19.00	109.00	China	1930	7	1	8	7	3	2
+S	Ee1	Adi	28.00	95.00	Indian Subcontinent	1940	6	1	10	7	1	2
+S	Ee2	Burusho	37.00	75.00	China	1930	7	1	8	7	2	5
+S	Ee3	Lepcha	28.00	89.00	China	1930	7	1	8	5	2	2
+S	Ee4	Central Tibetans	30.00	91.00	China	1920	7	1	8	7	5	5
+S	Ee5	Shina	35.00	73.00	Indian Subcontinent	1870	7	1	8	3	3	4
+S	Ee6	Sherpa	28.00	87.00	China	1950	8	1	8	3	3	2
+S	Ee7	Kachari	27.00	90.00	Indian Subcontinent	1840	9	1	8			
+S	Ee8	Magar	28.00	84.00	Indian Subcontinent	1950	7	1	8	6	4	5
+S	Ef1	Santal	24.00	87.00	Indian Subcontinent	1940	7	1	8	7	2	1
+S	Ef10	Bihari	25.00	86.00	Indian Subcontinent	1880	9	1	8			
+S	Ef11	Uttar Pradesh	26.00	83.00	Indian Subcontinent	1945	7	7	8	8	5	4
+S	Ef2	Bengali	23.00	88.00	Indian Subcontinent	1940	7	7	8	7	5	5
+S	Ef3	Indo-Iranian	30.00	75.00	Indian Subcontinent	-800	9	7	8			
+S	Ef4	Ho	22.00	85.00	Indian Subcontinent	1920	9	1	8			4
+S	Ef5	Bhil	22.00	74.00	Indian Subcontinent	1900	7	1	8	5	2	5
+S	Ef6	Kurukh	23.00	85.00	Indian Subcontinent	1940	7	1	8	7	2	
+S	Ef7	Pahari	30.00	78.00	Indian Subcontinent	1950	7	7	8	7	5	5
+S	Ef8	Kashmiri	34.00	75.00	Indian Subcontinent	1950	7	1	8	7	4	5
+S	Ef9	Gujarati	20.00	77.00	Indian Subcontinent	1920	7	1	8	7	4	5
+S	Eg1	Chenchu	16.00	79.00	Indian Subcontinent	1940	1	1	2	3	1	1
+S	Eg10	Telugu	18.00	79.00	Indian Subcontinent	1950	7	1	8	7	4	5
+S	Eg11	Koya	19.00	78.00	Indian Subcontinent	1960	9	1	8			
+S	Eg12	Khond	18.00	82.00	Indian Subcontinent	1940	9	1	8			
+S	Eg13	Muria Gond	20.00	81.00	Indian Subcontinent	1941	6	1	8	7		1
+S	Eg14	Reddi	18.00	82.00	Indian Subcontinent	1940	6	1	8	7	2	1
+S	Eg2	Tamil	11.00	79.00	Indian Subcontinent	1880	7	1	8	7	4	5
+S	Eg3	Madia	19.00	81.00	Indian Subcontinent	1938	6	1	8	7	2	2
+S	Eg4	Toda	12.00	77.00	Indian Subcontinent	1900	4	2	8	3	2	1
+S	Eg5	Kodavas	12.00	76.00	Indian Subcontinent	1930	7	1	8	6	3	5
+S	Eg6	Kerala	11.00	76.00	Indian Subcontinent	1799	7	3	7	5	3	5
+S	Eg7	Hill Bhuiya	21.00	85.00	Indian Subcontinent	1930	6	1	8	4	2	
+S	Eg8	Kol	22.00	85.00	Indian Subcontinent	1940	7	5	8	7	2	
+S	Eg9	Baiga	22.00	81.00	Indian Subcontinent	1930	6	1	8	4	1	1
+S	Eh1	Andamanese	12.00	93.00	Indo-China	1870	8	6	2	2	1	1
+S	Eh10	Betsileo	-22.00	47.00	Western Indian Ocean		9	1	8			
+S	Eh2	Merina	-19.00	46.00	Western Indian Ocean	1900	7	2	10	7	4	4
+S	Eh3	Tanala	-22.00	47.00	Western Indian Ocean	1930	7	2	8	7	2	4
+S	Eh4	Vedda	8.00	81.00	Indian Subcontinent	1900	1	3	5	2	1	1
+S	Eh5	Nicobarese	9.17	92.77	Indo-China	1890	6	6	9	6	1	1
+S	Eh6	Sinhalese	7.00	80.00	Indian Subcontinent	1950	7	4	10	7	4	5
+S	Eh7	Antandroy	-25.00	46.00	Western Indian Ocean	1900	4	1	8	3	2	4
+S	Eh8	Sakalava	-21.00	43.93	Western Indian Ocean	1900	4	1	8	6	4	4
+S	Eh9	Antaisaka	-22.90	47.75	Western Indian Ocean	1930	7	1	8	7	3	4
+S	Ei1	Garo	26.00	91.00	Indian Subcontinent	1900	6	3	5	7	2	2
+S	Ei10	Chakma	23.00	92.00	Indian Subcontinent	1870	6	1	8	7	2	
+S	Ei11	Aimol	25.00	94.00	Indian Subcontinent	1910	6	1	8	7	1	2
+S	Ei12	Thado	25.00	94.00	Indian Subcontinent	1910	6	1	8	7	2	2
+S	Ei13	Angami	26.00	94.00	Indian Subcontinent	1910	7	1	8	7	1	2
+S	Ei14	Ao	27.00	94.00	Indian Subcontinent	1920	6	1	8	7	1	2
+S	Ei15	Rengma	26.00	94.00	Indian Subcontinent	1930	9	1	8			
+S	Ei16	Sema	26.00	95.00	Indian Subcontinent	1910	6	1	8	7	1	4
+S	Ei17	Karbi	26.00	94.00	Indian Subcontinent	1900	9	1	8			
+S	Ei18	Palaung	23.00	97.00	Indo-China	1920	6	6	10	7	2	2
+S	Ei19	Chin	22.00	94.00	Indo-China	1940	6	1	8	7	2	4
+S	Ei2	Lhota	27.00	94.00	Indian Subcontinent	1920	6	1	8	7	1	2
+S	Ei20	Kuki	23.00	92.00	Indian Subcontinent	1940	9	1	8			
+S	Ei3	Burmese	20.00	95.00	Indo-China	1950	7	6	6	7	4	5
+S	Ei4	Maras	22.00	93.00	Indo-China	1930	6	1	8	7	2	4
+S	Ei5	Kachin	26.00	97.00	Indo-China	1940	6	1	8	7	2	4
+S	Ei6	Purum	25.00	94.00	Indian Subcontinent	1930	6	1	8	7	1	2
+S	Ei7	Karen	17.12	97.19	Indo-China	1910	7	6	9	7	1	2
+S	Ei8	Khasi	26.00	92.00	Indian Subcontinent	1900	6	3	5	7	2	4
+S	Ei9	Mogh	20.49	92.64	Indo-China	1880	6	1	8	7	2	
+S	Ej1	Lamet	20.00	101.00	Indo-China	1940	6	1	8	7	1	2
+S	Ej10	Rade	13.00	108.00	Indo-China	1950	6	3	5	6	1	2
+S	Ej11	Cham	11.00	108.00	Indo-China	1950	7	3	5	6	3	4
+S	Ej12	Lawa	18.00	98.00	Indo-China	1960	6	1	8	7	2	4
+S	Ej13	Muong	21.00	105.00	Indo-China	1940	7	1	8	5	3	4
+S	Ej14	Senoi	4.00	102.00	Malesia	1960	6	6	2	4	1	1
+S	Ej15	Ancient Khmer	13.00	104.00	Indo-China	1292	7	6	6	7	5	5
+S	Ej16	Negri Sembilan	2.58	102.25	Malesia	1958	7	3	5	5	4	1
+S	Ej2	Mnong Gar	12.00	107.00	Indo-China	1940	6	3	5	4	1	2
+S	Ej3	Semang	5.00	101.00	Malesia	1920	1	6	10	1	1	1
+S	Ej4	Annamese	17.00	107.00	Indo-China	1950	7	1	8	7	5	5
+S	Ej5	Khmer	12.00	105.00	Indo-China	1950	7	6	6	7	4	5
+S	Ej6	Moken	11.78	98.28	Indo-China	1920	2	6	6	1	1	1
+S	Ej7	Akha	21.00	100.00	Indo-China	1950	6	1	8	4	1	1
+S	Ej8	Malays	5.00	103.00	Malesia	1940	7	6	10	7	3	4
+S	Ej9	Thai	15.00	100.00	Indo-China	1940	7	6	6	7	5	2
+S	Ia1	Atayal	24.00	121.00	Eastern Asia	1930	6	7	10	7	2	1
+S	Ia10	Bunun	24.00	121.00	Eastern Asia	1930	6	1	8	5	1	1
+S	Ia11	Puyuma	23.00	121.00	Eastern Asia	1930	7	5	9	7	1	4
+S	Ia12	Sugbuanon	10.20	123.65	Malesia	1950	7	6	6	7	5	5
+S	Ia13	Badjau Tawi-Tawi	5.09	119.97	Malesia	1960	2	6	2	1	1	2
+S	Ia14	Tao	22.05	121.55	Eastern Asia	1930	6	6	10	7	1	1
+S	Ia15	Manobo	8.00	126.00	Malesia	1920	6	6	10	5	1	1
+S	Ia16	Kalinga	18.00	121.00	Malesia	1910	7	6	9	6	2	2
+S	Ia17	Bilaan	6.00	125.00	Malesia	1910	9	6	6			
+S	Ia18	Bisayan	10.00	123.00	Malesia	1950	9	6	6			
+S	Ia2	Sagada	17.00	121.00	Malesia	1950	7	6	2	7	1	2
+S	Ia3	Ifugao	17.00	121.00	Malesia	1920	7	6	2	6	1	2
+S	Ia4	Subanun	8.00	123.00	Malesia	1950	6	6	2	5	1	1
+S	Ia5	Hanunoo	13.00	121.00	Malesia	1950	6	6	9	6	1	1
+S	Ia6	Paiwan	22.44	120.77	Eastern Asia	1930	6	5	10	7	2	4
+S	Ia7	Tagbanua	10.00	119.00	Malesia	1950	6	6	9	7	1	4
+S	Ia8	Bontok	17.00	121.00	Malesia	1900	7	6	10	7	1	3
+S	Ia9	Ami	22.70	121.05	Eastern Asia	1930	7	3	5	7	1	1
+S	Ib1	Iban	2.00	112.00	Malesia	1950	6	6	2	7	1	1
+S	Ib2	Javanese	-7.00	110.00	Malesia	1950	7	6	6	8	5	5
+S	Ib3	Balinese	-8.18	115.02	Malesia	1950	7	1	8	7	4	5
+S	Ib4	Toba Batak	2.00	99.00	Malesia	1930	7	1	8	7	1	2
+S	Ib5	Kadazan-Dusun	6.00	117.00	Malesia	1920	6	6	10	7	1	2
+S	Ib6	Minangkabau	-1.00	101.00	Malesia	1920	7	3	7	7	3	4
+S	Ib7	Mentaweians	-2.93	100.23	Malesia	1920	6	5	10	7	1	1
+S	Ib8	Anak Dalam	-3.00	103.00	Malesia	1900	8	6	2	1	1	1
+S	Ib9	Punan	3.00	115.00	Malesia	1950	9	6				
+S	Ic1	Macassarese	-5.31	119.69	Malesia	1940	7	5	2	5	4	4
+S	Ic10	Tobelorese	1.00	128.00	Malesia	1910	6	6	10	7	3	1
+S	Ic11	Ambonese	-3.71	128.18	Malesia	1950	6	7	10	7	3	4
+S	Ic12	Sumbawanese	-8.63	117.27	Malesia	1951	6	6	6	3	3	1
+S	Ic13	Kodi	-9.66	119.07	Malesia	1950	9	2	8			
+S	Ic2	Alorese	-8.22	124.26	Malesia	1940	6	7	10	8	3	2
+S	Ic3	Belu	-9.00	126.00	Malesia	1950	6	3	5	6	2	4
+S	Ic4	Rotinese	-10.71	123.18	Malesia	1920	9	1	8			4
+S	Ic5	Toradja	-2.00	121.00	Malesia	1910	6	6	9	7	2	2
+S	Ic6	Tanimbarese	-8.19	130.96	Malesia	1930	6	1	8	7	2	4
+S	Ic7	Ili-Mandiri	-8.33	122.85	Malesia	1920	6	1	8	7	3	4
+S	Ic8	Kei	-5.58	133.07	Malesia	1890	6	1	8	7	1	1
+S	Ic9	Sumbanese	-10.00	120.00	Malesia	1930	7	1	8	8	2	4
+S	Id1	Northern Aranda	-24.00	134.00	Australia	1900	1	2	8	1	1	1
+S	Id10	Walbiri	-22.00	132.00	Australia	1930	1	2	8	1	1	1
+S	Id11	Gidjingali	-12.29	134.32	Australia	1950	1	2	8	1	1	1
+S	Id12	Yir Yoront	-15.00	142.00	Australia	1930	1	1	8	1	1	1
+S	Id13	Anindilyagwa	-13.99	136.60	Australia	1930	2	2	8	1	1	1
+S	Id2	Yolngu, Dhuwal	-12.48	135.96	Australia	1930	1	2	8	1	1	1
+S	Id3	Tiwi	-11.56	130.81	Australia	1920	1	3	10	1	1	1
+S	Id4	Diyari	-28.00	138.00	Australia	1900	1	3	10	1	2	1
+S	Id5	Kariyarra	-21.00	118.00	Australia	1910	3	2	8	1	1	1
+S	Id6	Wikmunkan	-14.00	142.00	Australia	1920	8	1	8	1	1	1
+S	Id7	Murriny Patha	-14.00	130.00	Australia	1940	1	1	8	1	1	
+S	Id8	Tasmanians (northwestern)	-42.00	146.00	Australia	1830	8			1	1	1
+S	Id9	Ngiyambaa	-32.00	146.00	Australia	1910	2	2	8	1	1	1
+S	Ie1	Mee	-4.00	136.00	Papuasia	1950	6	1	8	7	2	2
+S	Ie10	Motu	-9.00	147.00	Papuasia	1950	6	7	8	7	1	2
+S	Ie11	Kakoli	-6.00	144.00	Papuasia	1950	7	1	8	5	1	1
+S	Ie12	Kwoma	-4.00	142.00	Papuasia	1930	6	1	8	6	1	1
+S	Ie13	Kiwai	-9.00	143.00	Papuasia	1920	6	1	8	7	1	1
+S	Ie14	Miriam	-9.91	144.06	Papuasia	1900	6	1	8	7	1	1
+S	Ie15	Abelam	-3.79	143.09	Papuasia	1930	6	1	8	7	1	1
+S	Ie16	Kutubu	-6.00	143.00	Papuasia	1940	8	1	7	7	1	1
+S	Ie17	Siane	-6.00	145.00	Papuasia	1940	6	1	7	4	1	2
+S	Ie18	Kimam	-7.52	138.46	Papuasia	1940	7	7	10	5	1	1
+S	Ie19	Marind-Amin	-8.00	139.00	Papuasia	1910	6	1	7	6	1	1
+S	Ie2	Wantoat	-6.15	146.53	Papuasia	1920	6	7	8	7	1	1
+S	Ie20	Koita	-9.00	147.00	Papuasia	1900	6	1	8	7	1	4
+S	Ie21	Mailu	-10.00	149.00	Papuasia	1900	6	1	8	7	1	1
+S	Ie22	Mekeo	-9.00	147.00	Papuasia	1900	6	1	8	7	1	4
+S	Ie23	Muju	-6.00	141.00	Papuasia	1950	6	1	8	5	1	1
+S	Ie24	Koiari	-9.00	148.00	Papuasia	1870	6	1	8	7	1	2
+S	Ie25	Mafulu	-8.00	147.00	Papuasia	1920	6	1	8	6	1	2
+S	Ie26	Ngarawapum	-6.00	146.00	Papuasia	1940	6	1	8	7	1	1
+S	Ie27	Banaro	-4.56	144.34	Papuasia	1910	6	1	8	6	1	1
+S	Ie28	Busama	-6.69	147.26	Papuasia	1940	6	2	10	7	1	2
+S	Ie29	Manam	-4.08	145.03	Papuasia	1930	6	1	8	6	1	1
+S	Ie3	Arapesh	-4.00	144.00	Papuasia	1930	6	1	8	6	1	1
+S	Ie30	Mimika	-4.00	135.00	Papuasia	1950	8	3	5	3	1	1
+S	Ie31	Fore	-6.00	145.00	Papuasia	1950	6	1	8	6	1	2
+S	Ie32	Sio	-6.00	147.00	Papuasia	1964	6	7	8	7	1	2
+S	Ie33	Soromadja	-2.00	138.00	Papuasia	1950	1	1	8	3	1	1
+S	Ie34	Bgu	-2.34	139.60	Papuasia	1960	1	6	2			
+S	Ie35	Iatmul	-4.00	143.00	Papuasia	1930	6	1	8	7	1	1
+S	Ie36	Samarokena	-3.00	140.00	Papuasia	1950	1	6	8			
+S	Ie37	Star Mountain	-5.00	141.00	Papuasia	1960	9	1	8			
+S	Ie38	Dani	-4.00	139.00	Papuasia	1960	6	1	10	6	2	1
+S	Ie39	Elema	-7.82	145.31	Papuasia	1920	8	1	8	7	1	2
+S	Ie4	Wogeo	-3.24	144.10	Papuasia	1930	6	2	8	7	1	1
+S	Ie5	Keraki	-9.00	142.00	Papuasia	1930	6	1	8	3	1	1
+S	Ie6	Waropen	-2.14	137.23	Papuasia	1930	8	1	8	7	1	1
+S	Ie7	Enga	-6.00	144.00	Papuasia	1950	6	1	8	5	1	1
+S	Ie8	Purari	-7.00	145.00	Papuasia	1910	1	1	8	7	2	2
+S	Ie9	Orokaiva	-9.00	148.00	Papuasia	1920	6	1	8	7	1	1
+S	If1	Palauans	7.45	134.54	Northwestern Pacific	1940	6	7	1	7	3	4
+S	If10	Nomoians	6.89	152.74	Northwestern Pacific	1940	9	3	5			
+S	If11	Kosraeans	5.31	162.98	Northwestern Pacific	1860	6	3	10	5	3	4
+S	If12	Bikinians	11.70	165.29	Northwestern Pacific	1940	6	3	5	7	2	1
+S	If13	Nauruans	-0.53	166.92	Southwestern Pacific	1900	6	7	5	5	2	4
+S	If14	Makin	3.38	172.99	Southwestern Pacific	1890	8	5	10	8	2	4
+S	If15	Carolinians	15.21	145.76	Northwestern Pacific	1930	8	3	5	6	1	1
+S	If16	Lamotrek	7.46	146.38	Northwestern Pacific	1960	6	3	5	5	1	1
+S	If17	Marshallese - Jaluit atoll	6.28	169.49	Northwestern Pacific	1900	2	3	5	5	2	4
+S	If2	Trukese	7.34	151.60	Northwestern Pacific	1940	8	7	5	6	1	1
+S	If3	Majuro	7.09	171.13	Northwestern Pacific	1940	6	7	2	6	2	4
+S	If4	Ifaluk	7.25	144.46	Northwestern Pacific	1940	6	7	2	7	2	1
+S	If5	Ponapeans	6.88	158.22	Northwestern Pacific	1910	6	3	5	5	3	4
+S	If6	Yapese	9.55	138.13	Northwestern Pacific	1910	6	2	8	5	2	4
+S	If7	Gilbert Onotoa	-1.47	175.06	Southwestern Pacific	1940	2	5	10	7	2	2
+S	If8	Chamorro	15.13	145.71	Northwestern Pacific	1950	6	6	6	7	2	1
+S	If9	Ulithians	10.02	139.79	Northwestern Pacific	1900	6	3	10	7	2	1
+S	Ig1	Siuai	-6.00	155.00	Papuasia	1940	6	3	1	6	1	2
+S	Ig10	Usiai	-2.00	147.00	Papuasia	1950	6	2	8	7	1	1
+S	Ig11	Rossel Islanders	-11.36	154.14	Papuasia	1920	8	3	10	7	1	2
+S	Ig12	Choiseulese	-6.69	156.52	Papuasia	1900	6	5	10	6	1	2
+S	Ig13	Aua	-1.74	142.85	Papuasia	1900	2	3	7	7	2	1
+S	Ig14	Dahuni	-10.41	149.91	Papuasia	1900	6	3	4	6	1	2
+S	Ig15	Bakovi	-5.42	150.05	Papuasia	1950	9	1	8			
+S	Ig16	Bwaidoga	-9.44	150.33	Papuasia	1950	9	5	10			
+S	Ig17	Kombe	-4.67	149.53	Papuasia	1950	2	1	8			
+S	Ig18	Kwaio	-9.00	161.00	Papuasia	1960	9	7	8			
+S	Ig19	Molima	-10.00	151.00	Papuasia	1950	9	5	10			
+S	Ig2	Trobriands	-8.43	151.09	Papuasia	1910	6	3	1	7	2	4
+S	Ig20	Kaoka	-9.49	159.82	Papuasia	1920	6	3	1	6	1	2
+S	Ig21	Tangu	-3.38	153.31	Papuasia	1930	6	3	1	5	1	1
+S	Ig3	Kurtatchi	-5.60	154.91	Papuasia	1930	6	7	2	6	1	4
+S	Ig4	Lesu	-3.06	151.66	Papuasia	1930	8	3	5	6	1	1
+S	Ig5	Dobuans	-10.00	151.00	Papuasia	1920	6	3	3	7	1	1
+S	Ig6	Ulawans	-9.63	161.44	Papuasia	1900	6	5	10	6	1	1
+S	Ig7	Lakalai	-5.50	150.81	Papuasia	1950	6	7	4	6	1	2
+S	Ig8	Simboese	-8.00	157.00	Papuasia	1910	9	5	2			
+S	Ig9	Manus	-2.00	147.00	Papuasia	1920	2	2	8	7	1	2
+S	Ih1	Mota	-13.84	167.70	Southwestern Pacific	1890	6	3	1	7	1	2
+S	Ih10	Tannese	-19.60	169.44	Southwestern Pacific	1920	6	1	8	7	2	4
+S	Ih11	Epi	-16.61	168.17	Southwestern Pacific	1920	9	1				
+S	Ih12	Eromangans	-18.85	169.16	Southwestern Pacific	1920	9	1	8			
+S	Ih13	Ranon	-16.18	168.15	Southwestern Pacific	1920	9	2	8			
+S	Ih14	Mbau Fijians	-17.81	178.32	Southwestern Pacific	1840	2	1	8	7	3	2
+S	Ih2	Seniang	-16.51	167.47	Southwestern Pacific	1930	6	1	8	7	1	2
+S	Ih3	Bunlap	-15.95	168.22	Southwestern Pacific	1950	6	2	8	7	1	2
+S	Ih4	Lau	-17.74	-179.31	Southwestern Pacific	1920	6	1	8	7	3	2
+S	Ih5	Ajie	-21.37	165.47	Southwestern Pacific	1860	7	1	8	7	2	1
+S	Ih6	Rotumans	-12.50	177.07	Southwestern Pacific	1890	6	7	5	7	2	4
+S	Ih7	Lifu	-20.94	167.23	Southwestern Pacific	1910	6	1	8	7	2	4
+S	Ih8	Vanua Levu	-17.81	178.32	Southwestern Pacific	1940	6	2	8	7	2	1
+S	Ih9	Santa Cruz Islanders	-10.73	165.85	Southwestern Pacific	1930	6	3	10	7	1	2
+S	Ii1	American Samoans	-13.68	-172.41	Southwestern Pacific	1920	6	5	2	7	3	4
+S	Ii10	Rennell Islanders	-11.74	160.42	Papuasia	1950	6	6		6	2	4
+S	Ii12	Tongans	-19.74	-175.07	Southwestern Pacific	1920	6	5	10	7	3	4
+S	Ii13	Uveans	-13.28	-176.17	Southwestern Pacific	1830	6	5	10	7	3	4
+S	Ii14	Upolu Samoans	-13.94	-171.77	Southwestern Pacific	1829	6	5	10	7	3	4
+S	Ii2	Tikopia	-12.29	168.83	Southwestern Pacific	1930	8	7	8	6	2	4
+S	Ii3	Pukapukans	-10.89	-165.84	Southwestern Pacific	1930	6	7	8	7	2	1
+S	Ii4	Ellice	-7.48	178.68	Southwestern Pacific	1890	2	5	10	7	2	4
+S	Ii5	Ontong Java	-5.48	159.70	Papuasia	1920	8	5	9	3	1	2
+S	Ii6	Tokelau	-9.20	-171.85	Southwestern Pacific	1900	2	5	9	7	2	1
+S	Ii7	Kapingamarangi	1.09	154.80	Northwestern Pacific	1910	6	6	2	7	2	4
+S	Ii8	Futunans	-14.31	-178.11	Southwestern Pacific	1840	6	5	10	7	2	4
+S	Ii9	Niueans	-19.05	-169.86	Southwestern Pacific	1840	8	5	10	7	2	4
+S	Ij1	Mangaians	-21.93	-157.91	South-Central Pacific	1820	6	5	10	5	2	4
+S	Ij10	Tongarevans	-9.02	-158.03	Southwestern Pacific	1900	2	6	10	5	2	
+S	Ij2	Māori	-38.41	176.31	New Zealand	1820	6	5	10	7	2	4
+S	Ij3	Marquesans	-8.90	-140.08	South-Central Pacific	1900	6	6	10	5	2	4
+S	Ij4	Manihikians	-10.41	-160.98	Southwestern Pacific	1850	8	6	10	7	2	4
+S	Ij5	Raroians	-15.94	-142.31	South-Central Pacific	1900	2	5	2	5	2	1
+S	Ij6	Hawaiians	19.89	-155.83	North-Central Pacific	1800	7	5	2	7	3	4
+S	Ij7	Mangarevans	-23.12	-134.97	South-Central Pacific	1900	2	5	10	7	3	4
+S	Ij8	Tahitians	-17.71	-149.54	South-Central Pacific	1900	6	5	2	7	3	4
+S	Ij9	Easter Islanders	-27.12	-109.36	South-Central Pacific	1860	6	5	10	7	2	4
+S	Na1	Nabesna	63.00	-141.00	Subarctic America	1930	3	3	9	2	1	1
+S	Na10	Chugach	60.72	-146.49	Subarctic America	1930	2	6	10	7	1	4
+S	Na11	Sivokakmeit	63.34	-170.30	Subarctic America	1920	2	7	8	7	1	
+S	Na12	Nunamiut	68.00	-152.00	Subarctic America	1950	3	6	2	2	1	2
+S	Na13	Nunatsiarmiut	65.24	-64.63	Subarctic America	1880	2	6	6	2	1	1
+S	Na14	Inughuit (Northern Greenland)	78.00	-70.00	Subarctic America	1880	2	6	2	2	1	1
+S	Na15	Tlicho	63.00	-117.00	Subarctic America	1860	2	6	10	2	1	1
+S	Na16	Délįne	65.00	-119.00	Subarctic America	1860	2	6	10	1	1	1
+S	Na17	DeneTha	61.00	-120.00	Subarctic America	1860	3	6	10	2	1	1
+S	Na19	Dakelh	54.00	-124.00	Western Canada	1880	8	3	5	3	1	4
+S	Na2	Tareumiut	71.00	-157.00	Subarctic America	1880	2	6	2	3	1	2
+S	Na20	Kutchin	66.00	-135.00	Subarctic America	1880	2	3	10	2	2	2
+S	Na21	Caribou Inuit	63.00	-96.00	Subarctic America	1900	3	6	2	2	1	1
+S	Na22	Iglulik Inuit	70.00	-82.00	Subarctic America	1920	8	6	10	2	1	1
+S	Na23	Labrador Inuit	58.00	-65.00	Eastern Canada	1890	2	6	10	2	1	1
+S	Na24	Tasiilaq	66.00	-37.00	Subarctic America	1880	2	6	10	3	1	1
+S	Na25	Kalaallit (West Greenland)	68.66	-51.22	Subarctic America	1910	2	6	10	3	1	1
+S	Na26	Dena'ina	62.00	-144.00	Subarctic America	1870	2	3	10	7	1	4
+S	Na27	Tahltan	58.00	-131.00	Western Canada	1870	3	3	1	3	1	2
+S	Na28	Sekani	56.00	-123.00	Western Canada	1880	3	6	10	2	1	1
+S	Na29	Beaver	58.00	-117.00	Western Canada	1850	3	6	9	2	1	1
+S	Na3	Copper Inuit	69.00	-110.00	Subarctic America	1920	2	6	6	2	1	1
+S	Na30	Dene	60.00	-105.00	Subarctic America	1880	3	6	10	2	1	1
+S	Na31	Eastern Cree	51.00	-85.00	Eastern Canada	1850	3	6	9	2	1	1
+S	Na32	Montagnais	48.00	-72.00	Eastern Canada	1880	3	6	10	2	1	1
+S	Na33	Northern Saulteaux	52.00	-98.00	Western Canada	1870	8	1	10	2	1	1
+S	Na34	Pekangekum	52.00	-94.00	Eastern Canada	1940	8	7	8	3	2	1
+S	Na35	Nipigon	50.00	-88.00	Eastern Canada	1800	3	1	10	2	1	1
+S	Na36	Minnesota Ojibwa	49.00	-96.00	Western Canada	1860	2	1	6	2	1	1
+S	Na37	Rainy River Ojibwe	49.00	-92.00	Eastern Canada	1880	3	1	2	2	1	1
+S	Na38	Katikitegon	46.00	-92.00	North-Central U.S.A.	1800	2	1	10	3	1	1
+S	Na39	Eastern Ojibwa	46.00	-85.00	Northeastern U.S.A.	1870	2	1	10	2	1	1
+S	Na4	Kaska	59.00	-128.00	Western Canada	1920	2	3	5	2	1	1
+S	Na40	Ottawa	46.00	-82.00	Eastern Canada	1650	3	1		3	2	1
+S	Na41	Mi'kmaq	47.00	-65.00	Eastern Canada	1700	3	6	10	2	2	1
+S	Na42	Potawatomi	44.00	-85.00	Northeastern U.S.A.	1760	3	1	8	3	2	1
+S	Na43	Netsilik	69.00	-96.00	Subarctic America	1920	2	6	10	2	1	1
+S	Na44	Nunavimmiut	62.00	-76.00	Eastern Canada	1910	3	6	10	2	1	1
+S	Na45	Mistissini Cree	51.75	-72.66	Eastern Canada	1900	3	6	10	2	1	1
+S	Na5	Naskapi	58.00	-70.00	Eastern Canada	1890	3	6	2	2	1	1
+S	Na6	Nunivak	60.00	-166.00	Subarctic America	1930	2	4	10	3	1	2
+S	Na7	Attawapiskat Cree	53.00	-83.00	Eastern Canada	1900	2	4	10	2	1	1
+S	Na8	Deg Xit'an	62.00	-160.00	Subarctic America	1880	2	6	9	2	1	2
+S	Na9	Aleut	53.86	-166.79	Subarctic America	1830	2	4	10	7	1	4
+S	Nb1	Haida	54.00	-132.00	Western Canada	1890	2	3	1	7	1	4
+S	Nb10	Alkatcho	53.00	-126.00	Western Canada	1865	2	5	10	3	1	4
+S	Nb11	Nuu chah nulth	49.16	-125.85	Western Canada	1880	2	6	10	3	2	4
+S	Nb12	Klahoose	51.00	-125.00	Western Canada	1880	2	6	10	3	1	2
+S	Nb13	Squamish	50.00	-123.00	Western Canada	1880	2	6	10	3	1	2
+S	Nb14	Comox	49.72	-124.97	Western Canada	1880	2	5	10	3	1	2
+S	Nb15	Lummi	48.84	-123.27	Western Canada	1880	2	6	10	2	1	4
+S	Nb16	Klallam	48.00	-123.00	Northwestern U.S.A.	1860	2	6	10	2	1	4
+S	Nb17	Puyallup	47.00	-122.00	Northwestern U.S.A.	1870	2	6	10	3	1	2
+S	Nb18	Quileute	47.91	-124.59	Northwestern U.S.A.	1880	2	6	10	7	1	4
+S	Nb19	Lower Chinook	45.99	-123.77	Northwestern U.S.A.	1850	2	6	10	7	1	4
+S	Nb2	Twana	48.00	-123.00	Northwestern U.S.A.	1850	2	6	10	3	1	2
+S	Nb20	Tillamook	44.75	-123.72	Northwestern U.S.A.	1870	2	6	10	7	1	4
+S	Nb21	Coos	43.00	-124.00	Northwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb22	Tlingit	58.12	-133.92	Subarctic America	1880	2	3	1	3	1	4
+S	Nb23	Heiltsuk	52.00	-128.00	Western Canada	1880	2	5	10	3	1	4
+S	Nb24	Makah	48.33	-124.62	Northwestern U.S.A.	1860	2	5	10	3	1	4
+S	Nb25	Quinault	47.42	-124.16	Northwestern U.S.A.	1860	2	6	10	2	1	4
+S	Nb26	Cowichan	49.01	-122.73	Western Canada	1880	2	6	10	3	1	2
+S	Nb27	Stó:lō	49.00	-122.00	Western Canada	1880	2	6	10	3	1	4
+S	Nb28	Alsea	44.00	-124.00	Northwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb29	Siuslaw	44.00	-124.00	Northwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb3	Kwakwaka'wakw	51.00	-127.49	Western Canada	1890	2	5	10	7	2	4
+S	Nb30	Takelma	42.00	-123.00	Northwestern U.S.A.	1860	1	6	10	2	1	2
+S	Nb31	Tututni	42.00	-124.00	Northwestern U.S.A.	1870	2	1	8	3	1	2
+S	Nb32	Shasta	41.00	-122.00	Southwestern U.S.A.	1860	1	6	10	3	2	2
+S	Nb33	Chimariko	41.00	-123.00	Southwestern U.S.A.	1860	1	6	2	7	1	2
+S	Nb34	Karuk	42.00	-123.00	Northwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb35	Hupa	41.00	-123.00	Southwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb36	Wiyot	39.81	-123.55	Southwestern U.S.A.	1860	2	6	10	7	1	2
+S	Nb37	Lassik	40.00	-123.00	Southwestern U.S.A.	1860	2	6	2	2	1	2
+S	Nb38	Mattole-Bear River	40.35	-123.47	Southwestern U.S.A.	1860	3	6	10	7	1	2
+S	Nb39	Sinkyone	39.73	-123.60	Southwestern U.S.A.	1860	1	6	2	7	1	2
+S	Nb4	Yurok	41.00	-124.00	Southwestern U.S.A.	1850	2	6	10	7	1	2
+S	Nb5	Eyak	60.34	-144.85	Subarctic America	1890	2	3	1	7	2	2
+S	Nb6	Tolowa	42.00	-124.00	Northwestern U.S.A.	1870	8	1	8	3	1	2
+S	Nb7	Tsimshian	54.64	-130.25	Western Canada	1880	2	3	1	3	2	4
+S	Nb8	Haisla	54.00	-129.00	Western Canada	1880	2	3	1	3	1	4
+S	Nb9	Nuxalk	52.00	-127.00	Western Canada	1880	2	5	10	7	1	4
+S	Nc1	Nomlaki	39.00	-122.00	Southwestern U.S.A.	1850	1	1	8	7	1	2
+S	Nc10	Achumawi	41.00	-121.00	Southwestern U.S.A.	1860	3	6	10	2	1	2
+S	Nc11	Yana	41.00	-122.00	Southwestern U.S.A.	1860	1	6	10	2	1	2
+S	Nc12	Maidu	40.00	-121.00	Southwestern U.S.A.	1850	1	6	10	3	2	2
+S	Nc13	Nisenan	39.00	-121.00	Southwestern U.S.A.	1850	1	6	10	3	1	2
+S	Nc14	Wintu	41.00	-122.00	Southwestern U.S.A.	1860	2	6	10	2	1	2
+S	Nc15	Coast Yuki	39.34	-123.77	Southwestern U.S.A.	1860	8	6	2	2	1	1
+S	Nc16	Huchnom	39.00	-123.00	Southwestern U.S.A.	1860	1	6	10	2	1	1
+S	Nc17	Northern Pomo	39.00	-123.00	Southwestern U.S.A.	1860	1	6	2	2	1	
+S	Nc18	Eastern Pomo	39.00	-123.00	Southwestern U.S.A.	1860	1	6	2	3	1	2
+S	Nc19	Southern Pomo	38.55	-122.94	Southwestern U.S.A.	1860	1	6	9	2	1	2
+S	Nc2	Tübalulabal	39.00	-118.00	Southwestern U.S.A.	1850	1	6	10	2	2	1
+S	Nc20	Wappo	38.22	-122.56	Southwestern U.S.A.	1860	1	6	2	2	1	
+S	Nc21	Lake Miwok	38.75	-123.20	Southwestern U.S.A.	1860	1	6		2	1	2
+S	Nc22	Patwin	39.00	-122.00	Southwestern U.S.A.	1850	1	1	2	2	1	2
+S	Nc23	Western Mono	37.00	-119.00	Southwestern U.S.A.	1870	1	1	8	2	1	2
+S	Nc24	Southern Valley Yokuts	36.00	-120.00	Southwestern U.S.A.	1860	1	1	8	2	1	2
+S	Nc25	Wukchumni	36.00	-119.00	Southwestern U.S.A.	1860	1	1	8	2	1	2
+S	Nc26	Salinan	36.00	-121.00	Southwestern U.S.A.	1770	1	1	8	3	1	2
+S	Nc27	Kawaiisu	35.00	-118.00	Southwestern U.S.A.	1860	1	6	10	2	1	2
+S	Nc28	Chumash	34.44	-119.71	Southwestern U.S.A.	1800	2	1	10	3	1	2
+S	Nc29	Tongva	34.00	-118.00	Southwestern U.S.A.	1770	8	1	8	3	1	2
+S	Nc3	Northern Foothill Yokuts	36.00	-120.00	Southwestern U.S.A.	1850	1	1	8	2	1	2
+S	Nc30	Serrano	34.00	-117.00	Southwestern U.S.A.	1870	1	1	8	2	1	1
+S	Nc31	Cahuilla (Desert)	33.00	-116.00	Southwestern U.S.A.	1870	1	1	8	2	1	1
+S	Nc32	Cupeño	33.00	-117.00	Southwestern U.S.A.	1870	1	1	8	2	1	1
+S	Nc33	Luiseño	33.00	-117.00	Southwestern U.S.A.	1860	1	1	8	2	1	1
+S	Nc34	Kiliwa	31.00	-115.00	Mexico	1880	1	1	8	2	1	1
+S	Nc4	Atsugewi	41.00	-121.00	Southwestern U.S.A.	1860	1	6	10	2	1	2
+S	Nc5	Central Sierra Miwok	38.00	-120.00	Southwestern U.S.A.	1850	1	1	8	3	1	1
+S	Nc6	Kumeyaay	32.00	-116.00	Mexico	1850	1	1	8	2	1	1
+S	Nc7	Yuki	40.00	-123.00	Southwestern U.S.A.	1850	1	6	10	3	1	2
+S	Nc8	Klamath	43.00	-122.00	Northwestern U.S.A.	1860	2	6	10	2	1	2
+S	Nc9	Modoc	42.00	-122.00	Northwestern U.S.A.	1860	1	6	10	2	1	2
+S	Nd1	Tenino	45.00	-121.00	Northwestern U.S.A.	1850	2	6	10	3	1	2
+S	Nd10	Nlaka'pamux	50.00	-122.00	Western Canada	1860	2	6	10	2	2	2
+S	Nd11	Shuswap	51.00	-120.00	Western Canada	1850	2	6	10	2	2	1
+S	Nd12	Bitterroot Salish	46.00	-113.00	Northwestern U.S.A.	1860	3	6	10	2	2	1
+S	Nd13	Kalispel	49.00	-117.00	Western Canada	1860	3	6	10	2	1	1
+S	Nd14	Coeur d’Alene	48.00	-117.00	Northwestern U.S.A.	1860	3	6	10	2	2	2
+S	Nd15	Sinkaitk	49.00	-120.00	Western Canada	1880	2	6	2	2	1	1
+S	Nd16	Wenatchi	48.00	-121.00	Northwestern U.S.A.	1870	2	6	10	2	1	1
+S	Nd17	Klikitat	46.00	-122.00	Northwestern U.S.A.	1870	2	6	9	2	1	2
+S	Nd18	Wishram	46.00	-121.00	Northwestern U.S.A.	1860	2	6	10	3	1	2
+S	Nd19	Umatilla	46.00	-119.00	Northwestern U.S.A.	1860	2	6	10	2	2	1
+S	Nd2	Southern Ute	38.00	-109.00	Northwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd20	Nez Perce	45.00	-115.00	Northwestern U.S.A.	1850	2	6	10	2	2	2
+S	Nd21	Tagotoka	43.00	-117.00	Northwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd22	Wadadokado	43.00	-119.00	Northwestern U.S.A.	1870	1	6	9	2	1	1
+S	Nd23	Atsakudokwa	42.00	-118.00	Northwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd24	Kidutokado	42.00	-120.00	Northwestern U.S.A.	1870	3	6	2	2	1	1
+S	Nd25	Sawakudokwa	41.00	-118.00	Southwestern U.S.A.	1870	1	6	9	2	1	1
+S	Nd26	Wadatkuht	41.00	-120.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd27	Kuyuidokado	40.00	-119.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd28	Toedokado	40.00	-118.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd29	Tunava (Deep Springs and Fish Lake)	37.00	-118.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd3	Havasupai	36.00	-112.00	Southwestern U.S.A.	1870	7	4	10	3	1	1
+S	Nd30	Eastern Mono	37.00	-118.00	Southwestern U.S.A.	1870	1	6	10	2	1	1
+S	Nd31	Koso	36.00	-118.00	Southwestern U.S.A.	1850	1	6	10	2	1	1
+S	Nd32	Tümpisa Shoshone (Saline and Panamint)	36.00	-117.00	Southwestern U.S.A.	1850	1	6	9	2	1	1
+S	Nd33	Beatty	37.00	-116.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd34	Lida Shoshoni	37.00	-117.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd35	Mahaguaduka	39.00	-117.00	Southwestern U.S.A.	1870	1	6	10	2	1	1
+S	Nd36	Wiyambituka	39.00	-117.00	Southwestern U.S.A.	1870	1	6	10	2	1	1
+S	Nd37	Railroad Valley Shoshoni	39.00	-116.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd38	Ely Shoshoni	39.00	-115.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd39	Spring Valley Shoshoni	40.00	-115.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd4	Sanpoil	48.00	-119.00	Northwestern U.S.A.	1870	2	6	10	2	1	1
+S	Nd40	Tubaduka	40.00	-113.00	Southwestern U.S.A.	1870	1	6	9	2	1	1
+S	Nd41	Wadaduka	41.00	-116.00	Southwestern U.S.A.	1870	1	6	10	2	1	1
+S	Nd42	Elko Shoshoni	41.00	-116.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd43	White Knife Shoshoni	41.00	-117.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd44	Yahanduka	42.00	-115.00	Northwestern U.S.A.	1850	2	6	9	2	1	1
+S	Nd45	Bohogue	43.00	-112.00	Northwestern U.S.A.	1860	3	6	2	2	1	2
+S	Nd46	Agaiduka	44.00	-112.00	Northwestern U.S.A.	1860	2	6	10	2	1	1
+S	Nd47	Tukudika	44.00	-111.00	Northwestern U.S.A.	1850	3	6	10	2	1	1
+S	Nd48	Gosiute	40.00	-114.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd49	Antarianunts	37.00	-110.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd5	Hukundika	42.00	-112.00	Northwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd50	Panguitch	38.00	-112.00	Southwestern U.S.A.	1860	1	6		2	1	1
+S	Nd51	Moapa	36.00	-115.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd52	Shivwits	36.00	-117.00	Southwestern U.S.A.	1860	1	6	2	2	1	1
+S	Nd53	Southern Paiute (Kaibab)	36.00	-113.00	Southwestern U.S.A.	1860	1	6	10	2	1	1
+S	Nd54	Chemehuevi	35.00	-115.00	Southwestern U.S.A.	1860	1	6	2	2	1	1
+S	Nd55	Southern Paiute (Las Vegas)	36.00	-115.00	Southwestern U.S.A.	1860	1	6	2	2	1	1
+S	Nd56	San Juan	36.00	-111.00	Southwestern U.S.A.	1860	1	6	9	2	1	1
+S	Nd57	Pahvant	39.00	-113.00	Southwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd58	Uintah Ute	40.00	-112.00	Southwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd59	Moanunts	39.00	-112.00	Southwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd6	Washo	39.00	-120.00	Southwestern U.S.A.	1850	1	6	2	2	1	1
+S	Nd60	Moache	37.00	-105.00	Northwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd61	Taviwatsiu	40.00	-105.00	Northwestern U.S.A.	1860	3	6	9	2	1	1
+S	Nd62	Uncompahgre Ute	39.00	-107.00	Northwestern U.S.A.	1860	3	6	9	1	1	1
+S	Nd63	Bannock	43.00	-112.00	Northwestern U.S.A.	1860	3	6	9	2	2	1
+S	Nd64	Wind River Eastern Shoshone	43.00	-109.00	Northwestern U.S.A.	1860	3	6	9	2	2	1
+S	Nd65	Hualapai	36.00	-114.00	Southwestern U.S.A.	1870	1	6	10	2	1	1
+S	Nd66	Yavapai	35.00	-112.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd67	Tolkepaya	34.00	-114.00	Southwestern U.S.A.	1870	1	6	2	2	1	1
+S	Nd7	Kutenai	50.00	-117.00	Western Canada	1880	2	6	10	2	2	1
+S	Nd8	Chilcotin	52.00	-122.00	Western Canada	1880	2	6	10	2	1	2
+S	Nd9	Lillooet	50.02	-124.78	Western Canada	1860	2	6	10	2	1	2
+S	Ne1	Gros Ventre	48.78	-108.98	Northwestern U.S.A.	1880	3	6	10	1	2	1
+S	Ne10	Arikara	46.00	-101.00	North-Central U.S.A.	1860	7	6	9	7	3	
+S	Ne11	Assiniboine	48.00	-106.00	Northwestern U.S.A.	1870	3	6	10	1	1	1
+S	Ne12	Blackfoot	51.00	-112.00	Western Canada	1850	3	6	10	1	1	2
+S	Ne13	Kainai	51.00	-115.00	Western Canada	1850	3	6	10	1	2	2
+S	Ne14	Bungi	51.00	-100.00	Western Canada	1850	3	1		1	1	1
+S	Ne15	Hidatsa	47.00	-101.00	North-Central U.S.A.	1860	7	3	5	3	1	1
+S	Ne16	Karankawa	29.00	-96.00	South-Central U.S.A.	1800	2	6	2	1	2	1
+S	Ne17	Kiowa	36.00	-99.00	North-Central U.S.A.	1860	3	6	10	2	2	1
+S	Ne18	Piegan	49.00	-115.00	Western Canada	1850	3	6	10	1	2	2
+S	Ne19	Plains Cree	45.00	-94.00	North-Central U.S.A.	1850	3	6	10	1	1	1
+S	Ne2	Kiowa Apache	36.00	-99.00	North-Central U.S.A.	1870	3	6	9	1	1	1
+S	Ne20	Santee	45.00	-94.00	North-Central U.S.A.	1850	3	6	10	2	1	1
+S	Ne21	Coahuilteco	29.00	-99.00	South-Central U.S.A.	1760	3	6				
+S	Ne3	Comanche	33.00	-100.00	South-Central U.S.A.	1870	3	6	2	1	1	1
+S	Ne4	Crow	45.00	-108.00	Northwestern U.S.A.	1870	3	3	10	2	2	1
+S	Ne5	Cheyenne	39.00	-104.00	Northwestern U.S.A.	1860	3	6	9	1	2	1
+S	Ne6	Mandan	47.00	-101.00	North-Central U.S.A.	1830	7	3	5	3	2	1
+S	Ne7	Sarcee	54.00	-110.00	Western Canada	1880	3	6	10	1	2	1
+S	Ne8	Teton	43.00	-103.00	North-Central U.S.A.	1870	3	6	10	2	2	1
+S	Ne9	Arapaho	40.00	-103.00	Northwestern U.S.A.	1860	3	6	9	2	2	1
+S	Nf10	Iowa	41.00	-95.00	North-Central U.S.A.	1870	8	1	8	3	2	4
+S	Nf11	Otoe	40.00	-95.00	North-Central U.S.A.	1870	3	1	8	3	1	4
+S	Nf12	Ponca	43.00	-99.00	North-Central U.S.A.	1850	3	1	8	3	2	4
+S	Nf13	Shawnee	37.00	-85.00	Southeastern U.S.A.	1820	3	1	8	3	2	1
+S	Nf14	Caddo	33.00	-93.00	Southeastern U.S.A.		6	6	9	7	2	3
+S	Nf15	Kickapoo	43.00	-90.00	North-Central U.S.A.	1870	9	1	8			
+S	Nf2	Ho Chunk	44.00	-88.00	North-Central U.S.A.	1850	8	1	8	3	2	1
+S	Nf3	Omaha	41.00	-96.00	North-Central U.S.A.	1850	8	1	8	3	2	1
+S	Nf4	Myaamia	40.00	-86.00	Northeastern U.S.A.	1720	6	1	8	3	2	1
+S	Nf5	Wichita	34.00	-98.00	North-Central U.S.A.	1860	6	6	9	3	2	1
+S	Nf6	Pawnee	42.00	-100.00	North-Central U.S.A.	1867	6	3	5	3	2	4
+S	Nf7	Fox	45.00	-95.00	North-Central U.S.A.	1830	8	7	2	2	2	1
+S	Nf8	Hasinai	31.00	-95.00	South-Central U.S.A.	1770	6	6	9	6	3	4
+S	Nf9	Menominee	46.00	-88.00	Northeastern U.S.A.	1870	1	1	8	3	2	1
+S	Ng1	Huron	44.00	-78.00	Eastern Canada	1640	6	3	5	3	2	2
+S	Ng10	Seneca	43.00	-77.00	Northeastern U.S.A.	1750	6	7	5	7	3	1
+S	Ng11	Yuchi	35.00	-86.00	Southeastern U.S.A.	1750	6	3	6	7	2	1
+S	Ng12	Choctaw	33.00	-88.00	Southeastern U.S.A.	1760	6	3	5	5	2	1
+S	Ng13	Abenaki	46.00	-70.00	Northeastern U.S.A.		3	6	10			
+S	Ng14	Chickasaw	35.00	-85.00	Southeastern U.S.A.		9	3	5			
+S	Ng15	Chitimacha	30.00	-90.00	Southeastern U.S.A.	1750	9	6				
+S	Ng2	Seminole	27.00	-81.00	Southeastern U.S.A.	1940		3	5			1
+S	Ng3	Muscogee	33.00	-84.00	Southeastern U.S.A.	1750	6	3	5	7	3	1
+S	Ng4	Penobscot	45.00	-68.00	Northeastern U.S.A.	1900	3	6	2			1
+S	Ng5	Cherokee	36.00	-83.00	Southeastern U.S.A.	1750	6	3	5	7	3	1
+S	Ng6	Delaware	41.00	-75.00	Northeastern U.S.A.	1700	6	3	5	3	1	1
+S	Ng7	Natchez	32.00	-91.00	Southeastern U.S.A.	1700	6	6	10	7	2	3
+S	Ng8	Timucua	27.00	-82.00	Southeastern U.S.A.	1560	6	3	5	3	2	4
+S	Ng9	Catawba	35.00	-80.00	Southeastern U.S.A.	1920	7	6	6	5		1
+S	Nh1	Chiricahua	31.00	-108.00	Mexico	1880	1	6	9	1	1	1
+S	Nh10	Isleta	35.00	-107.00	South-Central U.S.A.	1920	7	6	6	7	1	1
+S	Nh11	San Ildefonso	36.00	-106.00	South-Central U.S.A.	1900	7	6	6	7	1	1
+S	Nh12	Santa Ana	35.00	-107.00	South-Central U.S.A.	1920	7	3	2	7	1	2
+S	Nh13	Acoma	35.00	-108.00	South-Central U.S.A.	1920	7	3	2	7	1	1
+S	Nh14	Laguna	35.00	-107.00	South-Central U.S.A.	1920	7	3	5	8	1	1
+S	Nh15	Mescalero	33.00	-103.00	South-Central U.S.A.	1870	8	6	9	2	1	1
+S	Nh16	Jicarilla	36.00	-104.00	South-Central U.S.A.	1870	3	6	9	2	1	1
+S	Nh17	Western Apache	34.00	-110.00	Southwestern U.S.A.	1870	3	3	5	3	1	1
+S	Nh18	Hopi	36.00	-111.00	Southwestern U.S.A.	1920	7	3	5	7	1	1
+S	Nh19	Cocopa	32.00	-115.00	Mexico	1850	7	1	8	5	1	1
+S	Nh2	Hano	36.00	-111.00	Southwestern U.S.A.	1950	7	3	5	7	1	1
+S	Nh20	Kamia	33.00	-115.00	Southwestern U.S.A.	1860	7	1	8	5	2	1
+S	Nh21	Mojave	35.00	-114.00	Southwestern U.S.A.	1850	7	1	2	5	2	1
+S	Nh22	Quechan	33.00	-114.00	Southwestern U.S.A.	1860	7	1	8	7	1	1
+S	Nh23	Kewyipaya	34.00	-111.00	Southwestern U.S.A.	1870	1	3	2	2	1	1
+S	Nh24	Lipan Apache	30.00	-100.00	South-Central U.S.A.	1880	1	6	9	2	2	1
+S	Nh25	Sia	36.00	-107.00	South-Central U.S.A.	1920	7	3	6	7	1	1
+S	Nh26	Santa Clara	36.00	-106.00	South-Central U.S.A.	1910	9	6	6			
+S	Nh27	Kewa	36.00	-105.00	South-Central U.S.A.	1930	9	3	2			
+S	Nh3	Navajo	37.00	-110.00	Southwestern U.S.A.	1930	7	3	5	3	1	1
+S	Nh4	Zuni	35.00	-109.00	South-Central U.S.A.	1910	7	3	5	7	1	1
+S	Nh5	Maricopa	33.00	-113.00	Southwestern U.S.A.	1850	1	1	8	7	2	1
+S	Nh6	Taos	37.00	-106.00	Northwestern U.S.A.	1890	7	6	6	7	1	1
+S	Nh7	Cochiti	36.00	-106.00	South-Central U.S.A.	1890	7	3	5	7	1	1
+S	Nh8	Jemez	36.00	-107.00	South-Central U.S.A.	1920	7	3	6	7	1	1
+S	Nh9	Picuris	36.00	-106.00	South-Central U.S.A.	1920	7	6	6	7	1	1
+S	Ni1	Tarahumara	28.00	-107.00	Mexico	1930	7	6	6	5	1	2
+S	Ni2	Tohono O'odham	31.00	-112.00	Mexico	1930	7	6	10	3	1	1
+S	Ni3	Huichol	22.00	-105.00	Mexico	1920	6	6	2	6	1	2
+S	Ni4	Seri	29.00	-112.00	Mexico	1900	2	6	10	2	1	1
+S	Ni5	Chichimeca	22.00	-100.00	Mexico	1570	1	6	9	1	1	1
+S	Ni6	Pima	31.00	-111.00	Mexico	1840	7	6	10	7	1	1
+S	Ni7	Yaqui	28.00	-110.00	Mexico	1870	7	6	10	7	1	1
+S	Ni8	Opata	30.00	-110.00	Mexico	1550	9	6	6			
+S	Ni9	Tepehuán	27.00	-107.00	Mexico	1920	9	6				
+S	Nj1	Chinantec	18.00	-96.00	Mexico	1940	6	6	10	7	1	
+S	Nj10	Zapotec	17.00	-96.00	Mexico	1940	6	6	10	7		
+S	Nj11	Huastec	22.00	-99.00	Mexico		9	6	10			
+S	Nj12	Mixtec	18.00	-98.00	Mexico	1950	9	6				
+S	Nj13	Otomí	20.00	-99.00	Mexico	1900	9	6	6			
+S	Nj14	Tequistlatec	16.00	-96.00	Mexico	1960	9	1	8			
+S	Nj2	Aztec	19.00	-99.00	Mexico	1520	7	5	10	7	3	5
+S	Nj3	Sierra Popoluca	18.00	-95.00	Mexico	1940	6	6	10	7	1	1
+S	Nj4	Totonac	20.00	-97.00	Mexico	1940	6	6	10	7	2	
+S	Nj5	Mazateco	18.00	-97.00	Mexico	1940	9	6	10			
+S	Nj6	Huave	16.22	-95.02	Mexico	1950	2	6	10			1
+S	Nj7	Mixe	17.00	-95.00	Mexico	1930	6	6	10	7	2	
+S	Nj8	Tarasco	19.00	-101.00	Mexico	1500	7	6	10	7	3	4
+S	Nj9	Tlaxcalans	19.00	-98.00	Mexico	1960	6	1	10	8		1
+S	Sa1	Guna	9.00	-78.00	Central America	1940	6	6	9	7	2	2
+S	Sa10	Lacandon	16.90	-91.00	Central America	1900	6	1	8	5		1
+S	Sa11	Kaqchikel	14.00	-91.00	Central America	1880	9	1	8			4
+S	Sa12	Lenca	14.00	-88.00	Central America	1948	6	6	6	7	1	4
+S	Sa13	K'iche'	15.00	-91.00	Central America	1930	6	1	8	7	2	2
+S	Sa14	Ngäbe	8.00	-81.00	Central America		9	3	5			
+S	Sa15	Jakaltek	14.00	-90.00	Central America	1920	9		8			
+S	Sa16	Tolupan	15.00	-87.00	Central America		9	6	6			
+S	Sa17	Poqomam	15.00	-91.00	Central America	1950	9	1	8			
+S	Sa2	Tzeltal	17.00	-92.00	Mexico	1940	9	1	8			
+S	Sa3	Ch'orti'	14.00	-89.00	Central America	1930	6	6	2	8	2	5
+S	Sa4	Emberá	8.00	-78.00	Central America	1960	6	6	6	5	1	1
+S	Sa5	Bribri	9.00	-83.00	Central America	1950	6	3	6	5	1	1
+S	Sa6	Yucatec Maya	18.00	-90.00	Mexico	1520	6	1	10	8	2	5
+S	Sa7	Garifuna	16.00	-89.00	Central America	1940	6	5	6	7	1	1
+S	Sa8	Mam	15.00	-92.00	Central America	1930	6	1	8	7		2
+S	Sa9	Miskito	14.77	-84.09	Central America	1920	1	6	9	7	2	1
+S	Sb1	Callinago	15.41	-61.27	Caribbean	1650	2	3	5	6	1	1
+S	Sb2	Cágaba	11.00	-74.00	Western South America	1940	6	6	9	3	1	2
+S	Sb3	Barí (Motilon)	9.00	-72.00	Northern South America	1940	1	4	9	7	1	
+S	Sb4	Cariña	9.00	-64.00	Northern South America	1950	6	6	9	5	1	1
+S	Sb5	Paraujano	11.00	-72.00	Northern South America	1950	2	6	2	7	1	1
+S	Sb6	Wayuu	12.00	-72.00	Western South America	1940	4	3	1	1	1	2
+S	Sb7	Yupa	9.00	-72.00	Northern South America	1950	6	6	9	7	1	1
+S	Sb8	Taíno	19.94	-75.37	Caribbean	1520	7		10	7	3	4
+S	Sb9	Haitians	18.41	-72.17	Caribbean	1930	7	6	6	7	4	5
+S	Sc1	Warao	9.00	-62.00	Northern South America	1950	1	6	9	3	1	1
+S	Sc10	Lokono	5.95	-56.98	Northern South America	1900	6	3	5	7	1	1
+S	Sc11	Camaracoto	6.00	-63.00	Northern South America	1930	6	6	10	7	1	1
+S	Sc12	Macushi	4.00	-59.00	Northern South America	1910	6	6	9	7	1	1
+S	Sc13	Panare	6.00	-66.00	Northern South America	1950	6	6	9	2	1	1
+S	Sc14	Rucuyen	3.00	-55.00	Northern South America	1890	9	6	9			
+S	Sc15	Taulípang	4.00	-62.00	Brazil	1910	6	6	9	7	1	1
+S	Sc16	Ye'kuana	3.00	-65.00	Northern South America	1920	8	6	9	7	1	1
+S	Sc17	Piapoco	6.00	-68.00	Western South America	1950	6	6	10	7	1	1
+S	Sc18	Ndyuka	5.00	-54.00	Northern South America	1960	6	3	5	3	2	1
+S	Sc2	Pumé	7.00	-68.00	Northern South America	1950	6	6	9	7	1	1
+S	Sc3	Barama River Carib	5.00	-59.00	Northern South America	1930	6	4	2	5	1	1
+S	Sc4	Guahibo	5.00	-69.00	Western South America	1950	6	6	9	3	1	1
+S	Sc5	Wapishana	3.00	-60.00	Brazil	1900	6	6	10	7	1	1
+S	Sc6	Saramaccan 	4.00	-56.00	Northern South America	1920	6	3	1	7	3	1
+S	Sc7	Yabarana	5.00	-66.00	Northern South America	1950	6	6	9	7	1	1
+S	Sc8	Piaroa	5.00	-67.00	Northern South America	1950	3	6	9	2	1	1
+S	Sc9	Curripaco	5.00	-67.00	Northern South America	1950	6	6	10	7	1	1
+S	Sd1	Munduruku	-6.00	-58.00	Brazil	1950	6	1	9	7	1	1
+S	Sd2	Tapirapé	-11.00	-52.00	Brazil	1930	6	6	9	7	1	1
+S	Sd3	Palikur	3.00	-52.00	Brazil	1920	6	1	8	7	1	1
+S	Sd4	Guaica	2.00	-65.00	Northern South America	1950	8	6	2	2	1	1
+S	Sd5	Sateré Mawé	-4.00	-57.00	Brazil	1950	6	1	8	7	1	1
+S	Sd6	Shiriana	4.00	-63.00	Northern South America	1960	3	6	9	2	1	1
+S	Sd7	Wai-wai	1.00	-59.00	Brazil	1950	6	6	2	7	1	1
+S	Sd8	Sanema	4.00	-66.00	Northern South America	1950	3	6	2	2	1	1
+S	Sd9	Yanomami	2.00	-65.00	Northern South America	1965	6	6	10	4	1	1
+S	Se1	Sirionó	-16.00	-64.00	Western South America	1940	3	6	9	2	1	1
+S	Se10	Cocama	1.00	-79.00	Western South America	1670	2	1	10	7	1	2
+S	Se11	Chácobo	-12.00	-67.00	Western South America	1960	6	6	10	7	1	1
+S	Se12	Tucano	0.00	-70.00	Brazil	1950	9	1	8			
+S	Se2	Ticuna	-3.00	-70.00	Western South America	1940	8	1	8	7	1	1
+S	Se3	Shuar	-3.00	-78.00	Western South America	1930	6	6	6	5	1	1
+S	Se4	Yagua	-3.00	-72.00	Western South America	1940	3	1	8	7	1	1
+S	Se5	Cubeo	1.00	-71.00	Western South America	1940	6	1	8	4	1	1
+S	Se6	Witoto	-1.00	-74.00	Western South America	1910	6	1	8	7	1	1
+S	Se7	Camba	-18.00	-63.00	Western South America	1950	9	6	6			3
+S	Se8	Amahuaca	-10.00	-72.00	Brazil	1950	6	6	10	5	1	1
+S	Se9	Shipibo-Conibo	-9.00	-74.00	Western South America	1920	2	6	9	7	1	1
+S	Sf1	Inca	-13.00	-72.00	Western South America	1530	7	6	10	7	5	5
+S	Sf2	Aymara	-16.00	-69.00	Western South America	1940	6	1	8	7		2
+S	Sf3	Chachi	1.00	-79.00	Western South America	1910	6	6	10	5	1	1
+S	Sf4	U'wa	7.00	-72.00	Western South America	1950	6	6	10	7	1	1
+S	Sf5	Páez	3.00	-76.00	Western South America	1900	7	6	6	5	2	
+S	Sf6	Muisca	5.00	-72.00	Western South America	1540	7	6	10	7	3	4
+S	Sf7	Asháninka	-8.00	-75.00	Western South America	1900	6	6	10	7	1	1
+S	Sf8	Piro	-12.00	-73.00	Western South America	1950	9	6	9			
+S	Sf9	Uru	-16.00	-69.00	Western South America	1930	2	6	6			
+S	Sg1	Yahgan	-55.02	-68.98	Southern South America	1870	2	6	10	1	1	1
+S	Sg2	Mapuche	-39.00	-68.00	Southern South America	1880	7	1	8	6	1	2
+S	Sg3	Ona	-54.00	-69.00	Southern South America	1880	3	6	10	1	1	1
+S	Sg4	Tehuelche	-46.00	-70.00	Southern South America	1870	3	6	10	1	1	1
+S	Sg5	Alacaluf	-52.00	-74.00	Southern South America	1900	2	6	2	1	1	1
+S	Sh1	Wichí	-24.00	-63.00	Southern South America	1860	2	6	9	2	1	1
+S	Sh2	Terena	-21.00	-58.00	Southern South America	1850	8	5	2	2	1	4
+S	Sh3	Abipón	-29.00	-61.00	Southern South America	1800	3	6	6	1	1	4
+S	Sh4	Kadiwéu	-22.00	-57.00	Brazil	1940	3	6	9	1	2	4
+S	Sh5	Choroti	-22.00	-62.00	Southern South America	1910	1	6	9	4	1	1
+S	Sh6	Chamacoco	-20.00	-59.00	Southern South America	1890	1	6	9	1	2	4
+S	Sh7	Guaraní	-20.00	-63.00	Western South America	1900	6	6	10	7	2	
+S	Sh8	Toba	-25.00	-60.00	Southern South America	1964	8	6	2	3	2	1
+S	Sh9	Lengua	-23.00	-59.00	Southern South America	1890	3	6	9	1	1	1
+S	Si1	Bororo	-16.00	-55.00	Brazil	1920	3	3	5	2	2	1
+S	Si10	Kuikuru	-13.00	-54.00	Brazil	1950	6	6	10	7	1	1
+S	Si2	Trumai	-12.00	-53.00	Brazil	1930	6	4	10	7	1	1
+S	Si3	Bacairi	-14.00	-55.00	Brazil	1940	6	4	10	7	1	1
+S	Si4	Nambikwara	-12.00	-59.00	Brazil	1940	1	6	10	2	1	1
+S	Si5	Kamayurá	-12.00	-54.00	Brazil	1940	6	6	10	4	1	1
+S	Si6	Guató	-19.00	-58.00	Western South America	1900	1	6	6	2	1	1
+S	Si7	Paresi	-15.00	-58.00	Brazil	1910	6	6	9	7	1	1
+S	Si8	Umotina	-15.00	-57.00	Brazil	1940	6	6	10	7	1	1
+S	Si9	Aweti	-12.00	-54.00	Brazil	1940	9	6				
+S	Sj1	Carajá	-12.00	-50.00	Brazil	1950	2	6	9	3	1	1
+S	Sj10	Cayua	-26.00	-54.00	Southern South America	1950	6	6	10	7	1	1
+S	Sj11	Shavante	-14.00	-52.00	Brazil	1958	1	1	9	2	1	1
+S	Sj2	Sherente	-9.00	-48.00	Brazil	1850	6	1	8	7	1	1
+S	Sj3	Aweikoma	-28.00	-50.00	Brazil	1910	3	6	2	1	1	1
+S	Sj4	Canela	-7.00	-45.00	Brazil	1930	6	3	5	2	1	1
+S	Sj5	Aimoré	-18.00	-42.00	Brazil	1880	1	6		1	1	1
+S	Sj6	Tenetehara	-3.00	-46.00	Brazil	1930	6	6	9	7	1	1
+S	Sj7	Apinaye	-6.00	-49.00	Brazil	1920	6		5	7	1	1
+S	Sj8	Tupinambá	-8.00	-35.00	Brazil	1600	6	6	9	7	2	2
+S	Sj9	Kayapo	-8.00	-52.00	Brazil	1950	6	6	9	2	1	1
+S	ch12	Bashkir	54.00	56.00	Eastern Europe	1899	8	7	10	7	5	5
+S	ch13	Besermyan	58.00	52.00	Eastern Europe	1894	7	7	8	7	5	2
+S	ch14	Chuvash	57.00	53.00	Eastern Europe	1908	7	6	10	7	5	2
+S	ch15	Erzya Mordvins	53.00	50.00	Eastern Europe	1895	7	7	10	7	5	3
+S	ch16	Estonians	59.00	26.00	Eastern Europe	1908	7	6	10	5	5	5
+S	ch17	Gagauz	45.44	29.32	Eastern Europe	1894	7	6	6	7	5	2
+S	ch18	Ingrians	59.00	29.00	Eastern Europe	1927	7	6	10	7	5	2
+S	ch19	Karelians	64.00	33.00	Eastern Europe	1874	8	7	8	7	5	2
+S	ch20	Kazan tatar	55.00	50.00	Eastern Europe	1910	7	6	10	7	5	5
+S	ch21	Latvians	57.00	24.00	Eastern Europe	1881	7	6	10	5	5	5
+S	ch22	Lithuanian Karaim	55.00	23.00	Eastern Europe	1895	6	6	10	8	5	5
+S	ch23	Lithuanian Tatar	55.00	24.00	Eastern Europe	1905	6	6	10	8	5	5
+S	ch24	Livs	57.00	23.00	Eastern Europe	1847	2	6	10	7	5	2
+S	ch25	Moldovans	47.00	29.00	Eastern Europe	1900	7	6	10	7	5	5
+S	ch26	Udmurt	57.00	53.00	Eastern Europe	1890	7	7	10	7	5	2
+S	ch27	Veps	61.00	35.00	Eastern Europe	1900	7	6	10	7	5	2
+S	ch28	Votes	59.00	29.00	Eastern Europe	1900	7	6	10	7	5	2
+S	ec12	Nganasan	72.00	90.00	Siberia	1930	3	4	8	1	1	1
+S	ec13	Itelmen	54.98	161.79	Russian Far East	1710	2	6	8	7	1	1
+S	ec14	Ungazikmit	64.00	-173.00	Russian Far East	1880	2	6	8	7	1	2
+S	ec15	Mansi	63.00	62.00	Siberia	1880	2	7	10	3	1	1
+S	ec16	Evenk	55.00	112.00	Siberia	1890	3	1	10	1	1	1
+S	ec17	Negidal	52.00	134.00	Russian Far East	1890	2	1	10	2	1	2
+S	ec18	Ulch	50.00	136.00	Russian Far East	1890	2	1	10	3	1	2
+S	ec19	Orok	54.01	142.71	Russian Far East	1890	2	1	10	2	1	1
+S	ec20	Oroch	51.00	138.00	Russian Far East	1890	2	1	10	3	1	1
+S	ec21	Udihe	47.00	136.00	Russian Far East	1890	8	1	10	3	1	1

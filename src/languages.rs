@@ -108,6 +108,59 @@ pub struct Dot {
     pub y: f64,
 }
 
+/// The points (lat, lon in radians, by index) on screen and on the near
+/// side of the globe. Shared with the societies layer.
+pub fn screen_dots(cam: &Camera, points: impl Iterator<Item = (f64, f64)>) -> Vec<Dot> {
+    points
+        .enumerate()
+        .filter(|(_, (lat, lon))| facing(cam, *lat, *lon) > 0.0)
+        .filter_map(|(index, (lat, lon))| {
+            let (x, y) = cam.project(lat, lon)?;
+            let inside = (-DOT_PX..cam.width + DOT_PX).contains(&x)
+                && (-DOT_PX..cam.height + DOT_PX).contains(&y);
+            inside.then_some(Dot { index, x, y })
+        })
+        .collect()
+}
+
+/// Names right of their dots: clear of `avoid` and of each other, in dot
+/// order, at most [`MAX_NAMES`]. Shared with the societies layer.
+pub fn place_names(
+    cam: &Camera,
+    dots: &[Dot],
+    name: impl Fn(usize) -> String,
+    avoid: &[Rect],
+) -> Vec<(usize, f64, f64)> {
+    let mut placed = avoid.to_vec();
+    let mut out = Vec::new();
+    for d in dots {
+        let text = name(d.index);
+        let (x, y) = (d.x + DOT_PX + 4.0, d.y);
+        let r = (x, y - 7.0, x + 6.2 * text.chars().count() as f64, y + 7.0);
+        if r.2 > cam.width || r.1 < 0.0 || r.3 > cam.height {
+            continue;
+        }
+        if placed.iter().any(|p| overlaps(&r, p)) {
+            continue;
+        }
+        placed.push(r);
+        out.push((d.index, x, y));
+        if out.len() == MAX_NAMES {
+            break;
+        }
+    }
+    out
+}
+
+/// The dot nearest a screen point, within [`HIT_PX`].
+pub fn nearest(dots: &[Dot], x: f64, y: f64) -> Option<usize> {
+    dots.iter()
+        .map(|d| ((d.x - x).hypot(d.y - y), d.index))
+        .filter(|(dist, _)| *dist <= HIT_PX)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, i)| i)
+}
+
 impl Languages {
     /// CSS color of a language's dot.
     pub fn color(&self, i: usize) -> &'static str {
@@ -129,54 +182,20 @@ impl Languages {
 
     /// The languages on screen and on the near side of the globe.
     pub fn dots(&self, cam: &Camera) -> Vec<Dot> {
-        self.list
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| facing(cam, l.lat, l.lon) > 0.0)
-            .filter_map(|(index, l)| {
-                let (x, y) = cam.project(l.lat, l.lon)?;
-                let inside = (-DOT_PX..cam.width + DOT_PX).contains(&x)
-                    && (-DOT_PX..cam.height + DOT_PX).contains(&y);
-                inside.then_some(Dot { index, x, y })
-            })
-            .collect()
+        screen_dots(cam, self.list.iter().map(|l| (l.lat, l.lon)))
     }
 
-    /// Names right of their dots when zoomed in: clear of `avoid` and of
-    /// each other, in data order (stable as the view moves), at most
-    /// [`MAX_NAMES`]. `(index, x, y)` with `x, y` where the text starts.
+    /// Names right of their dots when zoomed in (see [`place_names`]).
     pub fn names(&self, cam: &Camera, dots: &[Dot], avoid: &[Rect]) -> Vec<(usize, f64, f64)> {
         if cam.alt > NAMES_BELOW_ALT {
             return Vec::new();
         }
-        let mut placed = avoid.to_vec();
-        let mut out = Vec::new();
-        for d in dots {
-            let name = &self.list[d.index].name;
-            let (x, y) = (d.x + DOT_PX + 4.0, d.y);
-            let r = (x, y - 7.0, x + 6.2 * name.chars().count() as f64, y + 7.0);
-            if r.2 > cam.width || r.1 < 0.0 || r.3 > cam.height {
-                continue;
-            }
-            if placed.iter().any(|p| overlaps(&r, p)) {
-                continue;
-            }
-            placed.push(r);
-            out.push((d.index, x, y));
-            if out.len() == MAX_NAMES {
-                break;
-            }
-        }
-        out
+        place_names(cam, dots, |i| self.list[i].name.clone(), avoid)
     }
 
     /// The dot nearest a screen point, within [`HIT_PX`].
     pub fn hit(&self, dots: &[Dot], x: f64, y: f64) -> Option<usize> {
-        dots.iter()
-            .map(|d| ((d.x - x).hypot(d.y - y), d.index))
-            .filter(|(dist, _)| *dist <= HIT_PX)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, i)| i)
+        nearest(dots, x, y)
     }
 
     /// HUD text: "Basque (isolate, Eurasia)".

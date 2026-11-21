@@ -252,7 +252,11 @@
       /* The historical view has no terminator, layer picker or country panel. */
       body.history-on #scrubber, body.history-on #sun-toggle, body.history-on #layers,
       body.history-on #legend, body.history-on #country-info { display: none !important; }
-      body.view-space #years, body.view-space #history-toggle, body.view-space #languages-toggle { display: none !important; }
+      body.view-space #years, body.view-space #history-toggle, body.view-space #languages-toggle, body.view-space #societies-toggle { display: none !important; }
+      #societies-toggle[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); }
+      #ethno-var { display: block; width: 100%; margin: 0 0 8px; min-height: 30px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
+      #ethno-var[hidden] { display: none; }
+      #ethno-var option { background: #10151f; color: var(--text); }
       #languages-toggle[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); }
       #history-toggle[aria-pressed="true"] { background: rgba(214, 163, 92, 0.45); }
       body { --scrub: 0px; }
@@ -650,6 +654,7 @@
       </button>
       <button id="measure-toggle" aria-pressed="false" title="Measure distance (M)" aria-label="Measure distance">&#128207;</button>
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
+      <button id="societies-toggle" aria-pressed="false" title="Societies: D-PLACE's Ethnographic Atlas (K)" aria-label="Societies">&#128101;</button>
       <button id="languages-toggle" aria-pressed="false" title="Languages: Glottolog, colored by family (W)" aria-label="Languages">&#128483;</button>
       <button id="history-toggle" aria-pressed="false" title="Historical borders, 3400 BCE to 2024 (H)" aria-label="Historical borders">&#127963;</button>
       <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
@@ -679,6 +684,7 @@
     </div>
     <div id="legend" class="panel" role="region" aria-label="Map legend" hidden>
       <h2 id="legend-title"></h2>
+      <select id="ethno-var" aria-label="Variable shown" hidden></select>
       <ul id="legend-list"></ul>
       <p id="legend-note"></p>
     </div>

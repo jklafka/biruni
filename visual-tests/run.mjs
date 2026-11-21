@@ -127,6 +127,10 @@ const VIEWS = [
   // names.
   { name: "languages-africa", hash: "#2,20,9000&languages=1" },
   { name: "languages-caucasus", hash: "#42.5,44,1800&languages=1" },
+  // Societies (D-PLACE): subsistence across the Americas, and descent in
+  // Africa.
+  { name: "societies-americas", hash: "#10,-80,14000&societies=EA042" },
+  { name: "societies-africa", hash: "#0,20,9000&societies=EA043" },
   // Historical borders (Cliopatria): Europe in 1914, the Mediterranean in
   // 117 (the Roman Empire at its largest), the world in 1500, a phone.
   { name: "history-1914", hash: "#48,12,4500&year=1914" },
@@ -335,6 +339,9 @@ try {
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
       // Country data (hover, political fills) loads last; the app flags the canvas.
       await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
+      if (/[&#]societies=/.test(view.hash)) {
+        await page.waitForSelector("#globe[data-societies]", { state: "attached", timeout: 30_000 });
+      }
       if (/[&#]languages=1/.test(view.hash)) {
         await page.waitForSelector("#globe[data-languages]", { state: "attached", timeout: 30_000 });
       }

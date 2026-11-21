@@ -116,7 +116,16 @@ pub const GLOTTOLOG: Credit = Credit {
     text: "Languages, their locations and families. Hammarström, Harald, Robert Forkel, Martin Haspelmath and Sebastian Bank, Glottolog 5.4, Leipzig: Max Planck Institute for Evolutionary Anthropology.",
 };
 
-pub const ALL: [&Credit; 11] = [
+pub const DPLACE: Credit = Credit {
+    id: "dplace",
+    name: "D-PLACE 3.3 (Ethnographic Atlas)",
+    license: "CC BY-NC 4.0 (non-commercial)",
+    license_url: "https://creativecommons.org/licenses/by-nc/4.0/",
+    source_url: "https://github.com/D-PLACE/dplace-cldf",
+    text: "Societies and their coded practices (subsistence, descent, residence, settlement, political levels, class). D-PLACE (Kirby et al. 2016), from the Ethnographic Atlas (Murdock et al.). Each society is coded for one time and place; the dots mark where it was studied.",
+};
+
+pub const ALL: [&Credit; 12] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -128,6 +137,7 @@ pub const ALL: [&Credit; 11] = [
     &PLANET_MAPS,
     &CLIOPATRIA,
     &GLOTTOLOG,
+    &DPLACE,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -152,8 +162,16 @@ pub fn solar_credits() -> Vec<&'static Credit> {
     ]
 }
 
-/// `base` plus the credits of the overlays that are on (the languages).
-pub fn with_overlays(mut base: Vec<&'static Credit>, languages: bool) -> Vec<&'static Credit> {
+/// `base` plus the credits of the overlays that are on (languages,
+/// societies).
+pub fn with_overlays(
+    mut base: Vec<&'static Credit>,
+    languages: bool,
+    societies: bool,
+) -> Vec<&'static Credit> {
+    if societies {
+        base.insert(0, &DPLACE);
+    }
     if languages {
         base.insert(0, &GLOTTOLOG);
     }
@@ -176,7 +194,16 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
         // The solar view's own data (it shares the Blue Marble with the Earth).
         // Optional overlays add their own (see `with_overlays`).
-        .filter(|c| ![JPL_HORIZONS.id, PLANET_MAPS.id, CLIOPATRIA.id, GLOTTOLOG.id].contains(&c.id))
+        .filter(|c| {
+            ![
+                JPL_HORIZONS.id,
+                PLANET_MAPS.id,
+                CLIOPATRIA.id,
+                GLOTTOLOG.id,
+                DPLACE.id,
+            ]
+            .contains(&c.id)
+        })
         .collect()
 }
 

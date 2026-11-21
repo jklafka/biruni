@@ -162,6 +162,18 @@ class Validate(unittest.TestCase):
         files["stars.bin"] = swapped
         self.assertProblem(self.problems(files), "sorted")
 
+    def test_societies(self):
+        files = self.good()
+        good = "MAPSSOCIETIES1\nV\tEA1\tT\t1=A|2=B\nS\tx\tName\t1.0\t2.0\tR\t1900\t2\n"
+        files["societies.tsv"] = good.encode()
+        self.assertEqual(self.problems(files), [])
+        for bad, text in ((good.replace("\t2\n", "\t3\n"), "unknown code"),
+                          (good.replace("1.0", "100.0"), "out of range"),
+                          (good.replace("MAPSSOCIETIES1", "X"), "header"),
+                          ("MAPSSOCIETIES1\nV\tEA1\tT\t1=A\n", "no societies")):
+            files["societies.tsv"] = bad.encode()
+            self.assertProblem(self.problems(files), text)
+
     def test_history(self):
         hist = (ROOT / "scripts" / "testdata" / "tiny_history.bin").read_bytes()
         files = self.good()

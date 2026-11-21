@@ -9,6 +9,8 @@ mod credits;
 mod credits_ui;
 mod data;
 mod ephemeris;
+mod ethnography;
+mod ethnography_app;
 mod geo;
 mod geodesic;
 mod healpix;
@@ -210,6 +212,11 @@ struct App {
     langs: languages_app::LanguagesState,
     langs_button: HtmlElement,
     search: Option<search_ui::Search>,
+    /// The societies layer (`&societies=<variable>`), its button and the
+    /// variable menu in the legend.
+    societies: ethnography_app::SocietiesState,
+    societies_button: HtmlElement,
+    ethno_select: web_sys::HtmlSelectElement,
     title_hint: HtmlElement,
     /// Labels of the first three HUD rows, which differ per view.
     hud_labels: [HtmlElement; 3],
@@ -744,7 +751,7 @@ impl App {
     /// Link to the live view (not `location.hash`, which is debounced).
     fn current_share_url(&self) -> String {
         let page = self.window.location().href().unwrap_or_default();
-        if self.view != View::Earth || self.history.on || self.langs.on {
+        if self.view != View::Earth || self.history.on || self.langs.on || self.societies.on {
             let base = page.split('#').next().unwrap_or("");
             return format!("{base}{}", self.view_hash());
         }
@@ -766,6 +773,9 @@ impl App {
         }
         if self.langs.on {
             hash.push_str("&languages=1");
+        }
+        if self.societies.on {
+            hash.push_str(&format!("&societies={}", self.societies.variable));
         }
         if self.view == View::Solar {
             if let (false, Some(t)) = (self.sun_on, self.sun_pin) {
@@ -1465,15 +1475,9 @@ impl App {
                 .draw(&self.camera, self.morph.blend(), pw, ph, dpr, scale);
             self.drawn_scale = scale;
             if !morphing {
-                let marks = self.language_marks();
-                self.overlay.draw(
-                    &self.camera,
-                    &self.measure,
-                    marks.as_ref().map(|m| m.as_marks()).as_ref(),
-                    pw,
-                    ph,
-                    dpr,
-                );
+                let marks = self.language_marks().or_else(|| self.society_marks());
+                self.overlay
+                    .draw(&self.camera, &self.measure, marks.as_ref(), pw, ph, dpr);
             }
             self.hash_stale = true;
         }
@@ -1564,7 +1568,9 @@ impl App {
             let (lat, lon) = self.cursor.and_then(|(x, y)| self.camera.pick(x, y))?;
             self.history_at(lat.to_degrees(), lon.to_degrees())
         });
-        let language = self.cursor.and_then(|(x, y)| self.language_at(x, y));
+        let language = self
+            .cursor
+            .and_then(|(x, y)| self.language_at(x, y).or_else(|| self.society_at(x, y)));
         let country = match &polity {
             _ if language.is_some() => language.as_deref().unwrap_or("—"),
             Some(p) => p.as_deref().unwrap_or("—"),
@@ -1936,6 +1942,9 @@ fn start() -> Result<(), JsValue> {
         langs: languages_app::LanguagesState::default(),
         langs_button: element(&doc, "languages-toggle")?,
         search: None,
+        societies: ethnography_app::SocietiesState::default(),
+        societies_button: element(&doc, "societies-toggle")?,
+        ethno_select: element(&doc, "ethno-var")?,
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,
@@ -1984,6 +1993,10 @@ fn start() -> Result<(), JsValue> {
         }
         if languages_app::parse_hash(&initial_hash) {
             a.set_languages(true);
+        }
+        if let Some(v) = ethnography_app::parse_hash(&initial_hash) {
+            a.societies.variable = v;
+            a.set_societies(true);
         }
         a.sync_solar_select();
     }
@@ -2505,6 +2518,10 @@ fn start() -> Result<(), JsValue> {
                     {
                         a.toggle_sun()
                     }
+                    "k" | "K" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let on = !a.societies.on;
+                        a.set_societies(on);
+                    }
                     "w" | "W" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         let on = !a.langs.on;
                         a.set_languages(on);
@@ -2640,6 +2657,13 @@ fn start() -> Result<(), JsValue> {
                 if langs != a.langs.on {
                     a.set_languages(langs);
                 }
+                let societies = ethnography_app::parse_hash(&hash);
+                if let Some(v) = &societies {
+                    a.set_society_variable(v);
+                }
+                if societies.is_some() != a.societies.on {
+                    a.set_societies(societies.is_some());
+                }
                 if let Some(cam) = solar::parse_hash_orbit(&hash) {
                     let (w, h) = (a.solar_cam.look.width, a.solar_cam.look.height);
                     a.solar_cam = cam;
@@ -2676,7 +2700,7 @@ fn start() -> Result<(), JsValue> {
     }
 
     // On-screen buttons.
-    let buttons: [(&str, Action); 16] = [
+    let buttons: [(&str, Action); 17] = [
         ("compass", |a| {
             a.send(Event::NorthUp);
         }),
@@ -2744,6 +2768,10 @@ fn start() -> Result<(), JsValue> {
         ("view-earth", |a| a.set_view(View::Earth)),
         ("view-sky", |a| a.set_view(View::Sky)),
         ("view-solar", |a| a.set_view(View::Solar)),
+        ("societies-toggle", |a| {
+            let on = !a.societies.on;
+            a.set_societies(on)
+        }),
         ("languages-toggle", |a| {
             let on = !a.langs.on;
             a.set_languages(on)
@@ -2768,6 +2796,7 @@ fn start() -> Result<(), JsValue> {
 
     solar_app::wire(&app)?;
     history_app::wire(&app, &doc)?;
+    ethnography_app::wire(&app, &doc)?;
 
     // Place search: fly to the chosen place.
     {

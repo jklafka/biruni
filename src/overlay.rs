@@ -42,24 +42,24 @@ pub struct SolarLabels<'a> {
     pub marker_labels: &'a [(usize, f64, f64)],
 }
 
-/// The languages layer's dots and names (see `languages.rs`).
-pub struct LanguageMarks<'a> {
-    pub langs: &'a crate::languages::Languages,
-    pub dots: &'a [crate::languages::Dot],
-    /// (language index, x, y): where each shown name starts.
-    pub names: &'a [(usize, f64, f64)],
+/// Dots and names of a point layer (languages, societies), CSS pixels.
+#[derive(Default)]
+pub struct PointMarks {
+    /// (x, y, CSS color).
+    pub dots: Vec<(f64, f64, &'static str)>,
+    /// (x, y, text): where each shown name starts.
+    pub names: Vec<(f64, f64, String)>,
 }
 
-/// Dots with a dark rim, so every family color reads on any layer, then the
-/// names.
-fn draw_languages(ctx: &CanvasRenderingContext2d, l: &LanguageMarks) {
+/// Dots with a dark rim, so every color reads on any layer, then the names.
+fn draw_points(ctx: &CanvasRenderingContext2d, m: &PointMarks) {
     use crate::languages::DOT_PX;
     ctx.set_line_width(1.0);
     ctx.set_stroke_style_str("rgba(0,0,0,0.6)");
-    for d in l.dots {
+    for (x, y, color) in &m.dots {
         ctx.begin_path();
-        let _ = ctx.arc(d.x, d.y, DOT_PX, 0.0, std::f64::consts::TAU);
-        ctx.set_fill_style_str(l.langs.color(d.index));
+        let _ = ctx.arc(*x, *y, DOT_PX, 0.0, std::f64::consts::TAU);
+        ctx.set_fill_style_str(color);
         ctx.fill();
         ctx.stroke();
     }
@@ -69,10 +69,9 @@ fn draw_languages(ctx: &CanvasRenderingContext2d, l: &LanguageMarks) {
     ctx.set_line_width(3.0);
     ctx.set_stroke_style_str("rgba(0,0,0,0.7)");
     ctx.set_fill_style_str("#f2f4f8");
-    for (i, x, y) in l.names {
-        let name = &l.langs.list[*i].name;
-        let _ = ctx.stroke_text(name, *x, *y);
-        let _ = ctx.fill_text(name, *x, *y);
+    for (x, y, text) in &m.names {
+        let _ = ctx.stroke_text(text, *x, *y);
+        let _ = ctx.fill_text(text, *x, *y);
     }
 }
 
@@ -303,7 +302,7 @@ impl Overlay {
         &mut self,
         cam: &Camera,
         measure: &Measure,
-        langs: Option<&LanguageMarks>,
+        points: Option<&PointMarks>,
         px: u32,
         py: u32,
         dpr: f64,
@@ -314,7 +313,7 @@ impl Overlay {
             self.has_content = true; // resizing cleared it; redraw below
         }
         let measuring = measure.active || !measure.points().is_empty();
-        let show = measuring || langs.is_some_and(|l| !l.dots.is_empty());
+        let show = measuring || points.is_some_and(|l| !l.dots.is_empty());
         if !show && !self.has_content {
             return;
         }
@@ -325,8 +324,8 @@ impl Overlay {
         if !show {
             return;
         }
-        if let Some(l) = langs {
-            draw_languages(ctx, l);
+        if let Some(m) = points {
+            draw_points(ctx, m);
         }
         if !measuring {
             return;
