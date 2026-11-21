@@ -162,6 +162,14 @@ class Validate(unittest.TestCase):
         files["stars.bin"] = swapped
         self.assertProblem(self.problems(files), "sorted")
 
+    def test_space(self):
+        space = (ROOT / "scripts" / "testdata" / "tiny_space.bin").read_bytes()
+        files = self.good()
+        files["space.bin"] = space
+        self.assertEqual(self.problems(files), [])
+        files["space.bin"] = space[:-4]
+        self.assertProblem(self.problems(files), "space data")
+
     def test_constellations(self):
         figs = (ROOT / "scripts" / "testdata" / "tiny_constellations.bin").read_bytes()
         files = self.good()

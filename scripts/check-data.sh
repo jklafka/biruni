@@ -16,6 +16,7 @@ python3 scripts/test_publish_data.py > /dev/null 2>&1 || { python3 scripts/test_
 python3 scripts/test_tile_pack.py > /dev/null 2>&1 || { python3 scripts/test_tile_pack.py; exit 1; }
 python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test_convert_stars.py; exit 1; }
 python3 scripts/test_convert_constellations.py > /dev/null 2>&1 || { python3 scripts/test_convert_constellations.py; exit 1; }
+python3 scripts/test_fetch_space.py > /dev/null 2>&1 || { python3 scripts/test_fetch_space.py; exit 1; }
 # Lockfile schema and license keys only; no network.
 python3 scripts/data_sources.py check > /dev/null || { python3 scripts/data_sources.py check; exit 1; }
 
@@ -48,6 +49,7 @@ for f in assets/data/*; do
   [ "$name" = tilesets.json ] && continue
   [ "$name" = stars.bin ] && continue
   [ "$name" = constellations.bin ] && continue
+  [ "$name" = space.bin ] && continue
   [ -e "$tmp/$name" ] || drift+=("$name (committed but no longer generated)")
 done
 
@@ -96,6 +98,11 @@ if any(s[2] > cs.MAG_LIMIT + 0.05 for s in stars):
 if problems:
     sys.exit("assets/data/stars.bin: " + ", ".join(problems))
 PY
+
+# Spacecraft and small bodies (scripts/fetch_space.py): a snapshot from JPL
+# that deploys replace with fresh data. CI does not ask JPL; check that the
+# snapshot decodes and looks sane.
+python3 scripts/fetch_space.py --check assets/data/space.bin || drift+=("space.bin (see above; refetch with scripts/fetch_space.py)")
 
 # Constellation figures (scripts/convert_constellations.py), from pinned
 # Stellarium and HYG downloads: all 88, decodable.
