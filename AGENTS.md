@@ -16,6 +16,7 @@ These are the guidelines for AI coding agents (and humans) working in this repos
 | `src/sky.rs`, `src/sky_render.rs`, `src/shaders/sky.frag` | The sky view: browser-free sky camera (azimuth, altitude, field of view), equatorial and horizontal coordinates, the stereographic projection, gestures and the `&view=sky&look=` hash; its WebGL passes; and the background shader (sky, ground, horizon, RA/Dec grid) |
 | `src/constellations.rs` | Constellation figures of the sky view: decoding `constellations.bin`, great-circle screen polylines split at the horizon and trimmed short of their stars, and names placed clear of the star names |
 | `src/stars.rs`, `src/shaders/stars.vert`, `src/shaders/stars.frag` | Stars of the sky view: decoding `stars.bin`, B-V colors, the magnitude limit for a field of view, bright star name labels; drawn as additive points with the sky projection |
+| `src/solar.rs` | Browser-free solar system view math: solar space (heliocentric J2000 ecliptic, au), body positions (planets from `ephemeris`, the Earth and Moon about their barycenter), the orbit camera with fly-to, sphere outlines on screen, camera-relative coordinates for the GPU, and the `&view=solar&orbit=` hash |
 | `src/ephemeris.rs` | Browser-free planet positions from JPL's approximate Keplerian elements (Standish and Williams), 3000 BC to 3000 AD; tests compare against JPL Horizons. The sky view places the Sun and planets with it |
 | `src/healpix.rs`, `src/survey.rs`, `src/shaders/survey.vert`, `src/shaders/survey.frag` | The sky view's deep-sky survey (DSS color HiPS, off by default): HEALPix nested geometry (faces, tiles, cones; the tile image orientation was measured against bright stars), and the browser-free planner (mirror URLs, which order to stream, the Allsky atlas and tile meshes, LRU tile cache); drawn with the stencil so each part of the sky comes once from the finest layer there |
 | `src/moon.rs`, `src/sky_bodies.rs` | The Moon (Meeus ch. 47 / ELP-2000/82 main terms, precessed to J2000, topocentric parallax; tests against Meeus's example and JPL Horizons, 0.013° worst from 1900 to 2100), and the sky view's Sun, Moon and planets: directions, sizes, the Moon's phase, screen placement and labels, and the daylight factor from the Sun's altitude |
@@ -128,6 +129,12 @@ The sky view (`src/sky.rs`, `src/shaders/sky.frag`) has its own conventions, doc
 - The sky camera looks down −Z with no roll (the zenith is up the screen); its view is an azimuth, altitude and field of view across the shorter axis.
 - The projection is stereographic about the view center: a direction at angle `a` lands at `tan(a/2) / tan(fov/4)` half-short-axes from the center. `SkyCamera::project` / `pick` and `sky.frag` must agree.
 - The observer stands at the Earth camera's center at the time scrubber's time. Catalog positions are J2000 and not precessed (about 0.36° off by 2026).
+
+The solar system view (`src/solar.rs`) has its own, tested there:
+
+- Solar space is heliocentric, in au, on the J2000 ecliptic, and mirrors equatorial space: +Y is the north ecliptic pole, the equinox (ecliptic longitude 0) is on +Z and longitude 90° on +X. `solar::ecl_to_solar` maps `ephemeris`' axes into it, and `solar::SOLAR_TO_EQ` (a turn of the obliquity about +Z) into the sky view's equatorial space, so stars and the Milky Way are drawn with the sky view's code.
+- The camera looks at a focus (its target's center) from `dist` au, along an azimuth and altitude in solar space defined exactly as the sky camera's are in horizontal space, with no roll (ecliptic north up). It stands at `focus - dist * look`. The projection is the sky view's stereographic one, so a sphere's outline is an exact circle (`SolarCamera::disk`).
+- Positions stay `f64` on the CPU. Subtract the camera position in `f64` (`SolarCamera::relative`) and send only camera-relative, camera-space values to the GPU as `f32`; never put a heliocentric coordinate in a shader (an `f32` resolves 30 au only to about 270 km).
 
 Flat projections follow the same discipline, in `src/projection.rs` (forward and inverse) and the GLSL in `globe.frag` (inverse), `morph.vert` and `line.vert` (forward):
 

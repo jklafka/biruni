@@ -11,8 +11,7 @@ use crate::moon;
 use crate::sky::{local_sidereal_time, mul, Mat3, SkyCamera};
 use crate::stars::{overlaps, Rect};
 
-/// Kilometers in an astronomical unit.
-const AU_KM: f64 = 149_597_870.7;
+use crate::solar::AU_KM;
 /// Mean radius of the Sun, km.
 const SUN_RADIUS_KM: f64 = 696_000.0;
 
