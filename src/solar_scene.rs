@@ -517,7 +517,10 @@ pub mod objects {
         for (i, o) in cat.objects.iter().enumerate() {
             let lines = match &o.track {
                 Track::Samples { points, .. } => {
-                    let Some((t0, t1)) = o.span() else { continue };
+                    // Only while the spacecraft itself is shown.
+                    let Some((t0, t1)) = o.span().filter(|&(a, b)| (a..=b).contains(&unix)) else {
+                        continue;
+                    };
                     let f = |s: f64| o.position(t0 + s * (t1 - t0)).unwrap_or([0.0; 3]);
                     screen_path(cam, eye, &f, points.len().clamp(2, 400), occ)
                 }
@@ -871,6 +874,11 @@ mod tests {
         let m = objects::markers(&cat, &cam, eye, unix, &[]);
         assert!(m.iter().all(|mk| mk.kind != crate::space::Kind::Spacecraft));
         assert!(m.iter().any(|mk| cat.objects[mk.index].name == "Ceres"));
+        // Nor are their trajectories drawn.
+        let p = objects::paths(&cat, &cam, eye, unix, &[]);
+        assert!(p
+            .iter()
+            .all(|(i, _)| cat.objects[*i].kind != crate::space::Kind::Spacecraft));
     }
 
     #[test]
