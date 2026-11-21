@@ -125,7 +125,16 @@ pub const DPLACE: Credit = Credit {
     text: "Societies and their coded practices (subsistence, descent, residence, settlement, political levels, class). D-PLACE (Kirby et al. 2016), from the Ethnographic Atlas (Murdock et al.). Each society is coded for one time and place; the dots mark where it was studied.",
 };
 
-pub const ALL: [&Credit; 12] = [
+pub const MERDITH: Credit = Credit {
+    id: "merdith2021",
+    name: "Merdith et al. (2021) plate model",
+    license: "CC BY 4.0",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    source_url: "https://doi.org/10.5281/zenodo.13635864",
+    text: "Deep time: present-day coastlines moved with their plates back to 1000 million years ago. Merdith, A. S., et al. (2021), Extending full-plate tectonic models into deep time, Earth-Science Reviews 214, model v1.2.4 (EarthByte). The shapes are today's coastlines, not past shorelines, and longitudes before about 320 Ma are not constrained.",
+};
+
+pub const ALL: [&Credit; 13] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -138,6 +147,7 @@ pub const ALL: [&Credit; 12] = [
     &CLIOPATRIA,
     &GLOTTOLOG,
     &DPLACE,
+    &MERDITH,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -178,6 +188,12 @@ pub fn with_overlays(
     base
 }
 
+/// The credits of the deep time view: the plate model (the modern data is
+/// not shown).
+pub fn paleo_credits() -> Vec<&'static Credit> {
+    vec![&MERDITH]
+}
+
 /// The credits of the historical borders view: the modern base map and
 /// Cliopatria.
 pub fn history_credits() -> Vec<&'static Credit> {
@@ -201,6 +217,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
                 CLIOPATRIA.id,
                 GLOTTOLOG.id,
                 DPLACE.id,
+                MERDITH.id,
             ]
             .contains(&c.id)
         })

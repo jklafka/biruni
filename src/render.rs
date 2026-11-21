@@ -1578,6 +1578,79 @@ impl Renderer {
         Ok(())
     }
 
+    /// Replace only the coastlines (deep time's, or the modern ones back).
+    pub fn set_coast_lines(&mut self, coast: &crate::lines::LineLevels) -> Result<(), JsValue> {
+        if self.ctx.is_lost() {
+            return Ok(());
+        }
+        let Some(gpu) = &mut self.lines else {
+            return Ok(());
+        };
+        let fresh = upload_levels(&self.gl, &self.line_pass, coast)?;
+        for b in std::mem::replace(&mut gpu.coast, fresh) {
+            self.gl.delete_vertex_array(Some(&b.vao));
+            self.gl.delete_buffer(Some(&b.buf));
+        }
+        Ok(())
+    }
+
+    /// Replace the land mask with `pixels` (R8, `width x width/2`, 255 for
+    /// land) and drop the glacier mask: the deep time view's continents.
+    /// `upload_map` puts the modern ones back. No-op before the map data.
+    pub fn upload_land_mask(&mut self, pixels: &[u8], width: usize) -> Result<(), JsValue> {
+        if self.ctx.is_lost() || !self.has_map {
+            return Ok(());
+        }
+        let gl = &self.gl;
+        let height = width / 2;
+        let levels = 32 - (width as u32).leading_zeros() as i32;
+        let tex = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.tex_storage_2d(GL::TEXTURE_2D, levels, GL::R8, width as i32, height as i32);
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            0,
+            0,
+            width as i32,
+            height as i32,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(pixels),
+        )?;
+        gl.generate_mipmap(GL::TEXTURE_2D);
+        gl.tex_parameteri(
+            GL::TEXTURE_2D,
+            GL::TEXTURE_MIN_FILTER,
+            GL::LINEAR_MIPMAP_LINEAR as i32,
+        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+        // No ice in deep time: a 1x1 empty mask.
+        let ice = gl.create_texture().ok_or("failed to create texture")?;
+        gl.bind_texture(GL::TEXTURE_2D, Some(&ice));
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::R8 as i32,
+            1,
+            1,
+            0,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(&[0]),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+        gl.delete_texture(Some(&self.map));
+        gl.delete_texture(Some(&self.ice));
+        self.map = tex;
+        self.ice = ice;
+        Ok(())
+    }
+
     /// Make sure the line target matches the canvas size.
     fn ensure_target(&mut self, w: i32, h: i32) -> Result<(), JsValue> {
         ensure_line_target(&self.gl, &mut self.target, w, h)

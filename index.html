@@ -231,6 +231,32 @@
         gap: 4px 8px;
         padding: 8px 12px;
       }
+      #ages {
+        left: 16px;
+        bottom: 16px;
+        width: min(380px, calc(100vw - 86px));
+        pointer-events: auto;
+        font-variant-numeric: tabular-nums;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 4px 8px;
+        padding: 8px 12px;
+      }
+      #ages label { color: var(--muted); }
+      #ages input[type="range"] { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: #7fc28a; touch-action: pan-y; }
+      #ages .val { text-align: right; white-space: nowrap; min-width: 9em; }
+      #age-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+      #age-row button { min-width: 44px; height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+      #age-row button:hover { background: rgba(40, 56, 88, 0.85); }
+      #age-row button:focus-visible, #ages input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      #age-note { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+      body.paleo-on #scrubber, body.paleo-on #sun-toggle, body.paleo-on #layers, body.paleo-on #legend,
+      body.paleo-on #country-info, body.paleo-on #search, body.paleo-on #languages-toggle,
+      body.paleo-on #societies-toggle, body.paleo-on #hud-country-row { display: none !important; }
+      body.view-space #ages, body.view-space #paleo-toggle { display: none !important; }
+      body.paleo-on:not(.view-space) { --scrub: 104px; }
+      #paleo-toggle[aria-pressed="true"] { background: rgba(127, 194, 138, 0.45); }
       #years label { color: var(--muted); }
       #years input[type="range"] { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: #d6a35c; touch-action: pan-y; }
       #years .val { text-align: right; white-space: nowrap; min-width: 6.5em; }
@@ -621,6 +647,18 @@
         <span id="year-note">Cliopatria (Seshat)</span>
       </div>
     </div>
+    <div id="ages" class="panel" role="group" aria-label="Age of the reconstructed continents" hidden>
+      <label for="age-range">Age</label>
+      <input id="age-range" type="range" min="0" max="1000" step="1" value="750" aria-label="Age, from 1000 million years ago to the present" />
+      <span id="age-val" class="val">250 Ma</span>
+      <div id="age-row">
+        <button id="age-back" title="10 million years earlier (&lt;)" aria-label="10 million years earlier">&minus;10</button>
+        <button id="age-prev" title="A million years earlier (,)" aria-label="A million years earlier">&minus;1</button>
+        <button id="age-next" title="A million years later (.)" aria-label="A million years later">+1</button>
+        <button id="age-fwd" title="10 million years later (&gt;)" aria-label="10 million years later">+10</button>
+        <span id="age-note">Merdith et al. 2021</span>
+      </div>
+    </div>
     <div id="layers" class="panel" role="group" aria-label="Map layer">
       <button id="layer-political" aria-pressed="true" title="Political (1)">Political</button>
       <button id="layer-mono" aria-pressed="false" aria-label="Monochrome" title="Monochrome (2)">Mono<span class="wide-only">chrome</span></button>
@@ -656,6 +694,7 @@
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
       <button id="societies-toggle" aria-pressed="false" title="Societies: D-PLACE's Ethnographic Atlas (K)" aria-label="Societies">&#128101;</button>
       <button id="languages-toggle" aria-pressed="false" title="Languages: Glottolog, colored by family (W)" aria-label="Languages">&#128483;</button>
+      <button id="paleo-toggle" aria-pressed="false" title="Deep time: the continents back to 1000 million years ago (A)" aria-label="Deep time">&#129429;</button>
       <button id="history-toggle" aria-pressed="false" title="Historical borders, 3400 BCE to 2024 (H)" aria-label="Historical borders">&#127963;</button>
       <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
       <button id="figures-toggle" aria-pressed="true" title="Constellations (C)" aria-label="Constellation figures">&#10022;</button>

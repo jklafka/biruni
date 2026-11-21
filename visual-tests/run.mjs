@@ -131,6 +131,10 @@ const VIEWS = [
   // Africa.
   { name: "societies-americas", hash: "#10,-80,14000&societies=EA042" },
   { name: "societies-africa", hash: "#0,20,9000&societies=EA043" },
+  // Deep time (Merdith et al. 2021): Pangaea at 250 Ma, and the present
+  // (which must look like today's coastlines, colored by continent).
+  { name: "paleo-pangaea", hash: "#0,10,20000&ma=250" },
+  { name: "paleo-present", hash: "#20,10,20000&ma=0" },
   // Historical borders (Cliopatria): Europe in 1914, the Mediterranean in
   // 117 (the Roman Empire at its largest), the world in 1500, a phone.
   { name: "history-1914", hash: "#48,12,4500&year=1914" },
@@ -336,7 +340,10 @@ try {
       });
     } else {
       // Labels load after the map; the app flags the canvas once they are drawn.
-      await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
+      // Deep time shows no place names, so the label layer never flags.
+      if (!/[&#]ma=/.test(view.hash)) {
+        await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
+      }
       // Country data (hover, political fills) loads last; the app flags the canvas.
       await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
       if (/[&#]societies=/.test(view.hash)) {
@@ -344,6 +351,9 @@ try {
       }
       if (/[&#]languages=1/.test(view.hash)) {
         await page.waitForSelector("#globe[data-languages]", { state: "attached", timeout: 30_000 });
+      }
+      if (/[&#]ma=/.test(view.hash)) {
+        await page.waitForSelector("#globe[data-ma]", { state: "attached", timeout: 30_000 });
       }
       if (/[&#]year=/.test(view.hash)) {
         // The year's polities replace the countries once they are drawn.

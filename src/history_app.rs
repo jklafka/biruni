@@ -88,6 +88,9 @@ impl App {
         }
         self.year_ui.show(on, self.history.year);
         if on && !was {
+            if self.paleo.on {
+                self.set_paleo(false);
+            }
             // The terminator has no place here; the political style does.
             if self.sun_on {
                 self.toggle_sun();
@@ -205,7 +208,7 @@ impl App {
     }
 
     /// Put the modern countries, borders and names back.
-    fn restore_modern(&mut self) {
+    pub(crate) fn restore_modern(&mut self) {
         let width = self.renderer.ids_width();
         if let Some(ids) = self.ids.clone() {
             if let Err(e) = self.renderer.upload_country_ids(&ids, width) {
