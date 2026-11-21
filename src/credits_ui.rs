@@ -5,7 +5,6 @@
 //! button. All text goes in with `textContent`.
 
 use crate::credits;
-use crate::view::Layer;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, HtmlElement};
 
@@ -40,17 +39,14 @@ impl CreditsPanel {
     }
 
     /// Rebuild the list for the shown layer.
-    pub fn show_layer(&self, layer: Layer) {
-        self.show(credits::visible_credits(layer));
-    }
-
     /// Rebuild the list for the sky view (with the survey, if shown).
     pub fn show_sky(&self, survey: bool) {
         self.show(credits::sky_credits(survey));
     }
 
-    pub fn show_history(&self) {
-        self.show(credits::history_credits());
+    /// An explicit list (the Earth view with its overlays).
+    pub fn show_list(&self, list: Vec<&'static credits::Credit>) {
+        self.show(list);
     }
 
     pub fn show_solar(&self) {

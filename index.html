@@ -252,7 +252,8 @@
       /* The historical view has no terminator, layer picker or country panel. */
       body.history-on #scrubber, body.history-on #sun-toggle, body.history-on #layers,
       body.history-on #legend, body.history-on #country-info { display: none !important; }
-      body.view-space #years, body.view-space #history-toggle { display: none !important; }
+      body.view-space #years, body.view-space #history-toggle, body.view-space #languages-toggle { display: none !important; }
+      #languages-toggle[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); }
       #history-toggle[aria-pressed="true"] { background: rgba(214, 163, 92, 0.45); }
       body { --scrub: 0px; }
       body:has(#scrubber:not([hidden])) { --scrub: 118px; }
@@ -649,6 +650,7 @@
       </button>
       <button id="measure-toggle" aria-pressed="false" title="Measure distance (M)" aria-label="Measure distance">&#128207;</button>
       <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
+      <button id="languages-toggle" aria-pressed="false" title="Languages: Glottolog, colored by family (W)" aria-label="Languages">&#128483;</button>
       <button id="history-toggle" aria-pressed="false" title="Historical borders, 3400 BCE to 2024 (H)" aria-label="Historical borders">&#127963;</button>
       <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
       <button id="figures-toggle" aria-pressed="true" title="Constellations (C)" aria-label="Constellation figures">&#10022;</button>

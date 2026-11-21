@@ -108,6 +108,7 @@ impl App {
             }
         }
         self.credits_for_layer();
+        self.sync_legend();
         self.update_hover();
         self.redraw.mark_render();
         self.redraw.mark_hud();
@@ -116,11 +117,7 @@ impl App {
 
     /// Credits for what the Earth view shows now.
     pub(crate) fn credits_for_layer(&mut self) {
-        if self.history.on {
-            self.credits.show_history();
-        } else {
-            self.credits.show_layer(self.layers_state.shown());
-        }
+        self.credits.show_list(self.earth_credits());
     }
 
     pub(crate) fn set_year(&mut self, year: i64) {

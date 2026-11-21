@@ -10,6 +10,14 @@
       "license": "cliopatria"
     },
     {
+      "name": "glottolog-v54-languages",
+      "url": "https://raw.githubusercontent.com/glottolog/glottolog-cldf/84977fcab99ddca540550ba99984a32e908a7fcf/cldf/languages.csv",
+      "version": "5.4 (glottolog-cldf 84977fc)",
+      "sha256": "ecadbfd440f3d0c28182f676b7e49c6e38fd3d40774c7ae3d90bf28ca137fe90",
+      "size": 2486351,
+      "license": "glottolog"
+    },
+    {
       "name": "hyg-v44",
       "url": "https://codeberg.org/astronexus/hyg/media/commit/53e3df311869e813ace5f1ad2ec4ce909f13256c/data/hyg/CURRENT/hyg_v44.csv.gz",
       "version": "4.4 (codeberg astronexus/hyg 53e3df3)",

@@ -123,6 +123,10 @@ const VIEWS = [
   // From Sydney at 03:00 local (2024-12-31 16:00 UTC) with a 150-degree
   // field and no constellation figures.
   { name: "sky-south-no-figures", hash: "#-33.9,151.2,800&t=1735660800&view=sky&look=180,60,150&figures=off" },
+  // Languages (Glottolog): Africa wide, and the Caucasus close enough for
+  // names.
+  { name: "languages-africa", hash: "#2,20,9000&languages=1" },
+  { name: "languages-caucasus", hash: "#42.5,44,1800&languages=1" },
   // Historical borders (Cliopatria): Europe in 1914, the Mediterranean in
   // 117 (the Roman Empire at its largest), the world in 1500, a phone.
   { name: "history-1914", hash: "#48,12,4500&year=1914" },
@@ -331,6 +335,9 @@ try {
       await page.waitForSelector("#labels[data-ready]", { state: "attached", timeout: 30_000 });
       // Country data (hover, political fills) loads last; the app flags the canvas.
       await page.waitForSelector("#globe[data-countries]", { state: "attached", timeout: 30_000 });
+      if (/[&#]languages=1/.test(view.hash)) {
+        await page.waitForSelector("#globe[data-languages]", { state: "attached", timeout: 30_000 });
+      }
       if (/[&#]year=/.test(view.hash)) {
         // The year's polities replace the countries once they are drawn.
         await page.waitForSelector("#globe[data-year]", { state: "attached", timeout: 30_000 });

@@ -107,7 +107,16 @@ pub const CLIOPATRIA: Credit = Credit {
     text: "Historical borders, 3400 BCE to 2024: polities from Cliopatria v0.2.1 (Bennett et al. 2025, Scientific Data), simplified and recolored. These maps are one version of the territory past polities held; borders, names and dates are often uncertain.",
 };
 
-pub const ALL: [&Credit; 10] = [
+pub const GLOTTOLOG: Credit = Credit {
+    id: "glottolog",
+    name: "Glottolog 5.4",
+    license: "CC BY 4.0",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    source_url: "https://github.com/glottolog/glottolog-cldf",
+    text: "Languages, their locations and families. Hammarström, Harald, Robert Forkel, Martin Haspelmath and Sebastian Bank, Glottolog 5.4, Leipzig: Max Planck Institute for Evolutionary Anthropology.",
+};
+
+pub const ALL: [&Credit; 11] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -118,6 +127,7 @@ pub const ALL: [&Credit; 10] = [
     &JPL_HORIZONS,
     &PLANET_MAPS,
     &CLIOPATRIA,
+    &GLOTTOLOG,
 ];
 
 /// The credits of the sky view; the survey's only while it is shown.
@@ -142,6 +152,14 @@ pub fn solar_credits() -> Vec<&'static Credit> {
     ]
 }
 
+/// `base` plus the credits of the overlays that are on (the languages).
+pub fn with_overlays(mut base: Vec<&'static Credit>, languages: bool) -> Vec<&'static Credit> {
+    if languages {
+        base.insert(0, &GLOTTOLOG);
+    }
+    base
+}
+
 /// The credits of the historical borders view: the modern base map and
 /// Cliopatria.
 pub fn history_credits() -> Vec<&'static Credit> {
@@ -157,7 +175,8 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
         // The solar view's own data (it shares the Blue Marble with the Earth).
-        .filter(|c| c.id != JPL_HORIZONS.id && c.id != PLANET_MAPS.id && c.id != CLIOPATRIA.id)
+        // Optional overlays add their own (see `with_overlays`).
+        .filter(|c| ![JPL_HORIZONS.id, PLANET_MAPS.id, CLIOPATRIA.id, GLOTTOLOG.id].contains(&c.id))
         .collect()
 }
 
