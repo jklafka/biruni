@@ -125,6 +125,15 @@ pub const GLOTTOLOG: Credit = Credit {
     text: "Languages, their locations and families. Hammarström, Harald, Robert Forkel, Martin Haspelmath and Sebastian Bank, Glottolog 5.4, Leipzig: Max Planck Institute for Evolutionary Anthropology.",
 };
 
+pub const GRAMBANK: Credit = Credit {
+    id: "grambank",
+    name: "Grambank 1.0.3",
+    license: "CC BY 4.0",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    source_url: "https://github.com/grambank/grambank",
+    text: "Grammar features of the languages layer's \"Color by\" menu. Skirgård, Hedvig, et al. (2023), Grambank reveals the importance of genealogical constraints on linguistic diversity and highlights the impact of language loss, Science Advances 9(16).",
+};
+
 pub const DPLACE: Credit = Credit {
     id: "dplace",
     name: "D-PLACE 3.3 (Ethnographic Atlas)",
@@ -143,7 +152,7 @@ pub const MERDITH: Credit = Credit {
     text: "Deep time: present-day coastlines moved with their plates back to 1000 million years ago. Merdith, A. S., et al. (2021), Extending full-plate tectonic models into deep time, Earth-Science Reviews 214, model v1.2.4 (EarthByte). The shapes are today's coastlines, not past shorelines, and longitudes before about 320 Ma are not constrained.",
 };
 
-pub const ALL: [&Credit; 14] = [
+pub const ALL: [&Credit; 15] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -156,6 +165,7 @@ pub const ALL: [&Credit; 14] = [
     &PLANET_MAPS,
     &CLIOPATRIA,
     &GLOTTOLOG,
+    &GRAMBANK,
     &DPLACE,
     &MERDITH,
 ];
@@ -193,6 +203,7 @@ pub fn with_overlays(
         base.insert(0, &DPLACE);
     }
     if languages {
+        base.insert(0, &GRAMBANK);
         base.insert(0, &GLOTTOLOG);
     }
     base
@@ -227,6 +238,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
                 PLANET_MAPS.id,
                 CLIOPATRIA.id,
                 GLOTTOLOG.id,
+                GRAMBANK.id,
                 DPLACE.id,
                 MERDITH.id,
             ]

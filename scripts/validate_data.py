@@ -65,7 +65,6 @@ PALETTE_SIZE = 6
 TSV_SCHEMAS = {
     "places.tsv": ("MAPSPLACES1", 8, 3, 4),
     "labels.tsv": ("MAPSLABELS1", 7, 2, 3),
-    "languages.tsv": ("MAPSLANGS1", 7, 3, 4),
     "paleo_rotations.tsv": ("MAPSROT1", 6, 2, 3),
 }
 # name -> (width, height) the renderer expects
@@ -444,11 +443,52 @@ def check_societies(data):
     return rows
 
 
+def check_languages(data):
+    """languages.tsv (scripts/convert_glottolog.py, src/languages.rs): V lines
+    (id, title, question, codes), then L lines with seven fields and one
+    known code (or nothing) per variable. Returns the language count."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Bad("invalid UTF-8") from None
+    if not text.endswith("\n"):
+        raise Bad("missing final newline")
+    lines = text[:-1].split("\n")
+    if lines[0] != "MAPSLANGS2":
+        raise Bad("header is not MAPSLANGS2")
+    codes, rows = [], 0
+    for number, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if f[0] == "V" and len(f) == 5 and not rows:
+            pairs = [p.split("=", 1) for p in f[4].split("|")]
+            if not f[2] or not all(len(p) == 2 and p[0].isdigit() and p[1] for p in pairs):
+                raise Bad(f"line {number}: bad variable")
+            codes.append({p[0] for p in pairs})
+        elif f[0] == "L" and len(f) == 8 + len(codes) and f[2]:
+            try:
+                lat, lon = float(f[4]), float(f[5])
+            except ValueError:
+                raise Bad(f"line {number}: bad coordinates") from None
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise Bad(f"line {number}: coordinates out of range")
+            for v, known in zip(f[8:], codes):
+                if v and v not in known:
+                    raise Bad(f"line {number}: unknown code {v}")
+            rows += 1
+        else:
+            raise Bad(f"line {number}: not a V or L line of the right width")
+    if not rows:
+        raise Bad("no languages")
+    return rows
+
+
 def check_format(name, data):
     """Features in a file, or raise Bad."""
     ext = Path(name).suffix
     if name == "societies.tsv":
         return check_societies(data)
+    if name == "languages.tsv":
+        return check_languages(data)
     if ext == ".bin":
         return decode_bin(data)
     if ext == ".tsv":

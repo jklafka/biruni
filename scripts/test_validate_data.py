@@ -174,6 +174,19 @@ class Validate(unittest.TestCase):
             files["societies.tsv"] = bad.encode()
             self.assertProblem(self.problems(files), text)
 
+    def test_languages(self):
+        files = self.good()
+        good = "MAPSLANGS2\nV\taes\tEndangerment\tQ\t1=A|6=B\nL\tx\tName\t\t1.0\t2.0\t\tEurasia\t6\n"
+        files["languages.tsv"] = good.encode()
+        self.assertEqual(self.problems(files), [])
+        for bad, text in ((good.replace("\t6\n", "\t3\n"), "unknown code"),
+                          (good.replace("1.0", "100.0"), "out of range"),
+                          (good.replace("MAPSLANGS2", "MAPSLANGS1"), "header"),
+                          (good.replace("\t6\n", "\n"), "right width"),
+                          ("MAPSLANGS2\nV\taes\tE\tQ\t1=A\n", "no languages")):
+            files["languages.tsv"] = bad.encode()
+            self.assertProblem(self.problems(files), text)
+
     def test_history(self):
         hist = (ROOT / "scripts" / "testdata" / "tiny_history.bin").read_bytes()
         files = self.good()

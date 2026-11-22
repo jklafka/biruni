@@ -229,6 +229,8 @@ struct App {
     societies: ethnography_app::SocietiesState,
     societies_button: HtmlElement,
     ethno_select: web_sys::HtmlSelectElement,
+    /// The languages layer's "Color by" menu in the legend.
+    lang_select: web_sys::HtmlSelectElement,
     title_hint: HtmlElement,
     /// Labels of the first three HUD rows, which differ per view.
     hud_labels: [HtmlElement; 3],
@@ -815,7 +817,8 @@ impl App {
             hash.push_str(&format!("&ma={}", self.paleo.ma));
         }
         if self.langs.on {
-            hash.push_str("&languages=1");
+            hash.push_str("&languages=");
+            hash.push_str(languages_app::hash_value(&self.langs.by));
         }
         if self.societies.on {
             hash.push_str(&format!("&societies={}", self.societies.variable));
@@ -2001,6 +2004,7 @@ fn start() -> Result<(), JsValue> {
         societies: ethnography_app::SocietiesState::default(),
         societies_button: element(&doc, "societies-toggle")?,
         ethno_select: element(&doc, "ethno-var")?,
+        lang_select: element(&doc, "lang-var")?,
         view_buttons: [
             element(&doc, "view-earth")?,
             element(&doc, "view-sky")?,
@@ -2051,7 +2055,8 @@ fn start() -> Result<(), JsValue> {
             a.paleo.on = false; // set_paleo acts on a change
             a.set_paleo(true);
         }
-        if languages_app::parse_hash(&initial_hash) {
+        if let Some(by) = languages_app::parse_hash(&initial_hash) {
+            a.langs.by = by;
             a.set_languages(true);
         }
         if let Some(v) = ethnography_app::parse_hash(&initial_hash) {
@@ -2755,8 +2760,11 @@ fn start() -> Result<(), JsValue> {
                     a.set_paleo(ma.is_some());
                 }
                 let langs = languages_app::parse_hash(&hash);
-                if langs != a.langs.on {
-                    a.set_languages(langs);
+                if let Some(by) = &langs {
+                    a.set_language_by(by);
+                }
+                if langs.is_some() != a.langs.on {
+                    a.set_languages(langs.is_some());
                 }
                 let societies = ethnography_app::parse_hash(&hash);
                 if let Some(v) = &societies {
@@ -2902,6 +2910,7 @@ fn start() -> Result<(), JsValue> {
     solar_app::wire(&app)?;
     history_app::wire(&app, &doc)?;
     ethnography_app::wire(&app, &doc)?;
+    languages_app::wire(&app, &doc)?;
     paleo_app::wire(&app, &doc)?;
 
     // Place search: fly to the chosen place.
