@@ -74,9 +74,9 @@
       #views button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       /* The sky and solar system views have no map layers, places, projections or measuring. */
       body.view-space #layers, body.view-space #search, body.view-space #legend,
-      body.view-space #measure, body.view-space #country-info, body.view-space #proj-button,
+      body.view-space #measure, body.view-space #country-info, body.view-space #proj-anchor,
       body.view-space #proj-menu, body.view-space #compass, body.view-space #measure-toggle,
-      body.view-space #sun-toggle, body.view-space #hud-country-row, body.view-space #hud-scale,
+      body.view-space #sun-toggle, body.view-space #overlay-anchor, body.view-space #hud-country-row, body.view-space #hud-scale,
       body.view-space #labels { display: none !important; }
       body:not(.view-sky) #figures-toggle, body:not(.view-sky) #survey-toggle { display: none; }
       body:not(.view-solar) #solar-target, body:not(.view-solar) #objects-toggle { display: none; }
@@ -151,6 +151,55 @@
       #controls #compass[aria-pressed="false"] { background: rgba(90, 130, 210, 0.6); }
       #controls #share svg { width: 18px; height: 18px; vertical-align: middle; }
       #controls button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
+      /* Groups in the column: view (projection, compass, zoom), then tools (share, measure, overlays), then reset. */
+      #controls #share, #controls #reset { margin-top: 8px; }
+      #overlay-anchor { position: relative; display: flex; }
+      /* The open menu covers the legend and the bottom panels. */
+      #controls:has(#overlay-menu:not([hidden])) { z-index: 6; }
+      #controls #overlay-button svg { width: 20px; height: 20px; vertical-align: middle; }
+      #controls #overlay-button[aria-expanded="true"] { background: rgba(40, 56, 88, 0.95); }
+      /* Something in the menu is on: show it on the button too. */
+      body:has(#overlay-menu button[aria-pressed="true"]) #controls #overlay-button { background: rgba(90, 130, 210, 0.6); }
+      #overlay-menu {
+        position: absolute;
+        right: 48px;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px;
+        min-width: 220px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      #overlay-menu[hidden] { display: none; }
+      #controls #overlay-menu button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: auto;
+        height: 38px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        text-align: left;
+        white-space: nowrap;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+      #controls #overlay-menu button:hover { background: rgba(40, 56, 88, 0.85); }
+      #controls #overlay-menu button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); }
+      #controls #overlay-menu #history-toggle[aria-pressed="true"] { background: rgba(214, 163, 92, 0.45); }
+      #controls #overlay-menu #paleo-toggle[aria-pressed="true"] { background: rgba(127, 194, 138, 0.45); }
+      #overlay-menu .ic { width: 22px; text-align: center; font-size: 17px; }
+      #overlay-menu kbd { margin-left: auto; padding-left: 12px; color: var(--muted); font: inherit; font-size: 11px; }
       #toast, #share-fallback {
         bottom: calc(150px + var(--scrub, 0px));
         left: 16px;
@@ -397,18 +446,31 @@
       #legend .sw { flex: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.35); }
       #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
       #controls #proj-button svg { width: 20px; height: 20px; vertical-align: middle; }
+      #proj-anchor { position: relative; display: flex; }
+      #controls:has(#proj-menu:not([hidden])) { z-index: 6; }
       #proj-menu {
-        right: 66px;
-        bottom: 324px; /* level with the projection button, which tops the column */
+        position: absolute;
+        right: 48px;
+        top: 0;
         display: flex;
         flex-direction: column;
         gap: 2px;
         padding: 4px;
-        pointer-events: auto;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
       #proj-menu[hidden] { display: none; }
-      #proj-menu button {
+      #controls #proj-menu button {
+        width: auto;
+        height: auto;
         min-height: 36px;
+        font-size: 14px;
+        white-space: nowrap;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         padding: 0 14px;
         border: 0;
         border-radius: 7px;
@@ -418,8 +480,8 @@
         text-align: left;
         cursor: pointer;
       }
-      #proj-menu button:hover { color: var(--text); }
-      #proj-menu button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
+      #controls #proj-menu button:hover { color: var(--text); }
+      #controls #proj-menu button[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); color: var(--text); }
       #proj-menu button:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #search {
         top: 88px;
@@ -689,9 +751,18 @@
       <div id="search-status" role="status" hidden></div>
     </div>
     <div id="controls">
-      <button id="proj-button" aria-haspopup="true" aria-expanded="false" aria-controls="proj-menu" title="Projection: Globe (P cycles, G globe)" aria-label="Map projection: Globe">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg>
-      </button>
+      <div id="proj-anchor">
+        <button id="proj-button" aria-haspopup="true" aria-expanded="false" aria-controls="proj-menu" title="Projection: Globe (P cycles, G globe)" aria-label="Map projection: Globe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg>
+        </button>
+        <div id="proj-menu" role="group" aria-label="Map projection" hidden>
+          <button data-proj="globe" aria-pressed="true">Globe</button>
+          <button data-proj="equirect" aria-pressed="false">Equirectangular</button>
+          <button data-proj="mercator" aria-pressed="false">Mercator</button>
+          <button data-proj="robinson" aria-pressed="false">Robinson</button>
+          <button data-proj="mollweide" aria-pressed="false">Mollweide</button>
+        </div>
+      </div>
       <button id="compass" aria-pressed="true" title="Compass: click to face north (F)" aria-label="Compass. Face north and lock north-up">
         <span id="compass-needle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 L17 12 L7 12 Z" fill="#e0524a"/><path d="M12 22 L17 12 L7 12 Z" fill="#9aa6bd"/><circle cx="12" cy="12" r="1.6" fill="#10151f"/></svg></span>
       </button>
@@ -701,22 +772,22 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
       </button>
       <button id="measure-toggle" aria-pressed="false" title="Measure distance (M)" aria-label="Measure distance">&#128207;</button>
-      <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night">&#127763;</button>
-      <button id="societies-toggle" aria-pressed="false" title="Societies: D-PLACE's Ethnographic Atlas (K)" aria-label="Societies">&#128101;</button>
-      <button id="languages-toggle" aria-pressed="false" title="Languages: Glottolog, colored by family (W)" aria-label="Languages">&#128483;</button>
-      <button id="paleo-toggle" aria-pressed="false" title="Deep time: the continents back to 1000 million years ago (A)" aria-label="Deep time">&#129429;</button>
-      <button id="history-toggle" aria-pressed="false" title="Historical borders, 3400 BCE to 2024 (H)" aria-label="Historical borders">&#127963;</button>
+      <div id="overlay-anchor">
+        <button id="overlay-button" aria-haspopup="true" aria-expanded="false" aria-controls="overlay-menu" title="Overlays: day/night, history, deep time, languages, societies" aria-label="Overlays">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 18 10 5 10-5" opacity="0.55"/></svg>
+        </button>
+        <div id="overlay-menu" role="group" aria-label="Overlays" hidden>
+          <button id="sun-toggle" aria-pressed="false" title="Day/night (N)" aria-label="Day and night"><span class="ic">&#127763;</span>Day and night<kbd>N</kbd></button>
+          <button id="history-toggle" aria-pressed="false" title="Historical borders, 3400 BCE to 2024 (H)" aria-label="Historical borders"><span class="ic">&#127963;</span>Historical borders<kbd>H</kbd></button>
+          <button id="paleo-toggle" aria-pressed="false" title="Deep time: the continents back to 1000 million years ago (A)" aria-label="Deep time"><span class="ic">&#129429;</span>Deep time<kbd>A</kbd></button>
+          <button id="languages-toggle" aria-pressed="false" title="Languages: Glottolog, colored by family (W)" aria-label="Languages"><span class="ic">&#128483;</span>Languages<kbd>W</kbd></button>
+          <button id="societies-toggle" aria-pressed="false" title="Societies: D-PLACE's Ethnographic Atlas (K)" aria-label="Societies"><span class="ic">&#128101;</span>Societies<kbd>K</kbd></button>
+        </div>
+      </div>
       <button id="survey-toggle" aria-pressed="false" title="Deep-sky survey: DSS photographs, loaded from ESA/NASA mirrors (D)" aria-label="Deep-sky survey">&#128301;</button>
       <button id="figures-toggle" aria-pressed="true" title="Constellations (C)" aria-label="Constellation figures">&#10022;</button>
       <button id="objects-toggle" aria-pressed="true" title="Spacecraft and small bodies: NASA/JPL (O)" aria-label="Spacecraft and small bodies">&#128752;</button>
       <button id="reset" title="Reset view (R)" aria-label="Reset view">⟲</button>
-    </div>
-    <div id="proj-menu" class="panel" role="group" aria-label="Map projection" hidden>
-      <button data-proj="globe" aria-pressed="true">Globe</button>
-      <button data-proj="equirect" aria-pressed="false">Equirectangular</button>
-      <button data-proj="mercator" aria-pressed="false">Mercator</button>
-      <button data-proj="robinson" aria-pressed="false">Robinson</button>
-      <button data-proj="mollweide" aria-pressed="false">Mollweide</button>
     </div>
     <div id="toast" class="panel" role="status" aria-live="polite" hidden></div>
     <div id="share-fallback" class="panel" hidden>
