@@ -58,6 +58,38 @@
       "license": "glottolog"
     },
     {
+      "name": "glottolog-v54-values",
+      "url": "https://raw.githubusercontent.com/glottolog/glottolog-cldf/84977fcab99ddca540550ba99984a32e908a7fcf/cldf/values.csv",
+      "version": "5.4 (glottolog-cldf 84977fc)",
+      "sha256": "f7f39813ed2ff80f71172a1f962b7ac19fb5306ac8aea55af168ad1219e330d7",
+      "size": 23387449,
+      "license": "glottolog"
+    },
+    {
+      "name": "grambank-v103-codes",
+      "url": "https://raw.githubusercontent.com/grambank/grambank/7ae000cf740f93cdb3e4ec67010668d6795337a9/cldf/codes.csv",
+      "version": "1.0.3 (grambank 7ae000c)",
+      "sha256": "cdcf17f53d56c6b58d52a76cb82c77fe6fd919abb3b9ac836c80f97c537f3263",
+      "size": 9404,
+      "license": "grambank"
+    },
+    {
+      "name": "grambank-v103-languages",
+      "url": "https://raw.githubusercontent.com/grambank/grambank/7ae000cf740f93cdb3e4ec67010668d6795337a9/cldf/languages.csv",
+      "version": "1.0.3 (grambank 7ae000c)",
+      "sha256": "25042195d5fb84806fba3877fd47ad47b4946c84e32a822adcf5bb4832a5b416",
+      "size": 403607,
+      "license": "grambank"
+    },
+    {
+      "name": "grambank-v103-values",
+      "url": "https://raw.githubusercontent.com/grambank/grambank/7ae000cf740f93cdb3e4ec67010668d6795337a9/cldf/values.csv",
+      "version": "1.0.3 (grambank 7ae000c)",
+      "sha256": "b5ad64804fb092496c4447938a1a5143f502c95e0799833db97b064c13d22363",
+      "size": 51545673,
+      "license": "grambank"
+    },
+    {
       "name": "hyg-v44",
       "url": "https://codeberg.org/astronexus/hyg/media/commit/53e3df311869e813ace5f1ad2ec4ce909f13256c/data/hyg/CURRENT/hyg_v44.csv.gz",
       "version": "4.4 (codeberg astronexus/hyg 53e3df3)",

@@ -129,6 +129,10 @@ const VIEWS = [
   // names.
   { name: "languages-africa", hash: "#2,20,9000&languages=1" },
   { name: "languages-caucasus", hash: "#42.5,44,1800&languages=1" },
+  // Colored by endangerment (Glottolog) in Africa, and by a Grambank
+  // feature (numeral classifiers) in East Asia.
+  { name: "languages-endangerment", hash: "#5,20,12000&languages=aes" },
+  { name: "languages-grambank", hash: "#20,110,9000&languages=GB057" },
   // Societies (D-PLACE): subsistence across the Americas, and descent in
   // Africa.
   { name: "societies-americas", hash: "#10,-80,14000&societies=EA042" },
