@@ -275,6 +275,12 @@
       #year-row button:hover { background: rgba(40, 56, 88, 0.85); }
       #year-row button:focus-visible, #years input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #year-note { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+      #year-row button.speed, #age-row button.speed { font-size: 12px; white-space: nowrap; min-width: 0; padding: 0 6px; }
+      #year-play[aria-pressed="true"], #age-play[aria-pressed="true"] { background: rgba(90, 130, 210, 0.6); }
+      #year-row button, #age-row button { flex: none; }
+      #year-note, #age-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      /* Narrow panels: the source note gives way to the play controls. */
+      @media (max-width: 520px) { #year-note, #age-note { display: none; } #year-row button, #age-row button { min-width: 36px; padding: 0 5px; } }
       /* The historical view has no terminator, layer picker or country panel. */
       body.history-on #scrubber, body.history-on #sun-toggle, body.history-on #layers,
       body.history-on #legend, body.history-on #country-info { display: none !important; }
@@ -640,10 +646,12 @@
       <input id="year-range" type="range" min="-3399" max="2024" step="1" value="1500" aria-label="Year" />
       <span id="year-val" class="val">1500</span>
       <div id="year-row">
+        <button id="year-play" aria-pressed="false" title="Play (T)" aria-label="Play">&#x25B6;&#xFE0E;</button>
         <button id="year-back" title="A century earlier (&lt;)" aria-label="A century earlier">&minus;100</button>
         <button id="year-prev" title="A year earlier (,)" aria-label="A year earlier">&minus;1</button>
         <button id="year-next" title="A year later (.)" aria-label="A year later">+1</button>
         <button id="year-fwd" title="A century later (&gt;)" aria-label="A century later">+100</button>
+        <button id="year-speed" class="speed" title="Play speed" aria-label="Play speed: 50 yr/s">50 yr/s</button>
         <span id="year-note">Cliopatria (Seshat)</span>
       </div>
     </div>
@@ -652,10 +660,12 @@
       <input id="age-range" type="range" min="0" max="1000" step="1" value="750" aria-label="Age, from 1000 million years ago to the present" />
       <span id="age-val" class="val">250 Ma</span>
       <div id="age-row">
+        <button id="age-play" aria-pressed="false" title="Play (T)" aria-label="Play">&#x25B6;&#xFE0E;</button>
         <button id="age-back" title="10 million years earlier (&lt;)" aria-label="10 million years earlier">&minus;10</button>
         <button id="age-prev" title="A million years earlier (,)" aria-label="A million years earlier">&minus;1</button>
         <button id="age-next" title="A million years later (.)" aria-label="A million years later">+1</button>
         <button id="age-fwd" title="10 million years later (&gt;)" aria-label="10 million years later">+10</button>
+        <button id="age-speed" class="speed" title="Play speed" aria-label="Play speed: 10 Myr/s">10 Myr/s</button>
         <span id="age-note">Merdith et al. 2021</span>
       </div>
     </div>

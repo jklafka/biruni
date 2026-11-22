@@ -94,9 +94,9 @@ One-time setup for the repository owner:
 | Switch between the Earth, the sky and the solar system | Earth / Sky / Solar system switch beside the title | same | `V` (`Shift`+`V` back) |
 | Societies (D-PLACE), colored by a practice | 👥 button; the menu in the legend picks the practice | same | `K` |
 | Languages (Glottolog), colored by family | 🗣 button | 🗣 button | `W` |
-| Deep time: the continents back to 1000 million years ago | 🦕 button; the age panel's slider and buttons | same | `A`; `,` `.` a million years, `<` `>` ten |
+| Deep time: the continents back to 1000 million years ago | 🦕 button; the age panel's slider and buttons; ▶ plays toward the present at the speed on the speed button (2, 10 or 50 million years a second) | same | `A`; `,` `.` a million years, `<` `>` ten; `T` plays and pauses |
 | Historical borders, 3400 BCE to 2024 | 🏛 button | 🏛 button | `H` |
-| Change the year (historical borders) | slider and −100 / −1 / +1 / +100 buttons | same | `,` `.` a year, `<` `>` a century |
+| Change the year (historical borders) | slider and −100 / −1 / +1 / +100 buttons; ▶ plays forward at the speed on the speed button (10, 50 or 250 years a second) | same | `,` `.` a year, `<` `>` a century; `T` plays and pauses |
 | Spacecraft and small bodies (solar system view) | satellite button | satellite button | `O` |
 | Fly to a body (solar system view) | tap or click it, or its name; the menu under the switch | tap it, or the menu | `0` Sun, `1`–`8` the planets in order, `9` the Moon |
 | Constellation figures and names (sky view) | ✦ button | ✦ button | `C` |

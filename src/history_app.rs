@@ -11,6 +11,7 @@
 //! of those calls [`App::history_reapply`].
 
 use crate::history::{self, Timeline};
+use crate::scrub::Stepper;
 use crate::view::Layer;
 use crate::{data, element, listen, App};
 use std::cell::RefCell;
@@ -24,6 +25,46 @@ pub struct YearUi {
     range: HtmlInputElement,
     value: HtmlElement,
     button: HtmlElement,
+    play: PlayUi,
+}
+
+/// Play rates of the year panel: years a second, and the speed button's text.
+pub const YEAR_RATES: [(f64, &str); 3] =
+    [(10.0, "10 yr/s"), (50.0, "50 yr/s"), (250.0, "250 yr/s")];
+
+/// A panel's play and speed buttons (the year and age panels).
+pub struct PlayUi {
+    play: HtmlElement,
+    speed: HtmlElement,
+}
+
+impl PlayUi {
+    pub fn new(doc: &Document, play: &str, speed: &str) -> Result<PlayUi, JsValue> {
+        Ok(PlayUi {
+            play: element(doc, play)?,
+            speed: element(doc, speed)?,
+        })
+    }
+
+    pub fn show(&self, s: &Stepper, speed_text: &str) {
+        let (on, label) = if s.on {
+            ("true", "Pause")
+        } else {
+            ("false", "Play")
+        };
+        let _ = self.play.set_attribute("aria-pressed", on);
+        let _ = self.play.set_attribute("aria-label", label);
+        let _ = self.play.set_attribute("title", &format!("{label} (T)"));
+        self.play.set_text_content(Some(if s.on {
+            "\u{23F8}\u{FE0E}"
+        } else {
+            "\u{25B6}\u{FE0E}"
+        }));
+        self.speed.set_text_content(Some(speed_text));
+        let _ = self
+            .speed
+            .set_attribute("aria-label", &format!("Play speed: {speed_text}"));
+    }
 }
 
 impl YearUi {
@@ -33,6 +74,7 @@ impl YearUi {
             range: element(doc, "year-range")?,
             value: element(doc, "year-val")?,
             button: element(doc, "history-toggle")?,
+            play: PlayUi::new(doc, "year-play", "year-speed")?,
         })
     }
 
@@ -67,6 +109,8 @@ pub struct HistoryState {
     prev_layer: Option<Layer>,
     /// The modern place names, to put back.
     pub modern_labels: Option<Vec<crate::labels::Label>>,
+    /// Play through the years.
+    pub play: Stepper,
 }
 
 impl HistoryState {
@@ -74,6 +118,7 @@ impl HistoryState {
         HistoryState {
             on: year.is_some(),
             year: year.unwrap_or(history::DEFAULT_YEAR),
+            play: Stepper::new(1),
             ..HistoryState::default()
         }
     }
@@ -105,6 +150,7 @@ impl App {
             self.history_reapply();
         }
         if !on && was {
+            self.set_year_playing(false);
             self.restore_modern();
             if let Some(l) = self.history.prev_layer.take() {
                 self.select_layer(l);
@@ -135,6 +181,43 @@ impl App {
     pub(crate) fn step_year(&mut self, n: i64) {
         let y = history::add_years(self.history.year, n);
         self.set_year(y);
+    }
+
+    /// Play or pause the years. Play from the last year starts over at the
+    /// first.
+    pub(crate) fn set_year_playing(&mut self, on: bool) {
+        if on && self.history.year >= history::YEAR_MAX {
+            self.set_year(history::YEAR_MIN);
+        }
+        self.history.play.set_on(on);
+        self.show_year_play();
+    }
+
+    pub(crate) fn cycle_year_speed(&mut self) {
+        self.history.play.cycle(YEAR_RATES.len());
+        self.show_year_play();
+    }
+
+    fn show_year_play(&self) {
+        let speed = YEAR_RATES[self.history.play.speed % YEAR_RATES.len()].1;
+        self.year_ui.play.show(&self.history.play, speed);
+    }
+
+    /// Called every Earth frame: while playing, move the year on; stop at
+    /// the last year.
+    pub(crate) fn history_play(&mut self, dt_ms: f64) {
+        if !self.history.on {
+            return;
+        }
+        let rate = YEAR_RATES[self.history.play.speed % YEAR_RATES.len()].0;
+        let n = self.history.play.steps(dt_ms, rate);
+        if n == 0 {
+            return;
+        }
+        self.set_year(history::add_years(self.history.year, n));
+        if self.history.year >= history::YEAR_MAX {
+            self.set_year_playing(false);
+        }
     }
 
     /// Apply the year again at the next frame (after the modern data was
@@ -266,5 +349,18 @@ pub fn wire(app: &Rc<RefCell<App>>, doc: &Document) -> Result<(), JsValue> {
             app.borrow_mut().step_year(step)
         })?;
     }
-    Ok(())
+    {
+        let button: HtmlElement = element(doc, "year-play")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            let mut a = app.borrow_mut();
+            let on = !a.history.play.on;
+            a.set_year_playing(on);
+        })?;
+    }
+    let button: HtmlElement = element(doc, "year-speed")?;
+    let app = app.clone();
+    listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+        app.borrow_mut().cycle_year_speed()
+    })
 }
