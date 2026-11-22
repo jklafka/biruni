@@ -277,7 +277,7 @@ impl Timeline {
     /// `rasterize` fills the world.
     pub fn fill_detail(&self, active: &[usize], f: &mut crate::id_detail::Filler) {
         for (pos, &ri) in active.iter().enumerate() {
-            let rings: Vec<&[[f64; 2]]> = self
+            let rings: Vec<&[[f32; 2]]> = self
                 .rings_of(&self.records[ri])
                 .map(|r| r.points.as_slice())
                 .collect();
