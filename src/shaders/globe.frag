@@ -28,7 +28,8 @@ uniform sampler2D u_idsDetail; // R8 country IDs of a lon/lat window around a cl
 uniform vec4 u_idWin;         // that window in u/v: u0, v0, du, dv; dv = 0 when there is none
 uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
 uniform vec3 u_densityRamp[5]; // population density (u_layer 6): color stops, low to high (view::DENSITY_RAMP)
-uniform vec3 u_theme[8];       // thematic layers (u_layer >= 3): color of class i, class 7 = no data (see thematic.rs)
+uniform vec3 u_theme[12];      // thematic layers (u_layer >= 3): color of class i, class 7 = no data (see thematic.rs); or the fill palette (u_fillTheme)
+uniform int u_fillTheme;      // 1 = political fills take u_theme instead of PALETTE (history by language family, history_lang.rs)
 uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads; fades out at close zoom only where no detail window covers the view
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
@@ -95,10 +96,11 @@ const vec3 PALETTE[6] = vec3[6](
     vec3(0.850, 0.650, 0.470)    // apricot
 );
 // Fill of country id: a political palette color, or on a thematic layer the
-// color of its class. u_idColor holds the index for whichever is shown.
+// color of its class, or a color of the fill palette. u_idColor holds the
+// index for whichever is shown.
 vec3 fillColor(int id) {
     int i = int(u_idColor[id >> 2][id & 3]);
-    return u_layer >= 3 ? u_theme[i] : PALETTE[i];
+    return (u_layer >= 3 || u_fillTheme == 1) ? u_theme[i] : PALETTE[i];
 }
 
 // The density ramp at t in 0..1, linear between its stops (view::density_color).

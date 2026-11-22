@@ -1,0 +1,379 @@
+MAPSHISTLANG1
+F	Indo-European
+F	Afro-Asiatic
+F	Sino-Tibetan
+F	Turkic
+F	Dravidian
+F	Mongolic
+F	Japonic
+F	Niger-Congo
+F	Austroasiatic
+F	Iroquoian
+F	Altaic
+F	Austronesian
+F	Isolate
+F	Kartvelian
+F	Tai-Kadai
+F	Saharan
+F	Otomanguean
+F	Quechuan
+F	Tungusic
+F	Songhay
+F	Aymaran
+P	(British Empire)	1706	1852	0	English
+P	(Carolingian Empire)	755	989	0	Latin
+P	(Chenla)	555	717	8	Old Khmer; Sanskrit
+P	(Delhi Sultanate)	1210	1528	0	Persian; Urdu
+P	(Dutch Republic)	1648	1795	0	Dutch
+P	(First French Empire)	1805	1814	0	French
+P	(Five Dynasties and Ten Kingdoms)	911	979	2	Chinese
+P	(French Consulate)	1800	1804	0	French
+P	(French Directory)	1796	1799	0	French
+P	(French First Republic)	1791	1795	0	French
+P	(Habsburg Monarchy)	1459	1805	0	German
+P	(Kingdom of Bohemia)	1314	1452	0	Czech
+P	(Kingdom of Bohemia)	1459	1528	0	Czech
+P	(Kingdom of England)	1066	1146	0	Latin; Anglo-Norman; Old English
+P	(Kingdom of France)	990	1332	0	French; Langues dOil; Occitan
+P	(Kingdom of France)	1333	1791	0	French
+P	(Merovingian Empire)	490	545	0	Old Frankish
+P	(Merovingian Empire)	546	717	0	Latin; Germanic
+P	(Spanish Empire)	1516	1717	0	Castilian Spanish
+P	(Spanish Empire)	1718	1814	0	Spanish
+P	Abbasid Caliphate	750	946	1	Arabic
+P	Abbasid Caliphate	1202	1259	1	Arabic
+P	Abbasid Caliphate/Buyid Dynasty	947	969	0,1	Persian; Arabic
+P	Achaemenid Empire	-550	-327	0,1,12	Old Persian; Aramaic; Elamite; Greek; Egyptian
+P	Adal Sultanate	1415	1546	1	Arabic; Harari; Argobba
+P	Akkadian Empire	-2250	-2101	1,12	Akkadian; Sumerian
+P	Angevin Empire	1147	1151	0	French; Langues dOil; Occitan
+P	Angevins	1126	1146	0	French; Langues dOil; Occitan
+P	Anurādhapura	-291	1017	0	Sinhala
+P	Aq Qoyunlu	1407	1501	0	Persian
+P	Ashanti Empire	1702	1897	7	Akan; Twi
+P	Ashikaga Shogunate	1344	1467	6	Middle Japanese
+P	Asuka Japan	540	709	6	Old Japanese
+P	Austria-Hungary	1868	1918	0	German
+P	Austrian Empire	1806	1867	0	German
+P	Ayutthaya Kingdom	1595	1768	14	Tai; Thai
+P	Ayyubid Sultanate	1177	1249	1	Arabic
+P	Babylonia	-1800	-1501	1	Amorite; Old Babylonian
+P	Babylonia	-1100	-901	1	Akkadian
+P	Babylonia	-900	-801		Mesopotamian Religions
+P	Bamana Empire	1713	1756	7	Bambara
+P	Bamana Empire	1769	1821	7	Bambara
+P	Bornu Empire	1385	1847	15,1	Kanuri; Kanembu; Arabic
+P	British Cape Colony	1796	1852	0	English
+P	British Ceylon	1796	1814	0	English
+P	British Colonial Empire	1706	1852	0	English
+P	British Empire	1757	1852	0	English
+P	Burgundian Kingdom	602	616	0	Latin; Germanic
+P	Burgundian Kingdom	644	660	0	Latin; Germanic
+P	Buyid Dynasty	936	946	0,1	Persian; Arabic
+P	Buyid Dynasty	970	1055	0,1	Persian; Arabic
+P	Byzantine Empire	633	1205	0	Greek
+P	Cao Wei	224	264	2	Chinese
+P	Capetian House of Anjou	1250	1332	0	French; Langues dOil; Occitan
+P	Capetian House of Anjou	1333	1384	0	French
+P	Carnatic Sultanate	1713	1802	0,4	Persian
+P	Chagatai Khanate	1294	1406	5	Middle Mongolian
+P	Chalukya Dynasty	555	754	0,4	Sanskrit; Kannada
+P	Chenla	555	717	8	Old Khmer; Sanskrit
+P	Chola Empire	850	1259	4	Tamil
+P	County of Anjou	990	1125	0	French; Langues dOil; Occitan
+P	County of Anjou	1294	1332	0	French; Langues dOil; Occitan
+P	County of Armagnac	1206	1332	0	French; Langues dOil; Occitan
+P	County of Armagnac	1333	1362	0	French
+P	County of Armagnac	1375	1496	0	French
+P	County of Artois	1241	1332	0	French; Langues dOil; Occitan
+P	County of Auvergne	1206	1332	0	French; Langues dOil; Occitan
+P	County of Auvergne	1333	1351	0	French
+P	County of Auvergne	1363	1406	0	French
+P	County of Auvergne	1440	1501	0	French
+P	County of Blôis	990	1332	0	French; Langues dOil; Occitan
+P	County of Blôis	1333	1401	0	French
+P	County of Boulogne	1188	1235	0	French; Langues dOil; Occitan
+P	County of Boulogne	1241	1259	0	French; Langues dOil; Occitan
+P	County of Béarn	1385	1452	0	French
+P	County of Champagne	990	1027	0	French; Langues dOil; Occitan
+P	County of Champagne	1040	1065	0	French; Langues dOil; Occitan
+P	County of Champagne	1094	1125	0	French; Langues dOil; Occitan
+P	County of Champagne	1152	1284	0	French; Langues dOil; Occitan
+P	County of Flanders	990	1332	0	French; Langues dOil; Occitan
+P	County of Flanders	1333	1384	0	French
+P	County of Foix	1236	1332	0	French; Langues dOil; Occitan
+P	County of Foix	1333	1555	0	French
+P	County of Maine	990	1055	0	French; Langues dOil; Occitan
+P	County of Maine	1066	1110	0	Latin; Anglo-Norman; Old English
+P	County of Maine	1450	1481	0	French
+P	County of Nevers	1010	1271	0	French; Langues dOil; Occitan
+P	County of Nevers	1285	1325	0	French; Langues dOil; Occitan
+P	County of Nevers	1407	1520	0	French
+P	County of Poitou	1206	1249	0	French; Langues dOil; Occitan
+P	County of Périgord	1206	1332	0	French; Langues dOil; Occitan
+P	County of Périgord	1333	1362	0	French
+P	County of Périgord	1385	1401	0	French
+P	County of Périgord	1440	1481	0	French
+P	County of Rouergue	990	1065	0	French; Langues dOil; Occitan
+P	County of Toulouse	990	1215	0	French; Langues dOil; Occitan
+P	County of Toulouse	1220	1226	0	French; Langues dOil; Occitan
+P	County of Toulouse	1236	1249	0	French; Langues dOil; Occitan
+P	County of Touraine	1206	1304	0	French; Langues dOil; Occitan
+P	County of Touraine	1363	1491	0	French
+P	County of Vermandois	990	1168	0	French; Langues dOil; Occitan
+P	County of Vermandois	1188	1215	0	French; Langues dOil; Occitan
+P	County of Vexin	990	1084	0	French; Langues dOil; Occitan
+P	Cuzco	1294	1401	20	Aymara; Puquina
+P	Dauphiné	1260	1332	0	French; Langues dOil; Occitan
+P	Dauphiné	1333	1351	0	French
+P	Duchy of Aquitaine	1206	1332	0	French; Langues dOil; Occitan
+P	Duchy of Aquitaine	1333	1362	0	French
+P	Duchy of Aquitaine	1375	1439	0	French
+P	Duchy of Brittany	990	1187	0	French; Langues dOil; Occitan
+P	Duchy of Brittany	1206	1332	0	French; Langues dOil; Occitan
+P	Duchy of Brittany	1333	1428	0	French
+P	Duchy of Brittany	1440	1491	0	French
+P	Duchy of Burgundy	1003	1017	0	French; Langues dOil; Occitan
+P	Duchy of Burgundy	1385	1481	0	French
+P	Duchy of Gascony	990	1065	0	French; Langues dOil; Occitan
+P	Duchy of Normandy	990	1065	0	French; Langues dOil; Occitan
+P	Duchy of Normandy	1066	1071	0	Latin; Anglo-Norman; Old English
+P	Durrani Empire	1748	1827	0	Pashto; Persian
+P	Dutch Cape Colony	1653	1795	0	Dutch
+P	Dutch Ceylon	1687	1795	0	Dutch
+P	Dutch Gold Coast	1653	1795	0	Dutch
+P	Dutch Republic	1648	1795	0	Dutch
+P	Dzungar Khanate	1677	1756	5	Oirat
+P	Early Cholas	-291	305	4,0	Old Tamil; Prakrit
+P	Early Pandyas	-291	305	4	Old Tamil
+P	East Franks	850	881	0	German
+P	East Franks	887	910	0	German
+P	Eastern Göktürks	587	632	3	Old Turkic; Sogdian
+P	Eastern Roman Empire	395	632	0	Greek
+P	Elam	-2000	-1801	12,1	Elamite; Akkadian; Babylonian
+P	Elam	-1800	-1601	12,1	Elamite; Akkadian; Babylonian; Hurrian; Amorite
+P	Elam	-1400	-1001		Elamite; Akkadian
+P	Elam	-700	-631	12,0	Elamite; native Iranian languages
+P	Emirate of Crete	830	960	0,1	Greek; Arabic
+P	Fatimid Caliphate	911	1176	1	Arabic
+P	Fifteenth Dynasty of Egypt	-1600	-1501	1	Ancient Egyptian
+P	First French Empire	1805	1814	0	French
+P	Former Jin	922	925	2	Chinese
+P	Former Shu	911	925	2	Chinese
+P	Freetown Colony	1788	1796	0	English
+P	French Colony of Guiana	1791	1791	0	French
+P	French Consulate	1800	1804	0	French
+P	French Directory	1796	1799	0	French
+P	French First Republic	1792	1795	0	French
+P	French India	1673	1814	0	French
+P	Funan	238	640	8	Khmer; Mon
+P	Funj Sultanate	1540	1821	1	Arabic; Funj
+P	Gahadavala Dynasty	1085	1201	0	Sanskrit
+P	Ghana Empire	793	1201		Mande
+P	Ghurid Dynasty	1152	1209	0	Persian
+P	Great Jin	1126	1235	2,18,10	Middle Chinese; Jurchen; Khitan
+P	Great Seljuk Empire	1040	1168	0,1	Turkish; Arabic; Persian
+P	Greco-Bactrian Kingdom	-247	-127	0	Greek; Bactrian
+P	Gupta Empire	324	554	0	Sanskrit; Prakrit
+P	Gurjara-Pratihara Dynasty	732	1033	0	Sanskrit
+P	Habsburg Monarchy	1487	1506	0	German
+P	Habsburg Monarchy	1516	1805	0	German
+P	Han Dynasty	-202	13	2	Chinese
+P	Han Dynasty	30	223	2	Chinese
+P	Haudenosaunee	1572	1782	9	Cayuga; Mohawk; Oneida; Onondaga; Seneca; Tuscarora
+P	Heian Japan	800	1187	6	Late Old Japanese; Middle Japanese
+P	Himyarite Kingdom	270	346	1	Sabaic
+P	Himyarite Kingdom	378	533	1	Sabaic
+P	Hittites	-1600	-1151	0	Nesite; Luwian
+P	House of Bourbon	1333	1594	0	French
+P	House of Habsburg	1459	1515	0	German
+P	House of Valois-Anjou	1363	1486	0	French
+P	Hoysala Kingdom	1111	1351	4,0	Kannada; Sanskrit
+P	Iberian Union	1582	1639	0	Castilian Spanish
+P	Icelandic Commonwealth	936	1271	0	Old Norse
+P	Ilkhanate	1294	1343	0	Mongolian; Persian; Arabic
+P	Inca Empire	1440	1533	17	Quechua
+P	Indo-Greeks	-126	-78		Greek; Sanskrit; Prakrit; Bactrian; Aramaic
+P	Indo-Greeks	-50	0		Greek; Sanskrit; Prakrit; Bactrian; Aramaic
+P	Jaffna kingdom	1314	1594	4,0	Tamil; Sinhalese
+P	Jin	-750	-405	2	Chinese
+P	Jingnan	926	969	2	Chinese
+P	Judea	-126	5	1,0	Aramaic; Hebrew; Greek
+P	Kadamba Empire	353	554	0,4	Sanskrit; Prakrit; Kannada
+P	Kalabhra Dynasty	353	601	0,4	Prakrit; Pali; Old Tamil; Sanskrit
+P	Kamakura Shogunate	1188	1332	6	Middle Japanese
+P	Kampili Kingdom	1285	1332	4,0	Kannada; Sanskrit
+P	Kannauj-Varman Dynasty	732	771	0	Sanskrit
+P	Kara-Khanids	960	1045	1,3	Arabic; Turkic
+P	Kediri Kingdom	1056	1226	0,11	Sanskrit; Old Javanese
+P	Kenmu Restoration	1333	1343	6	Middle Japanese
+P	Khalji Dynasty	1294	1325	0	Persian; Urdu
+P	Khanate of Bukhara	1600	1747		Persian
+P	Khmer Empire	806	1110	8	Old Khmer
+P	Khmer Empire	1111	1226	8	Old Khmer; Mon; Tai
+P	Kidarites	390	450	0	Sogdian; Bactrian; Pahlavi; Brahmi
+P	Kingdom of Arles	1034	1332	0	French; Langues dOil; Occitan
+P	Kingdom of Arles	1333	1384	0	French
+P	Kingdom of Bohemia	1314	1452	0	Czech
+P	Kingdom of Bohemia	1459	1528	0	Czech
+P	Kingdom of Cappadocia	-239	-189	0	Greek
+P	Kingdom of Dambadeniya	1236	1293	0	Sinhala
+P	Kingdom of England	1066	1071	0	Latin; Anglo-Norman; Old English
+P	Kingdom of France	990	1332	0	French; Langues dOil; Occitan
+P	Kingdom of France	1333	1791	0	French
+P	Kingdom of Germany	911	921	0	German
+P	Kingdom of Great Britain	1709	1852	0	English
+P	Kingdom of Hawaï'i	1791	1819	11	Hawaiian
+P	Kingdom of Israel	-1000	-701	1	Hebrew
+P	Kingdom of Kush	-700	-651	1	Merotic; Egyptian
+P	Kingdom of Lower Burgundy	900	910	0	Latin
+P	Kingdom of Lower Burgundy	926	935	0	Latin
+P	Kingdom of Lysimachus	-323	-282	0	Greek
+P	Kingdom of Polonnaruwa	1072	1259	0,4	Sinhala; Tamil
+P	Kingdom of Spain	1516	1581	0	Castilian Spanish
+P	Kingdom of Spain	1640	1717	0	Castilian Spanish
+P	Kingdom of Spain	1718	1814	0	Spanish
+P	Kingdom of the Franks	490	545	0	Old Frankish
+P	Kingdom of the Franks	546	717	0	Latin; Germanic
+P	Kingdom of the Franks	755	849	0	Latin
+P	Kushan Empire	43	237	0	Greek; Bactrian; Kharoshthi
+P	Land Chenla	718	805	8	Old Khmer; Sanskrit
+P	Late Pallava Empire	306	805	0,4	Prakrit; Sanskrit; Old Tamil
+P	Later Han	947	959	2	Chinese
+P	Later Jin	911	921	2	Chinese
+P	Later Jin	936	946	2	Chinese
+P	Later Liang Dynasty	911	925	2	Chinese
+P	Later Shu	936	969	2	Chinese
+P	Later Tang	926	935	2	Chinese
+P	Later Zhou	960	960	2	Chinese
+P	Liao Dynasty	911	1125	5	Khitan
+P	Lodi Dynasty	1453	1528	0	Persian; Urdu
+P	Lower Egypt	-2200	-2001	1	Ancient Egyptian
+P	Lydia	-615	-541	0	Lydian
+P	Majapahit	1294	1518	0,11	Middle Javanese; Sanskrit
+P	Mali Empire	1241	1414		Mande; Arabic
+P	Mamluk Dynasty	1210	1293	0	Persian; Urdu
+P	Mamluk Sultanate	1260	1518	1	Arabic
+P	Margraviate of Moravia	1385	1414	0	Czech
+P	Mataram Kingdom	741	1009	0,11	Sanskrit; Old Javanese
+P	Mataram Sultanate	1588	1676	11	Javanese
+P	Mataram Sultanate	1683	1705	11	Javanese
+P	Maurya Empire	-318	-171	0	Prakrit; Sanskrit
+P	Merovingian Empire	710	717	0	Latin; Germanic
+P	Middle Franks	850	859	0	Latin
+P	Middle Franks	899	899	0	Latin
+P	Middle Kingdom of Egypt	-2000	-1601	1	Ancient Egyptian
+P	Min	911	946	2	Chinese
+P	Ming Dynasty	1375	1644	2	Chinese
+P	Mongol Empire	1206	1293	0,2,13	Mongolian; Persian; Chinese; Latin; Russian; Georgian; Armenian
+P	Mongol Khanate	1468	1635	5,10	Khalkha
+P	Mughal Empire	1529	1858	0	Urdu; Persian
+P	Nara Japan	710	792	6	Old Japanese
+P	Nayaks of Madurai	1529	1737	4	Tamil
+P	Nayaks of Thanjavur	1534	1676	4	Telugu
+P	Neo-Assyrian Empire	-900	-601		Aramaic
+P	Neo-Hittite states	-1150	-801	0	Luwian
+P	New France	1609	1791	0	French
+P	New Kingdom of Egypt	-1500	-1001	1	Late Egyptian
+P	Norman England	1072	1146	0	Latin; Anglo-Norman; Old English
+P	Northern Han	960	979	2	Chinese
+P	Northern Song	961	1138	2	Chinese
+P	Northern Wei	387	533	2	Chinese; Xianbei
+P	Northern Yuan	1375	1439	5,10	Khalkha
+P	Old Kingdom of Egypt	-2500	-2201	1	Ancient Egyptian
+P	Old Kingdom of Norway	1272	1401	0	Icelandic
+P	Ostrogothic Kingdom	500	554	0	Latin; Germanic
+P	Ottoman Empire	1395	1406	3	Ottoman Turkish
+P	Ottoman Empire	1407	1518	3	Turkish; Persian
+P	Ottoman Empire	1519	1839	3	Turkish
+P	Oyo Empire	1609	1835	7	Yoruba
+P	Pandya Dynasty	592	921	4,0	Tamil; Sanskrit
+P	Pandya Empire	1250	1325	4	Tamil
+P	Papal States	755	1798	0	Latin
+P	Papal States	1800	1810	0	Latin
+P	Parthian Empire	-239	237	0	Greek; Pahlavi
+P	Phoenicia	-1150	-501	1	Phoenician
+P	Phoenician Colonies	-700	-616	1	Phoenician
+P	Phrygia	-900	-676	0	Phrygian
+P	Ptolemaic Kingdom	-291	-198	1,0	Greek; demotic Egyptian
+P	Ptolemaic Kingdom	-197	-28	0	Greek
+P	Qajar Dynasty	1794	1923		Persian
+P	Qasimids	1640	1802	1	Arabic
+P	Qataban	-350	-111	1	Sabaic; Mainic; Qatabanic; Hadramawtic; Old Arabic
+P	Qi Kingdom	911	925	2	Chinese
+P	Qing Dynasty	1670	1796	2,5	Manchu language; Chinese
+P	Qing Dynasty	1797	1911	2	Manchu language; Chinese
+P	Rashtrakuta Dynasty	755	979	0,4	Sanskrit; Kannada
+P	Rasulid Dynasty	1236	1458	1	Arabic
+P	Republic of Venice	1206	1796	0	Italian
+P	Roman Empire	-30	286	0	Latin
+P	Roman Empire	287	394	0	Latin; Greek
+P	Roman Kingdom	-700	-501	0	Latin
+P	Roman Republic	-500	-32	0	Latin; Greek
+P	Rouran Khaganate	402	554	5	Rouran
+P	Russian Empire	1776	1916	0	Russian
+P	Saadi Sultanate	1556	1669	0	Arabic; Berber; Spanish; Portuguese
+P	Sabaeans	-800	-451	1	Sabaic; Mainic; Qatabanic; Hadramawtic; Old Arabic
+P	Safavid Dynasty	1502	1726	0,1	Persian; Turkic; Arabic
+P	Salian Franks	490	509	0	Old Frankish
+P	Samanid Empire	886	999	1,0	Arabic; Persian
+P	Sasanian Empire	215	643	0	Pahlavi
+P	Satavahana Dynasty	-91	206	0,4	Prakrit; Kannada
+P	Sayyid Dynasty	1415	1452	0	Persian; Urdu
+P	Seleucid Empire	-307	-78	0	Greek
+P	Seleucid Empire	-66	-64	0	Greek
+P	Seventeenth Dynasty of Egypt	-1600	-1501	1	Ancient Egyptian
+P	Shang Dynasty	-1600	-1241	2	archaic Chinese
+P	Shang Dynasty	-1240	-1001	2	Chinese
+P	Shunga Empire	-170	-67		Sanskrit; Prakrit
+P	Sind-Habbari Dynasty	860	1201		Arabic; Sindhi
+P	Sind-Samma Dynasty	1344	1525	0	Sindhi; Punjabi
+P	Sixteenth Dynasty of Egypt	-1600	-1501	1	Ancient Egyptian
+P	Songhai Empire	1497	1594	19	Mande; Songhay
+P	Southern Chu	911	959	2	Chinese
+P	Southern Han	911	979	2	Chinese
+P	Southern Tang	960	979	2	Chinese
+P	Southern Wu	911	959	2	Chinese
+P	Spanish Empire	1516	1518	0	Castilian Spanish
+P	Spanish Empire	1521	1717	0	Castilian Spanish
+P	Spanish Empire	1718	1814	0	Spanish
+P	Sui Dynasty	587	622	2	Chinese
+P	Sultanate of Rum	1094	1249	0,1	Turkish; Persian; Arabic
+P	Tabal Kingdom	-900	-701	0	Luwian
+P	Tahirid Sultanate	1459	1515	1	Arabic
+P	Tang Dynasty	623	910	2	Chinese
+P	Thanjavur Maratha Kingdom	1677	1799	4,0	Telugu; Sanskrit; Tamil
+P	Timurid Empire	1375	1506	3,0	Chagatai Turkish; Persian
+P	Tokugawa Shogunate	1609	1869	6	Early Modern Japanese
+P	Trucial States	1820	1852	0	English
+P	Tsardom of Russia	1619	1720	0	Russian
+P	Tughlaq Dynasty	1326	1414	0	Persian; Urdu
+P	Tulunids	875	910	1	Arabic
+P	Twenty-second Dynasty of Egypt	-800	-701	1	Ancient Egyptian
+P	Twenty-third Dynasty of Egypt	-800	-701	1	Ancient Egyptian
+P	Umayyad Caliphate	661	750	1	Arabic; Coptic; Greek; Persian
+P	Union of Soviet Socialist Republics	1924	1991		Russian
+P	Upper Burgundy	887	921	0	Latin
+P	Upper Burgundy	926	959	0	Latin
+P	Upper Egypt	-2200	-2001	1	Ancient Egyptian
+P	Uyghur Khaganate	750	849	3	Old Turkic
+P	Vakataka Kingdom	260	554	0	Sanskrit
+P	Vijayanagara Empire	1344	1571	0,4	Sanskrit; Telugu; Tamil; Kannada
+P	Warring States Japan	1468	1601	6	Middle Japanese
+P	Water Chenla	718	805	8	Old Khmer; Sanskrit
+P	Wei	-404	-224	2	Chinese
+P	West Franks	850	989	0	Latin
+P	Western Chalukya Empire	980	1187	4,0	Kannada; Sanskrit
+P	Western Göktürks	587	632	0	Sogdian; Old Turkic; Iranian
+P	Western Jin	265	323	2	Chinese
+P	Western Roman Empire	395	475	0	Latin
+P	White Huns	410	560	0	Bactrian
+P	Wuyue	911	979	2	Chinese
+P	Xianbei	106	237	5	Xianbei
+P	Xiongnu	-208	105	3	Xiongnu
+P	Yan Kingdom	911	921	2	Chinese
+P	Yuan Dynasty	1294	1374	5,2	Mongolian language; Chinese
+P	Yuezhi	-126	29	0	Tocharian; Bactrian
+P	Zapotec Civilization	-500	895	16	Zapotec
+P	Zhou Dynasty	-1000	-751	2	Chinese
+P	Ziyadid dynasty	866	1039	1	Arabic

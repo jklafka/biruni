@@ -12,7 +12,8 @@
 //! it still reads on the dark ocean. "No data" is a neutral grey.
 
 /// Class index of a country with no usable value. Classes are `0..NO_DATA`,
-/// and `u_theme` in `globe.frag` has `NO_DATA + 1` entries.
+/// and `u_theme` in `globe.frag` has at least `NO_DATA + 1` entries
+/// (`render::THEME_SLOTS`).
 pub const NO_DATA: u8 = 7;
 
 /// Color of [`NO_DATA`], sRGB. Shared by the shader table and the legend.

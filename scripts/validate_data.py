@@ -482,6 +482,44 @@ def check_languages(data):
     return rows
 
 
+def check_history_languages(data):
+    """history_languages.tsv (scripts/convert_seshat_languages.py,
+    src/history_lang.rs): F lines (families), then P lines (polity, from,
+    to, family indexes, languages). Returns the P line count."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Bad("invalid UTF-8") from None
+    if not text.endswith("\n"):
+        raise Bad("missing final newline")
+    lines = text[:-1].split("\n")
+    if lines[0] != "MAPSHISTLANG1":
+        raise Bad("header is not MAPSHISTLANG1")
+    families, rows = 0, 0
+    for number, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if f[0] == "F" and len(f) == 2 and f[1] and not rows:
+            families += 1
+        elif f[0] == "P" and len(f) == 6 and f[1]:
+            try:
+                start, end = int(f[2]), int(f[3])
+                fams = [int(x) for x in f[4].split(",")] if f[4] else []
+            except ValueError:
+                raise Bad(f"line {number}: bad years or family indexes") from None
+            if start > end:
+                raise Bad(f"line {number}: from after to")
+            if any(not 0 <= x < families for x in fams):
+                raise Bad(f"line {number}: unknown family")
+            if not fams and not f[5]:
+                raise Bad(f"line {number}: neither family nor language")
+            rows += 1
+        else:
+            raise Bad(f"line {number}: not an F or P line of the right width")
+    if not rows:
+        raise Bad("no polities")
+    return rows
+
+
 def check_format(name, data):
     """Features in a file, or raise Bad."""
     ext = Path(name).suffix
@@ -489,6 +527,8 @@ def check_format(name, data):
         return check_societies(data)
     if name == "languages.tsv":
         return check_languages(data)
+    if name == "history_languages.tsv":
+        return check_history_languages(data)
     if ext == ".bin":
         return decode_bin(data)
     if ext == ".tsv":

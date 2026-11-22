@@ -275,7 +275,7 @@
         pointer-events: auto;
         font-variant-numeric: tabular-nums;
         display: grid;
-        grid-template-columns: auto 1fr auto;
+        grid-template-columns: auto 1fr auto auto;
         align-items: center;
         gap: 4px 8px;
         padding: 8px 12px;
@@ -321,18 +321,20 @@
         font: inherit;
         cursor: pointer;
       }
-      #year-row button:hover { background: rgba(40, 56, 88, 0.85); }
+      #year-lang { height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+      #year-row button:hover, #year-lang:hover { background: rgba(40, 56, 88, 0.85); }
+      #year-lang:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #year-row button:focus-visible, #years input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 1px; }
       #year-note { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
       #year-row button.speed, #age-row button.speed { font-size: 12px; white-space: nowrap; min-width: 0; padding: 0 6px; }
-      #year-play[aria-pressed="true"], #age-play[aria-pressed="true"] { background: rgba(90, 130, 210, 0.6); }
+      #year-play[aria-pressed="true"], #age-play[aria-pressed="true"], #year-lang[aria-pressed="true"] { background: rgba(90, 130, 210, 0.6); }
       #year-row button, #age-row button { flex: none; }
       #year-note, #age-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       /* Narrow panels: the source note gives way to the play controls. */
       @media (max-width: 520px) { #year-note, #age-note { display: none; } #year-row button, #age-row button { min-width: 36px; padding: 0 5px; } }
       /* The historical view has no terminator, layer picker or country panel. */
       body.history-on #scrubber, body.history-on #sun-toggle, body.history-on #layers,
-      body.history-on #legend, body.history-on #country-info { display: none !important; }
+      body.history-on:not(.history-lang) #legend, body.history-on #country-info { display: none !important; }
       body.view-space #years, body.view-space #history-toggle, body.view-space #languages-toggle, body.view-space #societies-toggle { display: none !important; }
       #societies-toggle[aria-pressed="true"] { background: rgba(90, 130, 210, 0.45); }
       #ethno-var, #lang-var { display: block; width: 100%; margin: 0 0 8px; min-height: 30px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
@@ -445,6 +447,8 @@
       #legend li { display: flex; align-items: center; gap: 8px; min-height: 18px; break-inside: avoid; }
       #legend .sw { flex: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.35); }
       #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+      /* Beside the year panel: keep clear of it. */
+      @media (min-width: 521px) { body.history-lang #legend { max-width: 250px; } }
       #controls #proj-button svg { width: 20px; height: 20px; vertical-align: middle; }
       #proj-anchor { position: relative; display: flex; }
       #controls:has(#proj-menu:not([hidden])) { z-index: 6; }
@@ -707,6 +711,7 @@
       <label for="year-range">Year</label>
       <input id="year-range" type="range" min="-3399" max="2024" step="1" value="1500" aria-label="Year" />
       <span id="year-val" class="val">1500</span>
+      <button id="year-lang" aria-pressed="false" title="Color by language family (Seshat) (J)" aria-label="Color by language family">Lang</button>
       <div id="year-row">
         <button id="year-play" aria-pressed="false" title="Play (T)" aria-label="Play">&#x25B6;&#xFE0E;</button>
         <button id="year-back" title="A century earlier (&lt;)" aria-label="A century earlier">&minus;100</button>

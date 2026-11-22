@@ -164,6 +164,16 @@ impl App {
             );
             return;
         }
+        if let Some(rows) = self.history_language_legend() {
+            let rows: Vec<(&str, String)> =
+                rows.iter().map(|(c, t)| (c.as_str(), t.clone())).collect();
+            self.legend.show_rows(
+                "Language family",
+                &rows,
+                "Seshat: the main family of each polity's languages, often its rulers'. Little data after 1900.",
+            );
+            return;
+        }
         if let Some((title, rows, note)) = self.languages_legend() {
             self.legend.show_rows(title, &rows, &note);
             return;
@@ -189,7 +199,7 @@ impl App {
         let base = if self.paleo.on {
             credits::paleo_credits()
         } else if self.history.on {
-            credits::history_credits()
+            credits::history_credits(self.history.by_language)
         } else {
             credits::visible_credits(self.layers_state.shown())
         };

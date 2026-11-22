@@ -306,6 +306,14 @@
       "license": "natural-earth"
     },
     {
+      "name": "seshat-polaris-2026",
+      "url": "https://raw.githubusercontent.com/Seshat-Global-History-Databank/build_polaris_dataset/55ca5fbc2b563ddbbc1a3413071d4bd243d0a5fa/Polaris2026.xlsx",
+      "version": "Polaris 2026 (build_polaris_dataset 55ca5fb)",
+      "sha256": "cf60c9f76eeda6db545521831a9201e65c64d2b74d4aeb55445cd2b564456c41",
+      "size": 2899093,
+      "license": "seshat"
+    },
+    {
       "name": "stellarium-western",
       "url": "https://raw.githubusercontent.com/Stellarium/stellarium-skycultures/2d80ce70984c14bba7da2d31a0f9b27e292861c9/western/index.json",
       "version": "stellarium-skycultures 2d80ce7",
