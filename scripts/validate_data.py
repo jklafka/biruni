@@ -52,6 +52,7 @@ FILE_BUDGETS = {  # logical name -> bytes
     "blue_marble.webp": 2 * 1024 * 1024,
     "terrain.webp": 2 * 1024 * 1024,
     "night_lights.webp": 2 * 1024 * 1024,
+    "population_density.webp": 2 * 1024 * 1024,
 }
 SHRINK_LIMIT = 0.5  # a file may keep at least this fraction of bytes and features
 
@@ -72,6 +73,7 @@ WEBP_SIZES = {
     "blue_marble.webp": (4096, 2048),
     "terrain.webp": (4096, 2048),
     "night_lights.webp": (4096, 2048),
+    "population_density.webp": (4096, 2048),
     "milky_way.webp": (2048, 1024),
     # The solar system view's surface maps (scripts/make_planets.py).
     "planet_earth.webp": (2048, 1024),

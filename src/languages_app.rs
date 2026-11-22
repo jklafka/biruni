@@ -83,6 +83,16 @@ impl App {
                 &l.legend(),
                 "Glottolog 5.4; dots at each language's location",
             ),
+            _ if self.layers_state.shown() == crate::view::Layer::Density => {
+                let rows = crate::view::density_legend();
+                let rows: Vec<(&str, String)> =
+                    rows.iter().map(|(c, t)| (c.as_str(), t.clone())).collect();
+                self.legend.show_rows(
+                    "People per km²",
+                    &rows,
+                    "GHS-POP 2020 (EC JRC), on a 10 km grid; dark: fewer than 0.1",
+                );
+            }
             _ => {
                 let theme = self.layers_state.shown().theme();
                 let year = self.countries.as_ref().map_or(0, |c| c.data_year());

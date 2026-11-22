@@ -42,6 +42,14 @@
       "license": "dplace"
     },
     {
+      "name": "ghs-pop-e2020-30ss",
+      "url": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2020_GLOBE_R2023A_4326_30ss/V1-0/GHS_POP_E2020_GLOBE_R2023A_4326_30ss_V1_0.zip",
+      "version": "R2023A E2020 V1-0",
+      "sha256": "8de311f475322cebb920edd870dda0f50fb1750a2a2c0f533c9ecf2f41589c45",
+      "size": 482351880,
+      "license": "ghs-pop"
+    },
+    {
       "name": "glottolog-v54-languages",
       "url": "https://raw.githubusercontent.com/glottolog/glottolog-cldf/84977fcab99ddca540550ba99984a32e908a7fcf/cldf/languages.csv",
       "version": "5.4 (glottolog-cldf 84977fc)",

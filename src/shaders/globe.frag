@@ -14,7 +14,7 @@ uniform float u_hasMap;
 uniform float u_gridStep;     // graticule spacing, degrees
 uniform float u_dpr;
 uniform float u_scale;        // render scale (1 = full resolution); stars stay in full-res pixels
-uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer (satellite, terrain or night lights; see view::Layer)
+uniform int u_layer;          // 0 = political, 1 = monochrome, 2 = image layer (satellite, terrain or night lights), 3-5 = thematic, 6 = population density over monochrome (see view::Layer)
 uniform sampler2D u_imagery;  // RGBA8 image layer picture, equirectangular like u_map
 uniform float u_hasImagery;   // 1 once the image is on the GPU, else the layer shows the plain map
 uniform float u_imageEmissive; // 1 = the image is already night (night lights): no key light, glint or night tint
@@ -27,6 +27,7 @@ uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, n
 uniform sampler2D u_idsDetail; // R8 country IDs of a lon/lat window around a close view (src/id_detail.rs)
 uniform vec4 u_idWin;         // that window in u/v: u0, v0, du, dv; dv = 0 when there is none
 uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
+uniform vec3 u_densityRamp[5]; // population density (u_layer 6): color stops, low to high (view::DENSITY_RAMP)
 uniform vec3 u_theme[8];       // thematic layers (u_layer >= 3): color of class i, class 7 = no data (see thematic.rs)
 uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads; fades out at close zoom only where no detail window covers the view
 uniform int u_highlight;      // country ID to highlight, 0 = none
@@ -98,6 +99,13 @@ const vec3 PALETTE[6] = vec3[6](
 vec3 fillColor(int id) {
     int i = int(u_idColor[id >> 2][id & 3]);
     return u_layer >= 3 ? u_theme[i] : PALETTE[i];
+}
+
+// The density ramp at t in 0..1, linear between its stops (view::density_color).
+vec3 densityColor(float t) {
+    float x = clamp(t, 0.0, 1.0) * 4.0;
+    int i = min(int(floor(x)), 3);
+    return mix(u_densityRamp[i], u_densityRamp[i + 1], x - float(i));
 }
 const vec3 ICE = vec3(0.900, 0.925, 0.950);
 const vec3 BORDER = vec3(0.150, 0.170, 0.130);
@@ -313,7 +321,7 @@ void main() {
     // paths below only call texelFetch and depend on uniforms and on the
     // derivatives computed above, so derivatives elsewhere are unaffected.
     // At 0 (data not loaded) the fill lookups are skipped.
-    bool political = (u_layer == 0 || u_layer >= 3) && u_political > 0.0;
+    bool political = (u_layer == 0 || (u_layer >= 3 && u_layer <= 5)) && u_political > 0.0;
     float fillW = 0.0;
     vec3 fill = vec3(0.0);
     float hlMask = 0.0;
@@ -417,7 +425,7 @@ void main() {
     ground = mix(ground, ICE, ice * (1.0 - 0.2 * filled));
     vec3 borderCol = BORDER;
     float borderMix = 0.5;
-    if (u_layer == 1) {
+    if (u_layer == 1 || u_layer == 6) {
         // Monochrome: dark ocean, grey land, light borders.
         ocean = MONO_OCEAN;
         ground = MONO_LAND;
@@ -454,6 +462,17 @@ void main() {
     } else {
         col = mix(col, COAST, ln.r * 0.35);
     }
+    if (u_layer == 6 && u_hasImagery > 0.5) {
+        // Population density: the image's value is 0 where fewer than 0.1
+        // people live per km2, else 1 + 254 t with t the log density
+        // (make_population_density.py). Code 0 to 1 fades the color in, so
+        // the filtered edge of a settled area stays soft.
+        float code = textureGrad(u_imagery, uv, duvdx, duvdy).g * 255.0;
+        float t = (code - 1.0) / 254.0;
+        float a = clamp(code, 0.0, 1.0) * (0.55 + 0.45 * smoothstep(0.0, 0.3, t));
+        col = mix(col, densityColor(t), a * land);
+        col = mix(col, BORDER_SAT, ln.g * land * 0.35);
+    }
 
     // Graticule with constant on-screen width; meridians fade near the poles
     // where they converge.
@@ -485,7 +504,7 @@ void main() {
     // (about +2 to -10 degrees of sun elevation).
     float sunElev = dot(w, u_sun);
     float night = (1.0 - smoothstep(-0.17, 0.035, sunElev)) * u_sunOn * lit;
-    vec3 nightTint = u_layer == 1 ? vec3(0.24, 0.28, 0.42) : vec3(0.22, 0.26, 0.42);
+    vec3 nightTint = (u_layer == 1 || u_layer == 6) ? vec3(0.24, 0.28, 0.42) : vec3(0.22, 0.26, 0.42);
     if (satellite) nightTint = vec3(0.12, 0.15, 0.27);  // no city lights: just dark
     col *= mix(vec3(1.0), nightTint, night);
 

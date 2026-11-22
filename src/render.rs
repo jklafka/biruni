@@ -246,6 +246,7 @@ struct Uniforms {
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
     theme: Option<WebGlUniformLocation>,
+    density_ramp: Option<WebGlUniformLocation>,
     political: Option<WebGlUniformLocation>,
     sun: Option<WebGlUniformLocation>,
     sun_on: Option<WebGlUniformLocation>,
@@ -293,6 +294,7 @@ impl Uniforms {
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
             theme: u("u_theme"),
+            density_ramp: u("u_densityRamp"),
             political: u("u_political"),
             sun: u("u_sun"),
             sun_on: u("u_sunOn"),
@@ -2123,6 +2125,12 @@ impl Renderer {
             );
         }
         gl.uniform1i(u.highlight.as_ref(), i32::from(self.highlight));
+        let ramp: Vec<f32> = crate::view::DENSITY_RAMP
+            .iter()
+            .flatten()
+            .map(|&c| f32::from(c) / 255.0)
+            .collect();
+        gl.uniform3fv_with_f32_array(u.density_ramp.as_ref(), &ramp);
         // The color table is 64 vec4s; `u_idColor[id / 4][id % 4]` is the color of id.
         // Fills fade out as the view zooms in (see `political_fill_amount`).
         let theme = self.layer.theme();
@@ -2617,6 +2625,7 @@ mod tests {
             "u_highlight",
             "u_idColor",
             "u_theme",
+            "u_densityRamp",
             "u_political",
             "u_sun",
             "u_sunOn",
