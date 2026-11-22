@@ -86,6 +86,8 @@ const VIEWS = [
   // Thematic layers (country fills by statistic) with their legend. They use
   // the country data, so there is nothing extra to download.
   { name: "theme-pop-globe", hash: "#20,20,15000&layer=pop" },
+  // Population density (GHS-POP), independent of borders.
+  { name: "density-globe", hash: "#25,40,14000&layer=density" },
   { name: "theme-gdp-robinson", hash: "#0,0,19000&proj=robinson&layer=gdp" },
   { name: "theme-income-phone", hash: "#30,10,15000&layer=income", viewport: { width: 390, height: 844 } },
   // The data credits panel open (Satellite lists two sources), desktop and phone.

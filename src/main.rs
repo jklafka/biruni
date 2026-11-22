@@ -668,8 +668,8 @@ impl App {
                 if Some(*l) == pending { "true" } else { "false" },
             );
         }
-        // The select shows the wanted layer when it is a thematic one.
-        self.theme_select.set_value(if wanted.theme().is_some() {
+        // The select shows the wanted layer when it is one of its own.
+        self.theme_select.set_value(if wanted.in_data_menu() {
             wanted.id()
         } else {
             ""
@@ -1894,7 +1894,7 @@ fn start() -> Result<(), JsValue> {
     let initial_look = sky::parse_hash_look(&initial_hash);
     let initial_orbit = solar::parse_hash_orbit(&initial_hash);
     let mut layer_buttons = Vec::new();
-    for layer in Layer::ALL.into_iter().filter(|l| l.theme().is_none()) {
+    for layer in Layer::ALL.into_iter().filter(|l| !l.in_data_menu()) {
         let b: HtmlElement = element(&doc, &format!("layer-{}", layer.id()))?;
         layer_buttons.push((layer, b));
     }
@@ -2708,7 +2708,7 @@ fn start() -> Result<(), JsValue> {
                         let next = a.layers_state.wanted().next();
                         a.select_layer(next);
                     }
-                    k @ ("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8") => {
+                    k @ ("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if let Some(l) = Layer::ALL.get(i) {
                             a.select_layer(*l);

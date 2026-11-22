@@ -18,6 +18,7 @@ python3 scripts/test_convert_stars.py > /dev/null 2>&1 || { python3 scripts/test
 python3 scripts/test_convert_constellations.py > /dev/null 2>&1 || { python3 scripts/test_convert_constellations.py; exit 1; }
 python3 scripts/test_fetch_space.py > /dev/null 2>&1 || { python3 scripts/test_fetch_space.py; exit 1; }
 python3 scripts/test_hist_format.py > /dev/null 2>&1 || { python3 scripts/test_hist_format.py; exit 1; }
+python3 scripts/test_make_population_density.py > /dev/null 2>&1 || { python3 scripts/test_make_population_density.py; exit 1; }
 python3 scripts/test_convert_cliopatria.py > /dev/null 2>&1 || { python3 scripts/test_convert_cliopatria.py; exit 1; }
 python3 scripts/test_convert_glottolog.py > /dev/null 2>&1 || { python3 scripts/test_convert_glottolog.py; exit 1; }
 python3 scripts/test_convert_dplace.py > /dev/null 2>&1 || { python3 scripts/test_convert_dplace.py; exit 1; }
@@ -35,9 +36,10 @@ for f in "$tmp"/*; do
   fi
 done
 # Hand-processed from pinned downloads (scripts/make_blue_marble.py,
-# scripts/make_terrain.py, scripts/make_night_lights.py, scripts/make_milky_way.py);
+# scripts/make_terrain.py, scripts/make_night_lights.py, scripts/make_milky_way.py,
+# scripts/make_population_density.py);
 # CI cannot fetch them, so they are checked for shape only (below), not regenerated.
-external=(blue_marble.webp night_lights.webp terrain.webp milky_way.webp
+external=(blue_marble.webp night_lights.webp terrain.webp milky_way.webp population_density.webp
   planet_earth.webp planet_moon.webp planet_mars.webp planet_mercury.webp planet_jupiter.webp)
 is_external() { local x; for x in "${external[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
@@ -74,17 +76,24 @@ for name in "${external[@]}"; do
   fi
   size="$(wc -c < "$img" | tr -d ' ')"
   # RIFF....WEBPVP8 , then for lossy: canvas size at bytes 26..29 (14-bit LE).
+  # Lossless (VP8L, the density codes must stay exact): a 0x2f signature,
+  # then width - 1 and height - 1 in 14 bits each.
   dims="$(python3 - "$img" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read(40)
-ok = d[:4] == b"RIFF" and d[8:12] == b"WEBP" and d[12:16] == b"VP8 "
-w, h = struct.unpack("<HH", d[26:30]) if ok else (0, 0)
-print(w & 0x3FFF, h & 0x3FFF)
+w = h = 0
+if d[:4] == b"RIFF" and d[8:12] == b"WEBP" and d[12:16] == b"VP8 ":
+    w, h = struct.unpack("<HH", d[26:30])
+    w, h = w & 0x3FFF, h & 0x3FFF
+elif d[:4] == b"RIFF" and d[8:12] == b"WEBP" and d[12:16] == b"VP8L" and d[20] == 0x2F:
+    bits = struct.unpack("<I", d[21:25])[0]
+    w, h = (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+print(w, h)
 PY
 )"
   want="4096 2048"
   case "$name" in milky_way.webp | planet_*.webp) want="2048 1024" ;; esac
-  [ "$dims" = "$want" ] || drift+=("$name is not a lossy ${want/ /x} WebP (got: $dims)")
+  [ "$dims" = "$want" ] || drift+=("$name is not a ${want/ /x} WebP (got: $dims)")
   [ "$size" -lt 2097152 ] || drift+=("$name is $size bytes, over the 2 MB budget")
 done
 

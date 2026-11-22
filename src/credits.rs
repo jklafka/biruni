@@ -43,6 +43,15 @@ pub const BLACK_MARBLE: Credit = Credit {
     text: "Night lights, 2016. NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA's Goddard Space Flight Center.",
 };
 
+pub const GHS_POP: Credit = Credit {
+    id: "ghs-pop",
+    name: "GHS-POP R2023A (Global Human Settlement Layer)",
+    license: "CC BY 4.0",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    source_url: "https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php",
+    text: "Population density, 2020, from the GHS population grid (30 arc-seconds), summed onto a 10 km grid. Schiavina, M., Freire, S., Carioli, A., MacManus, K. (2023): GHS-POP R2023A, European Commission, Joint Research Centre.",
+};
+
 pub const HYG: Credit = Credit {
     id: "hyg",
     name: "HYG star database",
@@ -134,10 +143,11 @@ pub const MERDITH: Credit = Credit {
     text: "Deep time: present-day coastlines moved with their plates back to 1000 million years ago. Merdith, A. S., et al. (2021), Extending full-plate tectonic models into deep time, Earth-Science Reviews 214, model v1.2.4 (EarthByte). The shapes are today's coastlines, not past shorelines, and longitudes before about 320 Ma are not constrained.",
 };
 
-pub const ALL: [&Credit; 13] = [
+pub const ALL: [&Credit; 14] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
+    &GHS_POP,
     &HYG,
     &STELLARIUM,
     &DEEP_STAR_MAPS,
@@ -207,6 +217,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
     ALL.into_iter()
         .filter(|c| c.id != BLUE_MARBLE.id || layer == Layer::Imagery)
         .filter(|c| c.id != BLACK_MARBLE.id || layer == Layer::NightLights)
+        .filter(|c| c.id != GHS_POP.id || layer == Layer::Density)
         .filter(|c| !sky_credits(true).iter().any(|s| s.id == c.id))
         // The solar view's own data (it shares the Blue Marble with the Earth).
         // Optional overlays add their own (see `with_overlays`).

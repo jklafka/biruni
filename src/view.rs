@@ -28,10 +28,60 @@ pub enum Layer {
     GdpPerCapita,
     /// Countries colored by income group.
     Income,
+    /// People per km² on a 4096x2048 grid (GHS-POP), independent of
+    /// borders, over the monochrome map (fetched on first use).
+    Density,
+}
+
+/// People per km² at density codes 1 and 255 (`make_population_density.py`).
+pub const DENSITY_MIN: f64 = 0.1;
+pub const DENSITY_MAX: f64 = 50_000.0;
+
+/// The density color ramp, low to high, evenly spaced over the codes; the
+/// shader gets it as `u_densityRamp` and interpolates linearly.
+pub const DENSITY_RAMP: [[u8; 3]; 5] = [
+    [59, 15, 112],
+    [140, 41, 129],
+    [222, 73, 104],
+    [254, 159, 109],
+    [252, 253, 191],
+];
+
+/// The ramp's color at `t` in 0..1 (as `densityColor` in `globe.frag`).
+pub fn density_color(t: f64) -> [u8; 3] {
+    let t = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+    let x = t * (DENSITY_RAMP.len() - 1) as f64;
+    let i = (x.floor() as usize).min(DENSITY_RAMP.len() - 2);
+    let f = x - i as f64;
+    let (a, b) = (DENSITY_RAMP[i], DENSITY_RAMP[i + 1]);
+    std::array::from_fn(|k| {
+        (f64::from(a[k]) + (f64::from(b[k]) - f64::from(a[k])) * f).round() as u8
+    })
+}
+
+/// Legend rows of the density layer: a swatch per decade.
+pub fn density_legend() -> Vec<(String, String)> {
+    let (lo, hi) = (DENSITY_MIN.log10(), DENSITY_MAX.log10());
+    [1.0f64, 10.0, 100.0, 1_000.0, 10_000.0]
+        .iter()
+        .map(|&d| {
+            let c = density_color((d.log10() - lo) / (hi - lo));
+            let text = if d >= 10_000.0 {
+                "10,000+ people/km²".to_string()
+            } else if d >= 1_000.0 {
+                "1,000 people/km²".to_string()
+            } else if d == 1.0 {
+                "1 person/km²".to_string()
+            } else {
+                format!("{d} people/km²")
+            };
+            (format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]), text)
+        })
+        .collect()
 }
 
 impl Layer {
-    pub const ALL: [Layer; 8] = [
+    pub const ALL: [Layer; 9] = [
         Layer::Political,
         Layer::Monochrome,
         Layer::Imagery,
@@ -40,7 +90,14 @@ impl Layer {
         Layer::Population,
         Layer::GdpPerCapita,
         Layer::Income,
+        Layer::Density,
     ];
+
+    /// Whether the layer is picked from the Data menu (the statistics)
+    /// rather than a button.
+    pub fn in_data_menu(self) -> bool {
+        self.theme().is_some() || self == Layer::Density
+    }
 
     /// The statistic a thematic layer colors countries by.
     pub fn theme(self) -> Option<Theme> {
@@ -63,6 +120,7 @@ impl Layer {
             Layer::Population => "pop",
             Layer::GdpPerCapita => "gdp",
             Layer::Income => "income",
+            Layer::Density => "density",
         }
     }
 
@@ -77,6 +135,7 @@ impl Layer {
             Layer::Population => "Population",
             Layer::GdpPerCapita => "GDP per capita",
             Layer::Income => "Income group",
+            Layer::Density => "Population density",
         }
     }
 
@@ -92,6 +151,7 @@ impl Layer {
             Layer::Imagery => Some("blue_marble.webp"),
             Layer::Terrain => Some("terrain.webp"),
             Layer::NightLights => Some("night_lights.webp"),
+            Layer::Density => Some("population_density.webp"),
             _ => None,
         }
     }
@@ -100,7 +160,10 @@ impl Layer {
     /// instead of a palette. Image layers share one texture, so only one of
     /// them is in GPU memory at a time.
     pub fn is_image(self) -> bool {
-        matches!(self, Layer::Imagery | Layer::Terrain | Layer::NightLights)
+        matches!(
+            self,
+            Layer::Imagery | Layer::Terrain | Layer::NightLights | Layer::Density
+        )
     }
 
     /// Whether the layer's image is already a night view, so the globe's
@@ -121,6 +184,8 @@ impl Layer {
             Layer::Population => 3,
             Layer::GdpPerCapita => 4,
             Layer::Income => 5,
+            // The monochrome map with the density image over it.
+            Layer::Density => 6,
         }
     }
 
@@ -705,10 +770,12 @@ mod tests {
 
     #[test]
     fn shader_indices_are_unique_except_image_layers() {
-        // Image layers share index 2: the shader draws the image it is given.
+        // Photo layers share index 2: the shader draws the image it is
+        // given. Density is an image too, but drawn over the monochrome map.
+        let photo = |l: &Layer| l.is_image() && *l != Layer::Density;
         let mut seen: Vec<i32> = Layer::ALL
             .iter()
-            .filter(|l| !l.is_image())
+            .filter(|l| !photo(l))
             .map(|l| l.shader_index())
             .collect();
         let n = seen.len();
@@ -716,7 +783,7 @@ mod tests {
         seen.dedup();
         assert_eq!(seen.len(), n);
         for l in Layer::ALL {
-            assert_eq!(l.is_image(), l.shader_index() == 2, "{l:?}");
+            assert_eq!(photo(&l), l.shader_index() == 2, "{l:?}");
         }
     }
 
@@ -1340,7 +1407,25 @@ mod tests {
         assert_eq!(Layer::Imagery.next(), Layer::Terrain);
         assert_eq!(Layer::Terrain.next(), Layer::NightLights);
         assert_eq!(Layer::NightLights.next(), Layer::Population);
-        assert_eq!(Layer::Income.next(), Layer::Political);
+        assert_eq!(Layer::Income.next(), Layer::Density);
+        assert_eq!(Layer::Density.next(), Layer::Political);
+    }
+
+    #[test]
+    fn density_ramp_and_legend() {
+        assert_eq!(density_color(0.0), DENSITY_RAMP[0]);
+        assert_eq!(density_color(1.0), DENSITY_RAMP[4]);
+        assert_eq!(density_color(2.0), DENSITY_RAMP[4]);
+        assert_eq!(density_color(f64::NAN), DENSITY_RAMP[0]);
+        assert_eq!(density_color(0.375), [181, 57, 117]);
+        let rows = density_legend();
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0].1, "1 person/km²");
+        assert_eq!(rows[4].1, "10,000+ people/km²");
+        assert!(rows.iter().all(|(c, _)| c.len() == 7 && c.starts_with('#')));
+        assert!(Layer::Density.in_data_menu() && Layer::Population.in_data_menu());
+        assert!(!Layer::NightLights.in_data_menu());
+        assert_eq!(Layer::from_id("density"), Some(Layer::Density));
     }
 
     #[test]
