@@ -127,6 +127,8 @@ struct App {
     morph: Morph,
     proj_button: HtmlElement,
     proj_menu: HtmlElement,
+    overlay_button: HtmlElement,
+    overlay_menu: HtmlElement,
     proj_items: Vec<(Projection, HtmlElement)>,
     /// Drag, pinch, inertia, zoom and flight state; mutates `camera`.
     controls: Controls,
@@ -366,6 +368,23 @@ impl App {
         self.update_hover();
         self.redraw.mark_render();
         self.hash_stale = true;
+    }
+
+    /// Open or close the overlays menu (day/night, history, deep time,
+    /// languages, societies). Its items stay open on click: they are
+    /// switches, and several can be on.
+    fn set_overlay_menu(&mut self, open: bool) {
+        self.overlay_menu.set_hidden(!open);
+        let _ = self
+            .overlay_button
+            .set_attribute("aria-expanded", if open { "true" } else { "false" });
+        if open {
+            if let Ok(Some(first)) = self.overlay_menu.query_selector("button") {
+                if let Some(b) = first.dyn_ref::<HtmlElement>() {
+                    let _ = b.focus();
+                }
+            }
+        }
     }
 
     /// Open or close the projection menu.
@@ -880,6 +899,7 @@ impl App {
             }
             self.select(None);
             self.set_proj_menu(false);
+            self.set_overlay_menu(false);
         }
         if view != View::Sky {
             self.sky_gestures = sky::Gestures::default();
@@ -1649,6 +1669,9 @@ impl App {
         if !self.proj_menu.hidden() {
             self.set_proj_menu(false);
         }
+        if !self.overlay_menu.hidden() {
+            self.set_overlay_menu(false);
+        }
         self.coarse_pointer = e.pointer_type() != "mouse";
         let _ = self.canvas.set_pointer_capture(e.pointer_id());
         // A press on a measure point grabs it instead of panning the view.
@@ -1907,6 +1930,8 @@ fn start() -> Result<(), JsValue> {
         morph: Morph::new(initial_proj),
         proj_button: element(&doc, "proj-button")?,
         proj_menu: element(&doc, "proj-menu")?,
+        overlay_button: element(&doc, "overlay-button")?,
+        overlay_menu: element(&doc, "overlay-menu")?,
         proj_items: proj_items.clone(),
         controls: Controls::new(&camera),
         last_frame_ms: None,
@@ -2047,6 +2072,15 @@ fn start() -> Result<(), JsValue> {
                 let mut a = app.borrow_mut();
                 let open = a.proj_menu.hidden();
                 a.set_proj_menu(open);
+            })?;
+        }
+        {
+            let app = app.clone();
+            let button: EventTarget = app.borrow().overlay_button.clone().into();
+            listen(&button, "click", true, move |_: MouseEvent| {
+                let mut a = app.borrow_mut();
+                let open = a.overlay_menu.hidden();
+                a.set_overlay_menu(open);
             })?;
         }
         for (p, b) in proj_items {
