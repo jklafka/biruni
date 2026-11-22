@@ -4,7 +4,8 @@
 // `decode_shapes` in src/geo.rs, and the map width in pixels). Replies with
 // { tiles: [ArrayBuffer, ArrayBuffer], ice: ArrayBuffer }: the left and right square halves of the width x width/2 map,
 // one byte per pixel (the red channel), row 0 at the north. `ice` is the glacier
-// mask, one width/2 x width/4 canvas (mirrors `draw_ice`). On any failure it
+// mask, one width/2 x width/4 canvas (mirrors `draw_ice`). All three are run-length
+// coded (`encodeRuns`, format in src/runs.rs). On any failure it
 // replies { error } and the page falls back to drawing on the main thread.
 //
 // The drawing calls mirror `Layers::draw_tile` in src/geo.rs exactly (same
@@ -109,11 +110,44 @@ function rasterizeIce(glacierBytes, shelfBytes, w) {
   return out.buffer;
 }
 
+// Run-length code a mask (src/runs.rs, which documents the format and
+// tests the same encoder): a value byte, then the run length as an unsigned
+// LEB128 varint. The masks are mostly long runs, so the app keeps them
+// small and decodes them a strip at a time.
+function encodeRuns(buffer) {
+  const src = new Uint8Array(buffer);
+  let out = new Uint8Array(1 << 20);
+  let n = 0;
+  const put = (b) => {
+    if (n === out.length) {
+      const grown = new Uint8Array(out.length * 2);
+      grown.set(out);
+      out = grown;
+    }
+    out[n++] = b;
+  };
+  let i = 0;
+  while (i < src.length) {
+    const v = src[i];
+    let j = i + 1;
+    while (j < src.length && src[j] === v) j++;
+    put(v);
+    let len = j - i;
+    while (len >= 0x80) {
+      put((len & 0x7f) | 0x80);
+      len = Math.floor(len / 128);
+    }
+    put(len);
+    i = j;
+  }
+  return out.slice(0, n).buffer;
+}
+
 self.onmessage = (e) => {
   try {
     const { land, lakes, glaciers, shelves, width } = e.data;
-    const tiles = rasterize(land, lakes, width);
-    const ice = rasterizeIce(glaciers, shelves, width / 2);
+    const tiles = rasterize(land, lakes, width).map(encodeRuns);
+    const ice = encodeRuns(rasterizeIce(glaciers, shelves, width / 2));
     self.postMessage({ tiles, ice }, [...tiles, ice]);
   } catch (err) {
     self.postMessage({ error: String(err && err.message ? err.message : err) });

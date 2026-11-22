@@ -182,17 +182,47 @@ pub fn decode_shapes(data: &[u8]) -> Result<Vec<Shape>, String> {
 }
 
 /// The land mask for one map width, rasterized by the worker: two square
-/// halves of `width/2 × width/2` bytes (the red channel), left half first.
+/// halves of `width/2 × width/2` bytes (the red channel), left half first,
+/// each run-length coded (`runs.rs`): a few MB instead of 32.
 struct Tiles {
     width: u32,
-    halves: Vec<js_sys::Uint8Array>,
+    halves: Vec<Vec<u8>>,
 }
 
 /// The glacier mask for one map width, rasterized by the worker: a single
-/// `width/2 × width/4` canvas of bytes (the red channel).
+/// `width/2 × width/4` canvas of bytes (the red channel), run-length coded.
 struct IceTile {
     width: u32,
-    pixels: js_sys::Uint8Array,
+    runs: Vec<u8>,
+}
+
+/// Rows decoded per upload: a strip of the widest mask (4096) is 1 MB.
+const STRIP_ROWS: usize = 256;
+
+/// Upload run-length coded bytes into the bound texture's region
+/// `x, 0, w x h` a strip at a time.
+fn upload_runs(gl: &GL, runs: &[u8], x: i32, w: usize, h: usize) -> Result<(), JsValue> {
+    let mut reader = crate::runs::Reader::new(runs);
+    let mut buf = vec![0u8; w * STRIP_ROWS.min(h)];
+    let mut y = 0;
+    while y < h {
+        let rows = STRIP_ROWS.min(h - y);
+        let strip = &mut buf[..w * rows];
+        reader.fill(strip).map_err(|e| JsValue::from_str(&e))?;
+        gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            x,
+            y as i32,
+            w as i32,
+            rows as i32,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(strip),
+        )?;
+        y += rows;
+    }
+    Ok(())
 }
 
 /// Vector layers plus the rasterized land and glacier masks.
@@ -302,18 +332,24 @@ async fn finish_worker(
         return Err(JsValue::from_str(&err));
     }
     let list: js_sys::Array = js_sys::Reflect::get(&reply, &"tiles".into())?.dyn_into()?;
-    let halves: Vec<js_sys::Uint8Array> =
-        list.iter().map(|b| js_sys::Uint8Array::new(&b)).collect();
+    let halves: Vec<Vec<u8>> = list
+        .iter()
+        .map(|b| js_sys::Uint8Array::new(&b).to_vec())
+        .collect();
     let h = (width / 2) as usize;
-    if halves.len() != 2 || halves.iter().any(|t| t.length() as usize != h * h) {
+    if halves.len() != 2
+        || halves
+            .iter()
+            .any(|t| crate::runs::decoded_len(t) != Ok(h * h))
+    {
         return Err("worker returned unexpected tiles".into());
     }
-    let ice = js_sys::Uint8Array::new(&js_sys::Reflect::get(&reply, &"ice".into())?);
+    let ice = js_sys::Uint8Array::new(&js_sys::Reflect::get(&reply, &"ice".into())?).to_vec();
     let (iw, ih) = ((width / 2) as usize, (width / 4) as usize);
-    if ice.length() as usize != iw * ih {
+    if crate::runs::decoded_len(&ice) != Ok(iw * ih) {
         return Err("worker returned an unexpected glacier mask".into());
     }
-    Ok((Tiles { width, halves }, IceTile { width, pixels: ice }))
+    Ok((Tiles { width, halves }, IceTile { width, runs: ice }))
 }
 
 impl Layers {
@@ -395,17 +431,7 @@ impl Layers {
         match &self.tiles {
             Some(t) if t.width == map_w => {
                 for (half, x) in t.halves.iter().zip([0, map_h]) {
-                    gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
-                        GL::TEXTURE_2D,
-                        0,
-                        x as i32,
-                        0,
-                        map_h as i32,
-                        map_h as i32,
-                        GL::RED,
-                        GL::UNSIGNED_BYTE,
-                        Some(half),
-                    )?;
+                    upload_runs(gl, half, x as i32, map_h as usize, map_h as usize)?;
                 }
                 Ok(())
             }
@@ -419,18 +445,9 @@ impl Layers {
     pub fn fill_ice_texture(&self, gl: &GL, ice_w: u32, ice_h: u32) -> Result<(), JsValue> {
         gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
         match &self.ice {
-            Some(t) if t.width / 2 == ice_w => gl
-                .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
-                    GL::TEXTURE_2D,
-                    0,
-                    0,
-                    0,
-                    ice_w as i32,
-                    ice_h as i32,
-                    GL::RED,
-                    GL::UNSIGNED_BYTE,
-                    Some(&t.pixels),
-                ),
+            Some(t) if t.width / 2 == ice_w => {
+                upload_runs(gl, &t.runs, 0, ice_w as usize, ice_h as usize)
+            }
             _ => {
                 let doc = web_sys::window()
                     .ok_or("no window")?

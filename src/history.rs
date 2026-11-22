@@ -39,11 +39,35 @@ pub struct Timeline {
     pub scale: Scale,
     pub names: Vec<String>,
     /// Closed rings, shared between geometries.
-    pub rings: Vec<Shape>,
+    pub rings: Vec<Ring>,
     /// Each geometry is a set of rings (indices into `rings`), filled
     /// even-odd.
     pub geometries: Vec<Vec<u32>>,
     pub records: Vec<Record>,
+}
+
+/// A closed ring of a timeline: lon/lat degrees as `f32` (the file stores
+/// 0.01 degree steps, which `f32` holds to about a metre), half the memory
+/// of `f64` points: the historical borders have 1.3 million points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ring {
+    pub points: Vec<[f32; 2]>,
+}
+
+impl Ring {
+    /// The points as `f64`.
+    pub fn iter(&self) -> impl Iterator<Item = [f64; 2]> + '_ {
+        self.points
+            .iter()
+            .map(|p| [f64::from(p[0]), f64::from(p[1])])
+    }
+
+    pub fn to_shape(&self) -> Shape {
+        Shape {
+            points: self.iter().collect(),
+            closed: true,
+        }
+    }
 }
 
 impl Timeline {
@@ -68,7 +92,7 @@ impl Timeline {
     }
 
     /// The rings of a record's geometry.
-    pub fn rings_of<'a>(&'a self, r: &Record) -> impl Iterator<Item = &'a Shape> + 'a {
+    pub fn rings_of<'a>(&'a self, r: &Record) -> impl Iterator<Item = &'a Ring> + 'a {
         self.geometries[r.geometry as usize]
             .iter()
             .map(|&i| &self.rings[i as usize])
@@ -120,7 +144,7 @@ pub fn decode(data: &[u8]) -> Result<Timeline, String> {
         pos += n;
     }
     let (mut x, mut y) = (0i64, 0i64);
-    let mut rings: Vec<Shape> = Vec::new();
+    let mut rings: Vec<Ring> = Vec::new();
     for _ in 0..read_count(data, &mut pos)? {
         let n = read_count(data, &mut pos)?;
         if n < 3 {
@@ -137,12 +161,9 @@ pub fn decode(data: &[u8]) -> Result<Timeline, String> {
             if x.abs() > max_x || y.abs() > max_y {
                 return Err("history data: coordinate out of range".into());
             }
-            points.push([x as f64 / k, y as f64 / k]);
+            points.push([(x as f64 / k) as f32, (y as f64 / k) as f32]);
         }
-        rings.push(Shape {
-            points,
-            closed: true,
-        });
+        rings.push(Ring { points });
     }
     let mut geometries = Vec::new();
     for _ in 0..read_count(data, &mut pos)? {
@@ -256,7 +277,7 @@ impl Timeline {
     /// `rasterize` fills the world.
     pub fn fill_detail(&self, active: &[usize], f: &mut crate::id_detail::Filler) {
         for (pos, &ri) in active.iter().enumerate() {
-            let rings: Vec<&[[f64; 2]]> = self
+            let rings: Vec<&[[f32; 2]]> = self
                 .rings_of(&self.records[ri])
                 .map(|r| r.points.as_slice())
                 .collect();
@@ -271,21 +292,31 @@ impl Timeline {
     /// record's rings; later records win where they overlap). The same
     /// layout as `Countries::rasterize_ids`, so the political shader reads
     /// it unchanged.
+    #[cfg(test)]
     pub fn rasterize(&self, active: &[usize], width: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        self.rasterize_into(active, width, &mut out);
+        out
+    }
+
+    /// `rasterize` into `out`, reusing its memory (an 8 MB raster per
+    /// year would otherwise be allocated next to the last one).
+    pub fn rasterize_into(&self, active: &[usize], width: usize, out: &mut Vec<u8>) {
         let height = width / 2;
-        let mut out = vec![0u8; width * height];
+        out.clear();
+        out.resize(width * height, 0);
         if height == 0 {
-            return out;
+            return;
         }
         let (dx, dy) = (360.0 / width as f64, 180.0 / height as f64);
         let mut xs: Vec<f64> = Vec::new();
         for (pos, &ri) in active.iter().enumerate() {
             let rec = &self.records[ri];
             let id = (pos + 1) as u8;
-            let rings: Vec<&Shape> = self.rings_of(rec).collect();
+            let rings: Vec<&Ring> = self.rings_of(rec).collect();
             let (lo, hi) = rings
                 .iter()
-                .flat_map(|r| &r.points)
+                .flat_map(|r| r.iter())
                 .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
                     (lo.min(p[1]), hi.max(p[1]))
                 });
@@ -304,7 +335,7 @@ impl Timeline {
                     let p = &ring.points;
                     let mut j = p.len() - 1;
                     for i in 0..p.len() {
-                        let (a, b) = (p[i], p[j]);
+                        let (a, b) = (p[i].map(f64::from), p[j].map(f64::from));
                         if (a[1] > lat) != (b[1] > lat) {
                             xs.push(a[0] + (lat - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
                         }
@@ -321,7 +352,6 @@ impl Timeline {
                 }
             }
         }
-        out
     }
 
     /// Fill color index of each raster ID (index 0 unused), for
@@ -341,7 +371,7 @@ impl Timeline {
         for &ri in active {
             for &g in &self.geometries[self.records[ri].geometry as usize] {
                 if seen.insert(g) {
-                    out.push(self.rings[g as usize].clone());
+                    out.push(self.rings[g as usize].to_shape());
                 }
             }
         }
@@ -357,7 +387,7 @@ impl Timeline {
                 // Angular size: the bounding box of the rings around the
                 // label point.
                 let (mut x0, mut x1, mut y0, mut y1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-                for p in self.rings_of(r).flat_map(|s| &s.points) {
+                for p in self.rings_of(r).flat_map(|s| s.iter()) {
                     x0 = x0.min(p[0]);
                     x1 = x1.max(p[0]);
                     y0 = y0.min(p[1]);
@@ -454,7 +484,6 @@ mod tests {
         let ring = |g: usize, i: usize| &t.rings[t.geometries[g][i] as usize];
         assert_eq!(ring(1, 2).points[0], [-20.0, 0.0]);
         assert_eq!(ring(2, 0).points[1], [180.0, -5.0]);
-        assert!(t.rings.iter().all(|r| r.closed));
         assert_eq!(t.rings_of(&t.records[1]).count(), 3);
         assert_eq!(t.records[2].label, [175.0, 0.0]);
         assert_eq!(t.records[2].tag, 7);

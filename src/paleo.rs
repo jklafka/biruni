@@ -236,7 +236,6 @@ pub fn reconstruct(coasts: &Timeline, rot: &Rotations, age: f64) -> Vec<Piece> {
                 .rings_of(r)
                 .map(|s| Shape {
                     points: s
-                        .points
                         .iter()
                         .map(|p| {
                             let (lat, lon) = lat_lon(q.rotate(unit(p[1], p[0])));

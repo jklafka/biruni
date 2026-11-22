@@ -35,6 +35,7 @@ mod paleo_app;
 mod projection;
 mod quality;
 mod render;
+mod runs;
 mod scrub;
 mod scrub_ui;
 mod search;

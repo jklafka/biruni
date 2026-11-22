@@ -226,6 +226,23 @@ pub fn plan(cam: &Camera, world_width: usize, current: Option<&Window>) -> Plan 
     })
 }
 
+/// A lon/lat point in degrees, as `f64` or `f32` (the historical rings).
+pub trait LonLat: Copy {
+    fn lon_lat(self) -> [f64; 2];
+}
+
+impl LonLat for [f64; 2] {
+    fn lon_lat(self) -> [f64; 2] {
+        self
+    }
+}
+
+impl LonLat for [f32; 2] {
+    fn lon_lat(self) -> [f64; 2] {
+        [f64::from(self[0]), f64::from(self[1])]
+    }
+}
+
 /// Scanline filler for a window: each texel whose center is inside a
 /// group of rings (even-odd, like the world raster) takes the group's ID.
 /// Later groups win where they overlap.
@@ -247,11 +264,11 @@ impl Filler {
     /// Fill one even-odd group of rings (lon/lat degree points, each ring
     /// within one copy of the world). `bbox` is the group's
     /// `[lon_min, lat_min, lon_max, lat_max]`.
-    pub fn fill<'a>(
+    pub fn fill<'a, P: LonLat + 'a>(
         &mut self,
         id: u8,
         bbox: [f64; 4],
-        rings: impl Iterator<Item = &'a [[f64; 2]]> + Clone,
+        rings: impl Iterator<Item = &'a [P]> + Clone,
     ) {
         let win = self.win;
         let lat_bot = win.lat_top - win.dlat;
@@ -272,7 +289,7 @@ impl Filler {
                 }
                 let mut j = n - 1;
                 for i in 0..n {
-                    let (a, b) = (ring[i], ring[j]);
+                    let (a, b) = (ring[i].lon_lat(), ring[j].lon_lat());
                     j = i;
                     let (lo, hi) = (a[1].min(b[1]), a[1].max(b[1]));
                     if hi < lat_bot || lo > win.lat_top || lo == hi {
@@ -317,7 +334,7 @@ impl Filler {
 }
 
 /// `[lon_min, lat_min, lon_max, lat_max]` of some rings.
-pub fn bbox<'a>(rings: impl Iterator<Item = &'a [[f64; 2]]>) -> [f64; 4] {
+pub fn bbox<'a, P: LonLat + 'a>(rings: impl Iterator<Item = &'a [P]>) -> [f64; 4] {
     let mut b = [
         f64::INFINITY,
         f64::INFINITY,
@@ -325,6 +342,7 @@ pub fn bbox<'a>(rings: impl Iterator<Item = &'a [[f64; 2]]>) -> [f64; 4] {
         f64::NEG_INFINITY,
     ];
     for p in rings.flatten() {
+        let p = p.lon_lat();
         b[0] = b[0].min(p[0]);
         b[1] = b[1].min(p[1]);
         b[2] = b[2].max(p[0]);

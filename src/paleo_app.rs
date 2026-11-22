@@ -236,18 +236,19 @@ impl App {
         }
         let pieces = paleo::reconstruct(&coasts, &rot, self.paleo.ma);
         let width = self.renderer.ids_width();
-        let groups = paleo::rasterize(&pieces, width);
-        let land: Vec<u8> = groups
-            .iter()
-            .map(|&g| if g > 0 { 255 } else { 0 })
-            .collect();
+        let mut raster = paleo::rasterize(&pieces, width);
         let report = |r: Result<(), JsValue>| {
             if let Err(e) = r {
                 web_sys::console::error_1(&e);
             }
         };
-        report(self.renderer.upload_land_mask(&land, width));
-        report(self.renderer.upload_country_ids(&groups, width));
+        // The groups are the IDs; then the same buffer, turned into land
+        // or sea in place, is the land mask (no second 8 MB raster).
+        report(self.renderer.upload_country_ids(&raster, width));
+        for v in raster.iter_mut() {
+            *v = if *v > 0 { 255 } else { 0 };
+        }
+        report(self.renderer.upload_land_mask(&raster, width));
         // A palette color per continent group, chosen so that neighbors
         // on the supercontinents differ.
         let mut colors = [0u8; 256];
