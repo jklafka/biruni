@@ -547,6 +547,21 @@ impl Countries {
         Ok(out)
     }
 
+    /// Fill the detail window with country IDs, as `rasterize_ids` fills
+    /// the world (same IDs, same order).
+    pub fn fill_detail(&self, f: &mut crate::id_detail::Filler) {
+        for (ci, country) in self.list.iter().enumerate() {
+            let id = (ci + 1) as u8;
+            for poly in &country.polygons {
+                f.fill(
+                    id,
+                    poly.bbox,
+                    poly.rings.iter().map(|r| r.points.as_slice()),
+                );
+            }
+        }
+    }
+
     /// Scanline-fill one country (`list[ci]`) into `out`.
     fn fill_country(&self, out: &mut [u8], width: usize, ci: usize) {
         let height = width / 2;

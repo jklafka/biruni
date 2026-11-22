@@ -314,6 +314,17 @@ impl App {
         let _ = self.canvas.remove_attribute("data-year");
     }
 
+    /// Fill the detail window with the year's polities, if applied.
+    pub(crate) fn history_fill_detail(&self, f: &mut crate::id_detail::Filler) -> bool {
+        match (&self.history.data, &self.history.applied) {
+            (Some(t), Some(active)) => {
+                t.fill_detail(active, f);
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// HUD text for the polity under a lon/lat (degrees), if any.
     pub(crate) fn history_at(&self, lat: f64, lon: f64) -> Option<String> {
         let t = self.history.data.as_ref()?;
