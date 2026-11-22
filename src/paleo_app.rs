@@ -5,7 +5,9 @@
 //! (browser-free). It and the historical borders are never on together.
 
 use crate::history::Timeline;
+use crate::history_app::PlayUi;
 use crate::paleo::{self, Rotations};
+use crate::scrub::Stepper;
 use crate::view::Layer;
 use crate::{data, element, listen, App};
 use std::cell::RefCell;
@@ -21,7 +23,12 @@ pub struct AgesUi {
     range: HtmlInputElement,
     value: HtmlElement,
     button: HtmlElement,
+    play: PlayUi,
 }
+
+/// Play rates of the ages panel: million years a second, toward the
+/// present, and the speed button's text.
+pub const AGE_RATES: [(f64, &str); 3] = [(2.0, "2 Myr/s"), (10.0, "10 Myr/s"), (50.0, "50 Myr/s")];
 
 impl AgesUi {
     pub fn new(doc: &Document) -> Result<AgesUi, JsValue> {
@@ -30,6 +37,7 @@ impl AgesUi {
             range: element(doc, "age-range")?,
             value: element(doc, "age-val")?,
             button: element(doc, "paleo-toggle")?,
+            play: PlayUi::new(doc, "age-play", "age-speed")?,
         })
     }
 
@@ -63,6 +71,8 @@ pub struct PaleoState {
     applied: Option<f64>,
     dirty: bool,
     prev_layer: Option<Layer>,
+    /// Play toward the present.
+    pub play: Stepper,
 }
 
 impl PaleoState {
@@ -70,6 +80,7 @@ impl PaleoState {
         PaleoState {
             on: ma.is_some(),
             ma: ma.unwrap_or(DEFAULT_MA),
+            play: Stepper::new(1),
             ..PaleoState::default()
         }
     }
@@ -106,6 +117,7 @@ impl App {
             self.paleo_reapply();
         }
         if !on && was {
+            self.set_age_playing(false);
             if let Some(layers) = self.layers.clone() {
                 // The modern land, ice, coastlines and borders.
                 if let Err(e) = self.renderer.upload_map(&layers) {
@@ -131,6 +143,43 @@ impl App {
         self.paleo.dirty = true;
         self.redraw.mark_render();
         self.hash_stale = true;
+    }
+
+    /// Play or pause toward the present. Play from the present starts over
+    /// at the oldest age.
+    pub(crate) fn set_age_playing(&mut self, on: bool) {
+        if on && self.paleo.ma <= 0.0 {
+            self.set_ma(paleo::MAX_MA);
+        }
+        self.paleo.play.set_on(on);
+        self.show_age_play();
+    }
+
+    pub(crate) fn cycle_age_speed(&mut self) {
+        self.paleo.play.cycle(AGE_RATES.len());
+        self.show_age_play();
+    }
+
+    fn show_age_play(&self) {
+        let speed = AGE_RATES[self.paleo.play.speed % AGE_RATES.len()].1;
+        self.ages_ui.play.show(&self.paleo.play, speed);
+    }
+
+    /// Called every Earth frame: while playing, move toward the present;
+    /// stop there.
+    pub(crate) fn paleo_play(&mut self, dt_ms: f64) {
+        if !self.paleo.on {
+            return;
+        }
+        let rate = AGE_RATES[self.paleo.play.speed % AGE_RATES.len()].0;
+        let n = self.paleo.play.steps(dt_ms, rate);
+        if n == 0 {
+            return;
+        }
+        self.set_ma(self.paleo.ma - n as f64);
+        if self.paleo.ma <= 0.0 {
+            self.set_age_playing(false);
+        }
     }
 
     /// Draw the age again at the next frame (the modern map came back).
@@ -257,6 +306,22 @@ pub fn wire(app: &Rc<RefCell<App>>, doc: &Document) -> Result<(), JsValue> {
             let mut a = app.borrow_mut();
             let ma = a.paleo.ma + step;
             a.set_ma(ma);
+        })?;
+    }
+    {
+        let button: HtmlElement = element(doc, "age-play")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            let mut a = app.borrow_mut();
+            let on = !a.paleo.play.on;
+            a.set_age_playing(on);
+        })?;
+    }
+    {
+        let button: HtmlElement = element(doc, "age-speed")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            app.borrow_mut().cycle_age_speed()
         })?;
     }
     Ok(())

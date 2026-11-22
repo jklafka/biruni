@@ -1425,6 +1425,8 @@ impl App {
                 self.refresh_sun();
             }
         }
+        self.history_play(dt);
+        self.paleo_play(dt);
         if self.view == View::Solar {
             self.solar_frame(cw, ch, pw, ph, dpr, dt, now_ms);
             return;
@@ -2567,6 +2569,19 @@ fn start() -> Result<(), JsValue> {
                     "h" | "H" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         let on = !a.history.on;
                         a.set_history(on);
+                    }
+                    // T plays the years or the ages while their panel is up.
+                    "t" | "T"
+                        if (a.history.on || a.paleo.on)
+                            && !(e.ctrl_key() || e.meta_key() || e.alt_key()) =>
+                    {
+                        if a.history.on {
+                            let on = !a.history.play.on;
+                            a.set_year_playing(on);
+                        } else {
+                            let on = !a.paleo.play.on;
+                            a.set_age_playing(on);
+                        }
                     }
                     // Historical borders: , and . step a year, Shift (< and >)
                     // a century.

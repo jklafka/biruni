@@ -210,6 +210,53 @@ pub const YEAR_PLAY_SECS: f64 = 12.0;
 /// hour (day mode) or one week (year mode). Nothing moves in between.
 pub const REDUCED_STEP_MS: f64 = 700.0;
 
+/// Play for the year and age panels (historical borders, deep time): whole
+/// steps at one of a few rates, from frame time. Browser-free.
+#[derive(Clone, Debug, Default)]
+pub struct Stepper {
+    pub on: bool,
+    /// Index into the caller's rates.
+    pub speed: usize,
+    /// Steps due but not yet whole.
+    acc: f64,
+}
+
+/// The longest frame play counts, in milliseconds, so a stalled or hidden
+/// tab does not jump ahead.
+pub const STEPPER_MAX_DT_MS: f64 = 250.0;
+
+impl Stepper {
+    pub fn new(speed: usize) -> Self {
+        Self {
+            on: false,
+            speed,
+            acc: 0.0,
+        }
+    }
+
+    pub fn set_on(&mut self, on: bool) {
+        self.on = on;
+        self.acc = 0.0;
+    }
+
+    /// Next of `n` speeds, wrapping.
+    pub fn cycle(&mut self, n: usize) {
+        self.speed = (self.speed + 1) % n.max(1);
+    }
+
+    /// Whole steps due after `dt_ms` at `per_sec` steps a second (0 while
+    /// off or for a bad rate or time).
+    pub fn steps(&mut self, dt_ms: f64, per_sec: f64) -> i64 {
+        if !self.on || !(per_sec.is_finite() && per_sec > 0.0) || !dt_ms.is_finite() {
+            return 0;
+        }
+        self.acc += dt_ms.clamp(0.0, STEPPER_MAX_DT_MS) / 1000.0 * per_sec;
+        let n = self.acc.floor();
+        self.acc -= n;
+        n as i64
+    }
+}
+
 /// Play state: the mode and the leftover time between whole steps.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Player {
@@ -281,6 +328,27 @@ pub fn year_days(t: f64, n: u32) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stepper_counts_whole_steps() {
+        let mut s = Stepper::new(0);
+        assert_eq!(s.steps(1000.0, 50.0), 0, "off");
+        s.set_on(true);
+        // 16 ms frames at 50 steps a second: 0.8 a frame.
+        let total: i64 = (0..100).map(|_| s.steps(16.0, 50.0)).sum();
+        assert!((79..=80).contains(&total), "{total}");
+        // A long frame counts as 250 ms.
+        assert_eq!(s.steps(10_000.0, 10.0), 2);
+        assert_eq!(s.steps(f64::NAN, 10.0), 0);
+        assert_eq!(s.steps(-5.0, 10.0), 0);
+        assert_eq!(s.steps(100.0, f64::INFINITY), 0);
+        assert_eq!(s.steps(100.0, 0.0), 0);
+        s.cycle(3);
+        s.cycle(3);
+        assert_eq!(s.speed, 2);
+        s.cycle(3);
+        assert_eq!(s.speed, 0);
+    }
+
     use super::*;
 
     const T_2024_06_21_18: f64 = 1_718_992_800.0;
