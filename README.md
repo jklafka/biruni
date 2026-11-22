@@ -54,7 +54,7 @@ cargo test              # unit tests
 
 ## Data and credits
 
-Biruni is built on open data: [Natural Earth](https://www.naturalearthdata.com/) (public domain) for the base map, NASA imagery (Blue Marble, Black Marble, planetary maps and JPL Horizons), the JRC's GHS-POP population grid, Glottolog and Grambank for languages, D-PLACE for societies, Cliopatria and the Seshat Global History Databank for history, the Merdith et al. plate model for deep time, and the HYG catalog, Stellarium and the Digitized Sky Survey for the sky. The app's "Data credits" link lists the sources of what is on screen. Some data is non-commercial (CC BY-NC), so Biruni stays a non-commercial project; see [DATA_LICENSES.md](DATA_LICENSES.md) and [docs/data.md](docs/data.md).
+Biruni is built on open data: [Natural Earth](https://www.naturalearthdata.com/) (public domain) for the base map, NASA imagery (Blue Marble, Black Marble, planetary maps and JPL Horizons), the JRC's GHS-POP population grid, Glottolog and Grambank for languages, D-PLACE for societies, Cliopatria, the Seshat Global History Databank and Wikidata for history, the Merdith et al. plate model for deep time, and the HYG catalog, Stellarium and the Digitized Sky Survey for the sky. The app's "Data credits" link lists the sources of what is on screen. Some data is non-commercial (CC BY-NC), so Biruni stays a non-commercial project; see [DATA_LICENSES.md](DATA_LICENSES.md) and [docs/data.md](docs/data.md).
 
 ## Contributing
 

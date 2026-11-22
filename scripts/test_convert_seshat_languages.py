@@ -25,9 +25,36 @@ GENERAL = [
 ]
 
 
-def feature(name, start, end, sid, kind="POLITY"):
-    return {"properties": {"Name": name, "FromYear": start, "ToYear": end, "SeshatID": sid, "Type": kind}}
+def feature(name, start, end, sid, kind="POLITY", wd=""):
+    return {"properties": {"Name": name, "FromYear": start, "ToYear": end, "SeshatID": sid, "Type": kind,
+                           "Wikidata": wd}}
 
+
+GLOTTOLOG = [
+    {"ID": "indo1319", "Name": "Indo-European", "Level": "family", "Family_ID": ""},
+    {"ID": "atla1278", "Name": "Atlantic-Congo", "Level": "family", "Family_ID": ""},
+    {"ID": "pidg1258", "Name": "Pidgin", "Level": "family", "Family_ID": ""},
+    {"ID": "stan1290", "Name": "French", "Level": "language", "Family_ID": "indo1319"},
+    {"ID": "stan1293", "Name": "English", "Level": "language", "Family_ID": "indo1319"},
+    {"ID": "yoru1245", "Name": "Yoruba", "Level": "language", "Family_ID": "atla1278"},
+    {"ID": "nige1257", "Name": "Naija", "Level": "language", "Family_ID": "pidg1258"},
+    {"ID": "basq1248", "Name": "Basque", "Level": "language", "Family_ID": ""},
+]
+
+WIKIDATA = {
+    # Official languages win over languages used.
+    "Q1": [("P2936", "Q9", "yoru1245", "Yoruba"), ("P37", "Q150", "stan1290", "French"),
+           ("P37", "Q1860", "stan1293", "English")],
+    # No official language: up to MAX_USED languages used count.
+    "Q2": [("P2936", "Q34", "yoru1245", "Yoruba"), ("P2936", "Q35", "basq1248", "Basque"),
+           ("P2936", "Q36", "yoru1245", "Yoruba dialect")],
+    # Too many languages used: nothing.
+    "Q3": [("P2936", f"Q{i}", "stan1290", f"L{i}") for i in range(10, 15)],
+    # A language with two codes: the one Glottolog knows counts.
+    "Q5": [("P37", "Q150", "dani1284", "French"), ("P37", "Q150", "stan1290", "French")],
+    # A pidgin has no family; the label still counts.
+    "Q4": [("P37", "Q5", "nige1257", "Naija")],
+}
 
 FEATURES = [
     feature("Roman Republic", -500, -301, "it_roman_rep"),
@@ -48,13 +75,40 @@ class Convert(unittest.TestCase):
         self.assertEqual(lines[1:3], ["F\tIndo-European", "F\tAfro-Asiatic"])
         self.assertEqual(lines[3:], [
             # Families from both IDs, first family first; "U" dropped.
-            "P\tPtolemaic Kingdom\t-300\t-30\t1,0\tLatin",
+            "P\tPtolemaic Kingdom\t-300\t-30\t1,0\tLatin\tS",
             # Germanic is Indo-European; the gap from 101 to 149 splits the range.
-            "P\tRoman Empire\t-31\t100\t0\tLatin; Greek",
-            "P\tRoman Empire\t150\t200\t0\tLatin; Greek",
+            "P\tRoman Empire\t-31\t100\t0\tLatin; Greek\tS",
+            "P\tRoman Empire\t150\t200\t0\tLatin; Greek\tS",
             # Adjacent records with the same values merge.
-            "P\tRoman Republic\t-500\t-32\t0\tLatin",
+            "P\tRoman Republic\t-500\t-32\t0\tLatin\tS",
         ])
+
+    def test_wikidata_fills_gaps(self):
+        families = cs.glottolog_families(GLOTTOLOG)
+        self.assertEqual(families["yoru1245"], "Niger-Congo", "named as Seshat names it")
+        self.assertEqual(families["basq1248"], "Isolate")
+        self.assertNotIn("nige1257", families, "pseudo-families are not families")
+        features = FEATURES + [
+            feature("Third Republic", 1871, 1939, "", wd="Q1"),
+            feature("Oyo", 1600, 1700, "", wd="Q2"),
+            feature("Babel", 1, 2, "", wd="Q3"),
+            feature("Lagos", 1, 2, "", wd="Q4"),
+            feature("Two codes", 1, 2, "", wd="Q5"),
+            # Seshat wins where it has data.
+            feature("Roman Republic", -31, -20, "it_roman_rep", wd="Q1"),
+        ]
+        lines = cs.convert(GENERAL, features, WIKIDATA, families).splitlines()
+        fams = [line[2:] for line in lines if line.startswith("F\t")]
+        self.assertEqual(fams, ["Indo-European", "Afro-Asiatic", "Isolate", "Niger-Congo"], "by records, then name")
+        nc, iso = fams.index("Niger-Congo"), fams.index("Isolate")
+        rows = [line for line in lines if line.startswith("P\t")]
+        self.assertIn("P\tThird Republic\t1871\t1939\t0\tFrench; English\tW", rows)
+        # Two of three languages used are Niger-Congo: that is the main family.
+        self.assertIn(f"P\tOyo\t1600\t1700\t{nc},{iso}\tYoruba; Basque; Yoruba dialect\tW", rows)
+        self.assertIn("P\tLagos\t1\t2\t\tNaija\tW", rows)
+        self.assertIn("P\tTwo codes\t1\t2\t0\tFrench\tW", rows)
+        self.assertFalse(any("Babel" in r for r in rows))
+        self.assertIn("P\tRoman Republic\t-500\t-20\t0\tLatin\tS", rows)
 
     def test_refuses_tabs(self):
         with self.assertRaises(ValueError):

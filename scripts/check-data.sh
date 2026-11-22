@@ -22,6 +22,7 @@ python3 scripts/test_make_population_density.py > /dev/null 2>&1 || { python3 sc
 python3 scripts/test_convert_cliopatria.py > /dev/null 2>&1 || { python3 scripts/test_convert_cliopatria.py; exit 1; }
 python3 scripts/test_convert_glottolog.py > /dev/null 2>&1 || { python3 scripts/test_convert_glottolog.py; exit 1; }
 python3 scripts/test_convert_seshat_languages.py > /dev/null 2>&1 || { python3 scripts/test_convert_seshat_languages.py; exit 1; }
+python3 scripts/test_fetch_wikidata_languages.py > /dev/null 2>&1 || { python3 scripts/test_fetch_wikidata_languages.py; exit 1; }
 python3 scripts/test_convert_dplace.py > /dev/null 2>&1 || { python3 scripts/test_convert_dplace.py; exit 1; }
 python3 scripts/test_convert_merdith.py > /dev/null 2>&1 || { python3 scripts/test_convert_merdith.py; exit 1; }
 # Lockfile schema and license keys only; no network.

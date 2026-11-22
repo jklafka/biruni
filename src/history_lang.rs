@@ -1,5 +1,6 @@
 //! The historical borders colored by language family: Seshat's languages
-//! and linguistic families of past polities, joined to Cliopatria's records.
+//! and linguistic families of past polities, joined to Cliopatria's records,
+//! with Wikidata's official languages where Seshat has none.
 //! Browser-free. The data is `assets/data/history_languages.tsv`, built by
 //! `scripts/convert_seshat_languages.py` (format described there).
 //!
@@ -12,19 +13,19 @@
 use crate::history::{Record, Timeline};
 use std::collections::HashMap;
 
-pub const MAGIC: &str = "MAPSHISTLANG1";
+pub const MAGIC: &str = "MAPSHISTLANG2";
 /// Colors of the first families (sRGB), then the other families and no
 /// data: [`SLOTS`] entries in all, the size of `u_theme`.
 pub const PALETTE: [[u8; 3]; SLOTS] = [
-    [214, 96, 77],   // Indo-European: brick
-    [227, 184, 76],  // Afro-Asiatic: ochre
-    [92, 160, 116],  // Sino-Tibetan: green
-    [94, 138, 199],  // Turkic: blue
-    [176, 112, 176], // Dravidian: purple
-    [77, 172, 178],  // Mongolic: teal
-    [222, 140, 172], // Japonic: pink
-    [150, 112, 72],  // Niger-Congo: brown
-    [170, 196, 92],  // Austroasiatic: lime
+    [214, 96, 77],   // the largest family (Indo-European): brick
+    [227, 184, 76],  // ochre
+    [94, 138, 199],  // blue
+    [92, 160, 116],  // green
+    [176, 112, 176], // purple
+    [77, 172, 178],  // teal
+    [222, 140, 172], // pink
+    [150, 112, 72],  // brown
+    [170, 196, 92],  // lime
     [240, 150, 90],  // the tenth family: orange
     [150, 150, 140], // other families
     [62, 66, 74],    // no data
@@ -35,7 +36,14 @@ pub const OTHER: u8 = (SLOTS - 2) as u8;
 /// The palette slot of polities without data.
 pub const NO_DATA: u8 = (SLOTS - 1) as u8;
 
-/// A polity's years and what Seshat says about its languages.
+/// Where an entry's languages come from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Source {
+    Seshat,
+    Wikidata,
+}
+
+/// A polity's years and what Seshat (or Wikidata) says about its languages.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
     pub from: i64,
@@ -44,6 +52,7 @@ pub struct Entry {
     pub families: Vec<u16>,
     /// "Latin; Greek".
     pub languages: String,
+    pub source: Source,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -65,7 +74,12 @@ pub fn parse(text: &str) -> Result<HistoryLanguages, String> {
         let f: Vec<&str> = line.split('\t').collect();
         match f.as_slice() {
             ["F", name] if out.entries.is_empty() => out.families.push(name.to_string()),
-            ["P", name, from, to, fams, langs] if !name.is_empty() => {
+            ["P", name, from, to, fams, langs, source] if !name.is_empty() => {
+                let source = match *source {
+                    "S" => Source::Seshat,
+                    "W" => Source::Wikidata,
+                    _ => continue,
+                };
                 let (Ok(from), Ok(to)) = (from.parse::<i64>(), to.parse::<i64>()) else {
                     continue;
                 };
@@ -90,6 +104,7 @@ pub fn parse(text: &str) -> Result<HistoryLanguages, String> {
                         to,
                         families,
                         languages: langs.to_string(),
+                        source,
                     });
             }
             _ => {}
@@ -138,8 +153,8 @@ impl HistoryLanguages {
         out
     }
 
-    /// HUD text after a polity's name: "Latin; Greek (Indo-European)", or
-    /// that Seshat has no data.
+    /// HUD text after a polity's name: "Latin; Greek (Indo-European)", with
+    /// "; Wikidata" when it comes from there, or that there is no data.
     pub fn describe(&self, t: &Timeline, r: &Record) -> String {
         let Some(e) = self.record_entry(t, r) else {
             return "no language data".into();
@@ -149,10 +164,17 @@ impl HistoryLanguages {
             .iter()
             .filter_map(|&f| self.families.get(f as usize).map(String::as_str))
             .collect();
-        match (e.languages.is_empty(), fams.is_empty()) {
-            (false, false) => format!("{} ({})", e.languages, fams.join(", ")),
+        let mut note = fams.join(", ");
+        if e.source == Source::Wikidata {
+            if !note.is_empty() {
+                note.push_str("; ");
+            }
+            note.push_str("Wikidata");
+        }
+        match (e.languages.is_empty(), note.is_empty()) {
+            (false, false) => format!("{} ({note})", e.languages),
             (false, true) => e.languages.clone(),
-            _ => fams.join(", "),
+            _ => note,
         }
     }
 
@@ -169,7 +191,7 @@ impl HistoryLanguages {
         if self.families.len() > OTHER as usize {
             rows.push((PALETTE[OTHER as usize], "Other families".into()));
         }
-        rows.push((PALETTE[NO_DATA as usize], "No data in Seshat".into()));
+        rows.push((PALETTE[NO_DATA as usize], "No data".into()));
         rows
     }
 }
@@ -186,16 +208,18 @@ pub fn parse_hash(hash: &str) -> bool {
 mod tests {
     use super::*;
 
-    const TSV: &str = "MAPSHISTLANG1
+    const TSV: &str = "MAPSHISTLANG2
 F\tIndo-European
 F\tAfro-Asiatic
-P\tRoman Empire\t-30\t286\t0\tLatin
-P\tRoman Empire\t287\t394\t0\tLatin; Greek
-P\tPtolemaic Kingdom\t-291\t-198\t1,0\tGreek; demotic Egyptian
-P\tLanguage only\t1\t2\t\tPunic
-P\tBad family\t1\t2\t5\tX
-P\tBackwards\t5\t1\t0\tX
-P\tEmpty\t1\t2\t\t
+P\tRoman Empire\t-30\t286\t0\tLatin\tS
+P\tRoman Empire\t287\t394\t0\tLatin; Greek\tS
+P\tPtolemaic Kingdom\t-291\t-198\t1,0\tGreek; demotic Egyptian\tS
+P\tLanguage only\t1\t2\t\tPunic\tS
+P\tRepublic of India\t1947\t2024\t0\tHindi; English\tW
+P\tBad family\t1\t2\t5\tX\tS
+P\tBad source\t1\t2\t0\tX\tQ
+P\tBackwards\t5\t1\t0\tX\tS
+P\tEmpty\t1\t2\t\t\tS
 P\tShort\t1
 ";
 
@@ -203,7 +227,11 @@ P\tShort\t1
     fn parses_and_finds_entries() {
         let h = parse(TSV).unwrap();
         assert_eq!(h.families, ["Indo-European", "Afro-Asiatic"]);
-        assert_eq!(h.entries.len(), 3, "bad lines skipped");
+        assert_eq!(h.entries.len(), 4, "bad lines skipped");
+        assert_eq!(
+            h.entry("Republic of India", 1950, 1960).unwrap().source,
+            Source::Wikidata
+        );
         assert_eq!(
             h.entry("Roman Empire", 300, 350).unwrap().languages,
             "Latin; Greek"
@@ -216,6 +244,7 @@ P\tShort\t1
         assert!(h.entry("Roman Empire", 400, 410).is_none());
         assert!(h.entry("Carthage", 0, 1).is_none());
         assert!(parse("MAPSLANGS2\n").is_err());
+        assert!(parse("MAPSHISTLANG1\n").is_err());
     }
 
     #[test]
@@ -228,7 +257,7 @@ P\tShort\t1
         let legend = h.legend();
         assert_eq!(legend.len(), 3);
         assert_eq!(legend[1], (PALETTE[1], "Afro-Asiatic".into()));
-        assert_eq!(legend[2].1, "No data in Seshat");
+        assert_eq!(legend[2].1, "No data");
         let mut many = h.clone();
         many.families = (0..14).map(|i| format!("F{i}")).collect();
         let legend = many.legend();
@@ -260,6 +289,23 @@ P\tShort\t1
         let n = t.active(1500).len();
         let with = slots[1..=n].iter().filter(|&&s| s != NO_DATA).count();
         assert!(with >= 10 && with < n, "{with} of {n}");
+        // After 1900 Seshat has little; Wikidata's official languages fill in.
+        let active = t.active(2000);
+        let india = active
+            .iter()
+            .map(|&i| &t.records[i])
+            .find(|r| t.name(r) == "Republic of India")
+            .expect("India in 2000");
+        assert_eq!(
+            h.describe(&t, india),
+            "Hindi; English (Indo-European; Wikidata)"
+        );
+        let slots = h.id_slots(&t, &active);
+        let with = slots[1..=active.len()]
+            .iter()
+            .filter(|&&s| s != NO_DATA)
+            .count();
+        assert!(with * 4 > active.len() * 3, "{with} of {}", active.len());
         // Every entry names a polity of the borders file.
         let names: std::collections::HashSet<&str> = t.names.iter().map(String::as_str).collect();
         assert!(h.entries.keys().all(|k| names.contains(k.as_str())));

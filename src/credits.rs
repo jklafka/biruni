@@ -125,6 +125,15 @@ pub const SESHAT: Credit = Credit {
     text: "The languages and language families of past polities, for the historical borders colored by language family. Seshat Global History Databank (Turchin et al.), Polaris 2026 release, joined to Cliopatria polities. Seshat codes the main languages of a polity's government and elite, not every language spoken there, and has no values for most polities after about 1900.",
 };
 
+pub const WIKIDATA: Credit = Credit {
+    id: "wikidata",
+    name: "Wikidata",
+    license: "CC0 1.0 (public domain)",
+    license_url: "https://creativecommons.org/publicdomain/zero/1.0/",
+    source_url: "https://www.wikidata.org",
+    text: "Official languages of past and present polities (property P37, or P2936 when there is none), for the historical borders colored by language family where Seshat has no data; matched through the Wikidata items Cliopatria names. Snapshot of 2026-11-22.",
+};
+
 pub const GLOTTOLOG: Credit = Credit {
     id: "glottolog",
     name: "Glottolog 5.4",
@@ -161,7 +170,7 @@ pub const MERDITH: Credit = Credit {
     text: "Deep time: present-day coastlines moved with their plates back to 1000 million years ago. Merdith, A. S., et al. (2021), Extending full-plate tectonic models into deep time, Earth-Science Reviews 214, model v1.2.4 (EarthByte). The shapes are today's coastlines, not past shorelines, and longitudes before about 320 Ma are not constrained.",
 };
 
-pub const ALL: [&Credit; 16] = [
+pub const ALL: [&Credit; 17] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -174,6 +183,7 @@ pub const ALL: [&Credit; 16] = [
     &PLANET_MAPS,
     &CLIOPATRIA,
     &SESHAT,
+    &WIKIDATA,
     &GLOTTOLOG,
     &GRAMBANK,
     &DPLACE,
@@ -230,7 +240,7 @@ pub fn paleo_credits() -> Vec<&'static Credit> {
 /// family.
 pub fn history_credits(language_families: bool) -> Vec<&'static Credit> {
     if language_families {
-        vec![&CLIOPATRIA, &SESHAT, &NATURAL_EARTH]
+        vec![&CLIOPATRIA, &SESHAT, &WIKIDATA, &NATURAL_EARTH]
     } else {
         vec![&CLIOPATRIA, &NATURAL_EARTH]
     }
@@ -253,6 +263,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
                 PLANET_MAPS.id,
                 CLIOPATRIA.id,
                 SESHAT.id,
+                WIKIDATA.id,
                 GLOTTOLOG.id,
                 GRAMBANK.id,
                 DPLACE.id,

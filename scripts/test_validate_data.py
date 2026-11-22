@@ -189,14 +189,15 @@ class Validate(unittest.TestCase):
 
     def test_history_languages(self):
         files = self.good()
-        good = "MAPSHISTLANG1\nF\tIndo-European\nF\tTurkic\nP\tRome\t-30\t286\t0\tLatin\nP\tX\t1\t2\t1,0\t\n"
+        good = "MAPSHISTLANG2\nF\tIndo-European\nF\tTurkic\nP\tRome\t-30\t286\t0\tLatin\tS\nP\tX\t1\t2\t1,0\t\tW\n"
         files["history_languages.tsv"] = good.encode()
         self.assertEqual(self.problems(files), [])
         for bad, text in ((good.replace("1,0", "2"), "unknown family"),
                           (good.replace("-30", "300"), "from after to"),
-                          (good.replace("MAPSHISTLANG1", "X"), "header"),
+                          (good.replace("MAPSHISTLANG2", "MAPSHISTLANG1"), "header"),
                           (good.replace("\t1,0\t", "\t\t"), "neither"),
-                          ("MAPSHISTLANG1\nF\tA\n", "no polities")):
+                          (good.replace("\tW\n", "\tX\n"), "right width"),
+                          ("MAPSHISTLANG2\nF\tA\n", "no polities")):
             files["history_languages.tsv"] = bad.encode()
             self.assertProblem(self.problems(files), text)
 
