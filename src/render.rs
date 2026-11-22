@@ -21,6 +21,9 @@ const LINE_VERT_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line
 const LINE_FRAG_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/shaders/line.frag"));
 
 /// Line widths in CSS pixels (multiplied by the device pixel ratio).
+/// Entries of `u_theme` in `globe.frag`: the thematic classes and the fill
+/// palette share it.
+pub const THEME_SLOTS: usize = 12;
 const COAST_WIDTH: f32 = 1.0;
 const BORDER_WIDTH: f32 = 1.25;
 
@@ -246,6 +249,7 @@ struct Uniforms {
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
     theme: Option<WebGlUniformLocation>,
+    fill_theme: Option<WebGlUniformLocation>,
     density_ramp: Option<WebGlUniformLocation>,
     political: Option<WebGlUniformLocation>,
     sun: Option<WebGlUniformLocation>,
@@ -294,6 +298,7 @@ impl Uniforms {
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
             theme: u("u_theme"),
+            fill_theme: u("u_fillTheme"),
             density_ramp: u("u_densityRamp"),
             political: u("u_political"),
             sun: u("u_sun"),
@@ -909,6 +914,10 @@ pub struct Renderer {
     /// `Countries::theme_classes`), or `None` before the country data loads or
     /// on a layer that is not thematic.
     theme_classes: Option<[f32; 256]>,
+    /// A palette that replaces the political colors on the political
+    /// layer: `country_colors` then index it (the historical borders by
+    /// language family, `history_lang::PALETTE`).
+    fill_palette: Option<Vec<[u8; 3]>>,
     /// Texture sizes, chosen once from the device and kept across context loss.
     budget: TextureBudget,
     /// With `?debug=ctxloss`, the `WEBGL_lose_context` extension for the debug
@@ -983,6 +992,7 @@ impl Renderer {
             highlight: 0,
             country_colors: None,
             theme_classes: None,
+            fill_palette: None,
             budget,
             lose_ext,
             sky: None,
@@ -1872,6 +1882,13 @@ impl Renderer {
         self.country_colors = Some(colors.map(f32::from));
     }
 
+    /// Replace the political colors with `palette` (at most
+    /// `THEME_SLOTS` colors), indexed by `set_country_colors`; `None` goes
+    /// back to the political palette.
+    pub fn set_fill_palette(&mut self, palette: Option<&[[u8; 3]]>) {
+        self.fill_palette = palette.map(|p| p[..p.len().min(THEME_SLOTS)].to_vec());
+    }
+
     /// Per-ID classes for the thematic layer being shown (see
     /// `Countries::theme_classes`); `None` when the layer has no theme.
     pub fn set_theme_classes(&mut self, classes: Option<&[u8; 256]>) {
@@ -2139,13 +2156,18 @@ impl Renderer {
         } else {
             self.country_colors.as_ref()
         };
-        if let Some(t) = theme {
-            let flat: Vec<f32> = t
-                .palette()
-                .iter()
-                .flatten()
-                .map(|&c| f32::from(c) / 255.0)
-                .collect();
+        // A thematic layer's classes, or a fill palette replacing the
+        // political colors, both read `u_theme`.
+        let palette: Option<Vec<[u8; 3]>> = match theme {
+            Some(t) => Some(t.palette().to_vec()),
+            None => self.fill_palette.clone(),
+        };
+        gl.uniform1i(
+            u.fill_theme.as_ref(),
+            i32::from(theme.is_none() && self.fill_palette.is_some()),
+        );
+        if let Some(p) = palette {
+            let flat: Vec<f32> = p.iter().flatten().map(|&c| f32::from(c) / 255.0).collect();
             gl.uniform3fv_with_f32_array(u.theme.as_ref(), &flat);
         }
         // Where the detail window covers the view center, its texels set
@@ -2257,6 +2279,13 @@ pub(crate) fn link(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlP
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn theme_slots_match_the_shader() {
+        assert!(FRAG_SRC.contains(&format!("u_theme[{THEME_SLOTS}]")));
+        assert!((crate::thematic::NO_DATA as usize) < THEME_SLOTS);
+        assert_eq!(crate::history_lang::SLOTS, THEME_SLOTS);
+    }
 
     fn fill_cam(proj: Projection, lat: f64, lon: f64, km: f64, w: f64, h: f64) -> Camera {
         let mut c = Camera::new(lat, lon, km / crate::camera::EARTH_RADIUS_KM);
@@ -2625,6 +2654,7 @@ mod tests {
             "u_highlight",
             "u_idColor",
             "u_theme",
+            "u_fillTheme",
             "u_densityRamp",
             "u_political",
             "u_sun",

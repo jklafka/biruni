@@ -11,6 +11,7 @@
 //! of those calls [`App::history_reapply`].
 
 use crate::history::{self, Timeline};
+use crate::history_lang::{self, HistoryLanguages};
 use crate::scrub::Stepper;
 use crate::view::Layer;
 use crate::{data, element, listen, App};
@@ -26,6 +27,7 @@ pub struct YearUi {
     value: HtmlElement,
     button: HtmlElement,
     play: PlayUi,
+    lang: HtmlElement,
 }
 
 /// Play rates of the year panel: years a second, and the speed button's text.
@@ -75,6 +77,7 @@ impl YearUi {
             value: element(doc, "year-val")?,
             button: element(doc, "history-toggle")?,
             play: PlayUi::new(doc, "year-play", "year-speed")?,
+            lang: element(doc, "year-lang")?,
         })
     }
 
@@ -111,6 +114,10 @@ pub struct HistoryState {
     pub modern_labels: Option<Vec<crate::labels::Label>>,
     /// Play through the years.
     pub play: Stepper,
+    /// Color the polities by language family (Seshat), `&langfam=1`.
+    pub by_language: bool,
+    langs: Option<Rc<HistoryLanguages>>,
+    langs_requested: bool,
 }
 
 impl HistoryState {
@@ -220,12 +227,80 @@ impl App {
         }
     }
 
+    /// Color the polities by language family, or back to the political
+    /// colors.
+    pub(crate) fn set_history_language(&mut self, on: bool) {
+        self.history.by_language = on;
+        if let Some(body) = self.window.document().and_then(|d| d.body()) {
+            let _ = body.class_list().toggle_with_force("history-lang", on);
+        }
+        let _ = self
+            .year_ui
+            .lang
+            .set_attribute("aria-pressed", if on { "true" } else { "false" });
+        if on {
+            self.load_history_languages();
+        }
+        self.history_reapply();
+        self.credits_for_layer();
+        self.sync_legend();
+        self.update_hover();
+        self.redraw.mark_hud();
+        self.hash_stale = true;
+    }
+
+    fn load_history_languages(&mut self) {
+        if std::mem::replace(&mut self.history.langs_requested, true) {
+            return;
+        }
+        let Some(app) = self.me.upgrade() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let parsed = match data::fetch("history_languages.tsv").await {
+                Ok(bytes) => String::from_utf8(bytes)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))
+                    .and_then(|t| history_lang::parse(&t).map_err(JsValue::from)),
+                Err(e) => Err(e),
+            };
+            let mut a = app.borrow_mut();
+            match parsed {
+                Ok(h) => {
+                    a.history.langs = Some(Rc::new(h));
+                    a.history_reapply();
+                    a.sync_legend();
+                    a.update_hover();
+                }
+                Err(e) => {
+                    a.history.langs_requested = false;
+                    web_sys::console::error_1(&e);
+                }
+            }
+        });
+    }
+
+    /// The language families shown, while the polities are colored by them.
+    fn history_languages(&self) -> Option<&HistoryLanguages> {
+        let on = self.history.on && self.history.by_language;
+        self.history.langs.as_deref().filter(|_| on)
+    }
+
+    /// Legend rows (CSS color, label) of the language families, while shown.
+    pub(crate) fn history_language_legend(&self) -> Option<Vec<(String, String)>> {
+        let h = self.history_languages()?;
+        Some(
+            h.legend()
+                .into_iter()
+                .map(|(c, label)| (format!("rgb({},{},{})", c[0], c[1], c[2]), label))
+                .collect(),
+        )
+    }
+
     /// Apply the year again at the next frame (after the modern data was
     /// put back by a load or a context restore).
     pub(crate) fn history_reapply(&mut self) {
         // Until the year is drawn again, tests must not take the modern
         // data that was just put back for it.
         let _ = self.canvas.remove_attribute("data-year");
+        let _ = self.canvas.remove_attribute("data-langfam");
         self.history.applied = None;
         self.history.dirty = true;
         self.redraw.mark_render();
@@ -276,7 +351,18 @@ impl App {
         if let Err(e) = self.renderer.upload_country_ids(&ids, width) {
             web_sys::console::error_1(&e);
         }
-        self.renderer.set_country_colors(&t.id_colors(&active));
+        let slots = self.history_languages().map(|h| h.id_slots(&t, &active));
+        match slots {
+            Some(s) => {
+                self.renderer
+                    .set_fill_palette(Some(history_lang::PALETTE.as_slice()));
+                self.renderer.set_country_colors(&s);
+            }
+            None => {
+                self.renderer.set_fill_palette(None);
+                self.renderer.set_country_colors(&t.id_colors(&active));
+            }
+        }
         let levels = crate::lines::build_levels(&t.border_rings(&active));
         if let Err(e) = self.renderer.set_border_lines(&levels) {
             web_sys::console::error_1(&e);
@@ -289,6 +375,10 @@ impl App {
         self.redraw.mark_hud();
         // Lets the visual tests wait for the year to be drawn.
         self.set_globe_attr("data-year", &self.history.year.to_string());
+        if self.history_languages().is_some() {
+            // And for the language families' colors.
+            self.set_globe_attr("data-langfam", "1");
+        }
     }
 
     /// Put the modern countries, borders and names back.
@@ -299,6 +389,7 @@ impl App {
                 web_sys::console::error_1(&e);
             }
         }
+        self.renderer.set_fill_palette(None);
         if let Some(c) = &self.countries {
             self.renderer.set_country_colors(&c.id_colors());
         }
@@ -332,7 +423,11 @@ impl App {
         let t = self.history.data.as_ref()?;
         let active = self.history.applied.as_ref()?;
         let ri = t.record_at(active, &self.history.ids, self.history.ids_width, lat, lon)?;
-        t.describe(ri)
+        let text = t.describe(ri)?;
+        Some(match self.history_languages() {
+            Some(h) => format!("{text} · {}", h.describe(t, &t.records[ri])),
+            None => text,
+        })
     }
 }
 
@@ -369,6 +464,15 @@ pub fn wire(app: &Rc<RefCell<App>>, doc: &Document) -> Result<(), JsValue> {
             let mut a = app.borrow_mut();
             let on = !a.history.play.on;
             a.set_year_playing(on);
+        })?;
+    }
+    {
+        let button: HtmlElement = element(doc, "year-lang")?;
+        let app = app.clone();
+        listen(button.as_ref(), "click", true, move |_: MouseEvent| {
+            let mut a = app.borrow_mut();
+            let on = !a.history.by_language;
+            a.set_history_language(on);
         })?;
     }
     let button: HtmlElement = element(doc, "year-speed")?;

@@ -147,6 +147,9 @@ const VIEWS = [
   { name: "history-rome", hash: "#40,8,5500&year=117" },
   { name: "history-1500", hash: "#20,40,16000&year=1500" },
   { name: "history-phone", hash: "#45,30,9000&year=-500", viewport: { width: 390, height: 844 } },
+  // Colored by language family (Seshat): the Mediterranean in 117, a phone.
+  { name: "history-langfam", hash: "#40,8,5500&year=117&langfam=1" },
+  { name: "history-langfam-phone", hash: "#45,30,9000&year=-500&langfam=1", viewport: { width: 390, height: 844 } },
   // The solar system view on 2025-01-01: the home view (the Sun and the
   // inner planets from above), the outer planets, Saturn and its rings up
   // close from the sunlit side, the Earth close up and with the Moon's path,
@@ -366,6 +369,9 @@ try {
       if (/[&#]year=/.test(view.hash)) {
         // The year's polities replace the countries once they are drawn.
         await page.waitForSelector("#globe[data-year]", { state: "attached", timeout: 30_000 });
+      }
+      if (/[&#]langfam=1/.test(view.hash)) {
+        await page.waitForSelector("#globe[data-langfam]", { state: "attached", timeout: 30_000 });
       }
     }
     // A data layer is shown only once its file is fetched, decoded and

@@ -16,6 +16,7 @@ mod geodesic;
 mod healpix;
 mod history;
 mod history_app;
+mod history_lang;
 mod id_detail;
 mod id_detail_app;
 mod imagery;
@@ -812,6 +813,9 @@ impl App {
         let mut hash = format_view_hash(&self.camera, self.layers_state.wanted(), self.sun_view());
         if self.history.on {
             hash.push_str(&history::format_hash_year(self.history.year));
+            if self.history.by_language {
+                hash.push_str("&langfam=1");
+            }
         }
         if self.paleo.on {
             hash.push_str(&format!("&ma={}", self.paleo.ma));
@@ -2050,6 +2054,9 @@ fn start() -> Result<(), JsValue> {
         if a.history.on {
             a.history.on = false; // set_history acts on a change
             a.set_history(true);
+            if history_lang::parse_hash(&initial_hash) {
+                a.set_history_language(true);
+            }
         }
         if a.paleo.on {
             a.paleo.on = false; // set_paleo acts on a change
@@ -2600,6 +2607,10 @@ fn start() -> Result<(), JsValue> {
                         let on = !a.langs.on;
                         a.set_languages(on);
                     }
+                    "j" | "J" if a.history.on && !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
+                        let on = !a.history.by_language;
+                        a.set_history_language(on);
+                    }
                     "a" | "A" if !(e.ctrl_key() || e.meta_key() || e.alt_key()) => {
                         let on = !a.paleo.on;
                         a.set_paleo(on);
@@ -2751,6 +2762,10 @@ fn start() -> Result<(), JsValue> {
                 }
                 if year.is_some() != a.history.on {
                     a.set_history(year.is_some());
+                }
+                let langfam = history_lang::parse_hash(&hash);
+                if langfam != a.history.by_language {
+                    a.set_history_language(langfam);
                 }
                 let ma = paleo::parse_hash_ma(&hash);
                 if let Some(m) = ma {

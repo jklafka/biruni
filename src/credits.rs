@@ -116,6 +116,15 @@ pub const CLIOPATRIA: Credit = Credit {
     text: "Historical borders, 3400 BCE to 2024: polities from Cliopatria v0.2.1 (Bennett et al. 2025, Scientific Data), simplified and recolored. These maps are one version of the territory past polities held; borders, names and dates are often uncertain.",
 };
 
+pub const SESHAT: Credit = Credit {
+    id: "seshat",
+    name: "Seshat Global History Databank (Polaris 2026)",
+    license: "CC BY-NC-SA 4.0 (non-commercial, share-alike)",
+    license_url: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    source_url: "https://github.com/Seshat-Global-History-Databank/build_polaris_dataset",
+    text: "The languages and language families of past polities, for the historical borders colored by language family. Seshat Global History Databank (Turchin et al.), Polaris 2026 release, joined to Cliopatria polities. Seshat codes the main languages of a polity's government and elite, not every language spoken there, and has no values for most polities after about 1900.",
+};
+
 pub const GLOTTOLOG: Credit = Credit {
     id: "glottolog",
     name: "Glottolog 5.4",
@@ -152,7 +161,7 @@ pub const MERDITH: Credit = Credit {
     text: "Deep time: present-day coastlines moved with their plates back to 1000 million years ago. Merdith, A. S., et al. (2021), Extending full-plate tectonic models into deep time, Earth-Science Reviews 214, model v1.2.4 (EarthByte). The shapes are today's coastlines, not past shorelines, and longitudes before about 320 Ma are not constrained.",
 };
 
-pub const ALL: [&Credit; 15] = [
+pub const ALL: [&Credit; 16] = [
     &NATURAL_EARTH,
     &BLUE_MARBLE,
     &BLACK_MARBLE,
@@ -164,6 +173,7 @@ pub const ALL: [&Credit; 15] = [
     &JPL_HORIZONS,
     &PLANET_MAPS,
     &CLIOPATRIA,
+    &SESHAT,
     &GLOTTOLOG,
     &GRAMBANK,
     &DPLACE,
@@ -216,9 +226,14 @@ pub fn paleo_credits() -> Vec<&'static Credit> {
 }
 
 /// The credits of the historical borders view: the modern base map and
-/// Cliopatria.
-pub fn history_credits() -> Vec<&'static Credit> {
-    vec![&CLIOPATRIA, &NATURAL_EARTH]
+/// Cliopatria, and Seshat while the polities are colored by language
+/// family.
+pub fn history_credits(language_families: bool) -> Vec<&'static Credit> {
+    if language_families {
+        vec![&CLIOPATRIA, &SESHAT, &NATURAL_EARTH]
+    } else {
+        vec![&CLIOPATRIA, &NATURAL_EARTH]
+    }
 }
 
 /// The credits that apply while `layer` is shown. Natural Earth is behind
@@ -237,6 +252,7 @@ pub fn visible_credits(layer: Layer) -> Vec<&'static Credit> {
                 JPL_HORIZONS.id,
                 PLANET_MAPS.id,
                 CLIOPATRIA.id,
+                SESHAT.id,
                 GLOTTOLOG.id,
                 GRAMBANK.id,
                 DPLACE.id,
