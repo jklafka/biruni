@@ -3,7 +3,7 @@ name: Deploy
 # Builds the release site and publishes it to Cloudflare Pages: production for
 # pushes to main, a preview deployment for each pull request. It needs the
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets (see
-# README.md). Without them, or on pull requests from forks, no deploy happens
+# docs/deployment.md). Without them, or on pull requests from forks, no deploy happens
 # and this workflow still passes.
 #
 # On main only (push, or a manual run on main), and only if the

@@ -9,7 +9,7 @@ This is a working record, not legal advice. Where a license is marked unverified
 | License family | Can we ship it? | What it requires |
 | --- | --- | --- |
 | Public domain, CC0, US government works | Yes | Nothing, but credit the source anyway |
-| CC BY | Yes | Credit in the app (see below) and in `README.md`, link to the license, say if we changed the data |
+| CC BY | Yes | Credit in the app (see below) and in `docs/data.md`, link to the license, say if we changed the data |
 | CC BY-SA, ODbL, GPL (as a data license) | Yes, with care | As CC BY, and the files we derive from it (our `.bin` or `.tsv`) must be offered under the same license. Keep share-alike data in its own files, so the license does not spread to other layers. It does not affect the app's code |
 | Non-commercial (CC BY-NC, CC BY-NC-SA) | Yes, with in-app credit | The owner decided (2026-11-15) that Biruni is non-commercial. Using NC data makes that lasting: no ads, paid tiers or sponsorship while it is served. NC-SA data also follows the share-alike rule above |
 | No-derivatives (CC BY-ND, CC BY-NC-ND) | No | We always convert data, which is a derivative |

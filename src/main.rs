@@ -2577,7 +2577,7 @@ fn start() -> Result<(), JsValue> {
                         return;
                     }
                     // Debug aid, only with ?debug=ctxloss: lose / restore the
-                    // WebGL context (see README).
+                    // WebGL context (see docs/development.md, "Debug aids").
                     "`" => {
                         a.renderer.debug_toggle_context_loss();
                         return;
