@@ -283,11 +283,11 @@ impl Filler {
                     let r0 = (((win.lat_top - hi) / th - 0.5).floor().max(0.0)) as usize;
                     let r1 =
                         ((((win.lat_top - lo) / th - 0.5).ceil()).max(0.0) as usize).min(win.h - 1);
-                    for r in r0..=r1 {
+                    for (r, row) in self.rows.iter_mut().enumerate().take(r1 + 1).skip(r0) {
                         let lat = win.lat_top - (r as f64 + 0.5) * th;
                         if (a[1] > lat) != (b[1] > lat) {
                             let x = a[0] + (lat - a[1]) / (b[1] - a[1]) * (b[0] - a[0]);
-                            self.rows[r].push(x + shift);
+                            row.push(x + shift);
                             any = true;
                         }
                     }
