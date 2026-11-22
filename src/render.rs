@@ -240,6 +240,8 @@ struct Uniforms {
     tiles_on: Option<WebGlUniformLocation>,
     tile_levels: Option<WebGlUniformLocation>,
     ids: Option<WebGlUniformLocation>,
+    ids_detail: Option<WebGlUniformLocation>,
+    id_win: Option<WebGlUniformLocation>,
     ice: Option<WebGlUniformLocation>,
     highlight: Option<WebGlUniformLocation>,
     id_color: Option<WebGlUniformLocation>,
@@ -285,6 +287,8 @@ impl Uniforms {
             tiles_on: u("u_tilesOn"),
             tile_levels: u("u_tileLevels"),
             ids: u("u_ids"),
+            ids_detail: u("u_idsDetail"),
+            id_win: u("u_idWin"),
             ice: u("u_ice"),
             highlight: u("u_highlight"),
             id_color: u("u_idColor"),
@@ -882,6 +886,15 @@ pub struct Renderer {
     ctx: ContextState,
     /// Country-ID raster texture (placeholder until uploaded).
     ids: WebGlTexture,
+    /// Detail country IDs for a window around a close view, and the window
+    /// (see `id_detail`); `None` when there is none.
+    id_detail: Option<(WebGlTexture, crate::id_detail::Window)>,
+    /// Counts world ID raster uploads, so the detail window knows when its
+    /// IDs are stale.
+    ids_generation: u32,
+    /// Fills never fade at close zoom (deep time: its IDs and land mask
+    /// come from the same polygons at the same resolution, so they agree).
+    fills_always: bool,
     /// Glacier mask texture (placeholder until the map is uploaded).
     ice: WebGlTexture,
     /// ID of the highlighted country, 0 for none.
@@ -961,6 +974,9 @@ impl Renderer {
             sun: None,
             ctx: ContextState::default(),
             ids: r.ids,
+            id_detail: None,
+            ids_generation: 0,
+            fills_always: false,
             ice: r.ice,
             highlight: 0,
             country_colors: None,
@@ -1420,6 +1436,8 @@ impl Renderer {
         self.uniforms = r.uniforms;
         self.map = r.map;
         self.ids = r.ids;
+        self.id_detail = None; // made again by the next frames
+        self.ids_generation = self.ids_generation.wrapping_add(1);
         self.ice = r.ice;
         self.imagery = r.imagery;
         // The caller decodes the imagery again from its encoded bytes.
@@ -1774,7 +1792,65 @@ impl Renderer {
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
         gl.delete_texture(Some(&self.ids));
         self.ids = tex;
+        // The detail window showed the old IDs.
+        self.clear_id_detail();
+        self.ids_generation = self.ids_generation.wrapping_add(1);
         Ok(())
+    }
+
+    /// Upload detail country IDs (`win.w x win.h`, row 0 at the north) for
+    /// the window `win`; they replace the world raster's inside it.
+    pub fn upload_id_detail(
+        &mut self,
+        win: crate::id_detail::Window,
+        ids: &[u8],
+    ) -> Result<(), JsValue> {
+        if self.gl.is_context_lost() || ids.len() != win.w * win.h {
+            return Ok(());
+        }
+        let gl = &self.gl;
+        let tex = match self.id_detail.take() {
+            Some((t, _)) => t,
+            None => gl.create_texture().ok_or("failed to create texture")?,
+        };
+        gl.bind_texture(GL::TEXTURE_2D, Some(&tex));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::R8 as i32,
+            win.w as i32,
+            win.h as i32,
+            0,
+            GL::RED,
+            GL::UNSIGNED_BYTE,
+            Some(ids),
+        )?;
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+        self.id_detail = Some((tex, win));
+        Ok(())
+    }
+
+    /// Drop the detail IDs (the world raster changed, or the view no longer
+    /// needs them). Frees the texture.
+    pub fn clear_id_detail(&mut self) {
+        if let Some((t, _)) = self.id_detail.take() {
+            self.gl.delete_texture(Some(&t));
+        }
+    }
+
+    pub fn ids_generation(&self) -> u32 {
+        self.ids_generation
+    }
+
+    /// The detail window on the GPU, if any.
+    pub fn id_detail(&self) -> Option<&crate::id_detail::Window> {
+        self.id_detail.as_ref().map(|(_, w)| w)
+    }
+
+    pub fn set_fills_always(&mut self, on: bool) {
+        self.fills_always = on;
     }
 
     /// Highlight the country with this ID (0 for none). Returns true if the
@@ -2019,6 +2095,20 @@ impl Renderer {
         gl.active_texture(GL::TEXTURE6);
         gl.bind_texture(GL::TEXTURE_2D, Some(&self.pages));
         gl.uniform1i(u.pages.as_ref(), 6);
+        // Detail IDs; the world raster stands in when there are none (the
+        // shader then never reads it: u_idWin.w is 0).
+        gl.active_texture(GL::TEXTURE8);
+        match &self.id_detail {
+            Some((t, w)) => {
+                gl.bind_texture(GL::TEXTURE_2D, Some(t));
+                gl.uniform4fv_with_f32_array(u.id_win.as_ref(), &w.uv());
+            }
+            None => {
+                gl.bind_texture(GL::TEXTURE_2D, Some(&self.ids));
+                gl.uniform4f(u.id_win.as_ref(), 0.0, 0.0, 0.0, 0.0);
+            }
+        }
+        gl.uniform1i(u.ids_detail.as_ref(), 8);
         let tiles = self
             .tile_levels
             .filter(|_| self.layer.is_image() && self.imagery_size.is_some());
@@ -2050,10 +2140,23 @@ impl Renderer {
                 .collect();
             gl.uniform3fv_with_f32_array(u.theme.as_ref(), &flat);
         }
-        let fill = if colors.is_some() {
-            political_fill_amount(camera, self.budget.ids_width)
-        } else {
-            0.0
+        // Where the detail window covers the view center, its texels set
+        // how close the fills may go.
+        let ids_width = match self.id_detail() {
+            Some(w) => {
+                let center = (camera.lat.to_degrees(), camera.lon.to_degrees());
+                if w.contains(center.0, center.1, 2.0) {
+                    w.equivalent_width().max(self.budget.ids_width)
+                } else {
+                    self.budget.ids_width
+                }
+            }
+            None => self.budget.ids_width,
+        };
+        let fill = match colors {
+            Some(_) if self.fills_always => 1.0,
+            Some(_) => political_fill_amount(camera, ids_width),
+            None => 0.0,
         };
         gl.uniform1f(u.political.as_ref(), fill as f32);
         if let Some(c) = colors {
@@ -2508,6 +2611,8 @@ mod tests {
             "u_hasImagery",
             "u_imageEmissive",
             "u_ids",
+            "u_idsDetail",
+            "u_idWin",
             "u_ice",
             "u_highlight",
             "u_idColor",

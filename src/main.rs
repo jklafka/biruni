@@ -16,6 +16,8 @@ mod geodesic;
 mod healpix;
 mod history;
 mod history_app;
+mod id_detail;
+mod id_detail_app;
 mod imagery;
 mod info_panel;
 mod label_layer;
@@ -211,6 +213,8 @@ struct App {
     year_ui: history_app::YearUi,
     /// Deep time (`&ma=`, see `paleo_app.rs`) and its ages panel.
     paleo: paleo_app::PaleoState,
+    /// Detail country IDs around a close view.
+    detail: id_detail_app::DetailState,
     ages_ui: paleo_app::AgesUi,
     /// The languages layer (`&languages=1`), its button, and the search box
     /// (which gets the languages as entries).
@@ -1477,6 +1481,7 @@ impl App {
         }
         self.history_frame();
         self.paleo_frame();
+        self.id_detail_frame(moving, now_ms);
         let (draw, hud) = self.redraw.take();
         let relayout = self
             .keepout
@@ -1962,6 +1967,7 @@ fn start() -> Result<(), JsValue> {
         history: history_app::HistoryState::new(history::parse_hash_year(&initial_hash)),
         year_ui: history_app::YearUi::new(&doc)?,
         paleo: paleo_app::PaleoState::new(paleo::parse_hash_ma(&initial_hash)),
+        detail: id_detail_app::DetailState::default(),
         ages_ui: paleo_app::AgesUi::new(&doc)?,
         langs: languages_app::LanguagesState::default(),
         langs_button: element(&doc, "languages-toggle")?,

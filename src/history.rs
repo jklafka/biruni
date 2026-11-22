@@ -252,6 +252,19 @@ impl Timeline {
             .collect()
     }
 
+    /// Fill the detail window with the active records' IDs, as
+    /// `rasterize` fills the world.
+    pub fn fill_detail(&self, active: &[usize], f: &mut crate::id_detail::Filler) {
+        for (pos, &ri) in active.iter().enumerate() {
+            let rings: Vec<&[[f64; 2]]> = self
+                .rings_of(&self.records[ri])
+                .map(|r| r.points.as_slice())
+                .collect();
+            let bbox = crate::id_detail::bbox(rings.iter().copied());
+            f.fill((pos + 1) as u8, bbox, rings.iter().copied());
+        }
+    }
+
     /// Rasterize the active records into a `width x width/2` equirectangular
     /// grid of IDs (`position + 1`, 0 for none), row 0 at the north, each
     /// texel taking the record that contains its center (even-odd over the

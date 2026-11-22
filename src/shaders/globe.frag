@@ -24,9 +24,11 @@ uniform float u_tilesOn;              // 1 when the shown image layer streams ti
 uniform vec4 u_tileLevels;            // x = base level B, y = first tile level, z = finest level M, w = LOD bias (src/tiles.rs)
 uniform sampler2D u_ice;      // R8 glacier mask (glaciated areas + ice shelves), half the width of u_map
 uniform sampler2D u_ids;      // R8 country IDs (id / 255), 0 = none; fetched, not filtered
+uniform sampler2D u_idsDetail; // R8 country IDs of a lon/lat window around a close view (src/id_detail.rs)
+uniform vec4 u_idWin;         // that window in u/v: u0, v0, du, dv; dv = 0 when there is none
 uniform vec4 u_idColor[64];   // fill index of country ID i (political color or theme class): u_idColor[i / 4][i % 4]
 uniform vec3 u_theme[8];       // thematic layers (u_layer >= 3): color of class i, class 7 = no data (see thematic.rs)
-uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads, fades out at close zoom
+uniform float u_political;    // political fill strength, 0..1: 0 until the country data loads; fades out at close zoom only where no detail window covers the view
 uniform int u_highlight;      // country ID to highlight, 0 = none
 uniform vec3 u_sun;           // unit vector toward the sun, world space
 uniform float u_sunOn;        // 1 = shade the night side
@@ -174,6 +176,18 @@ float flatInverse(int id, vec2 q, out float lat, out float lon) {
     return cov;
 }
 
+// The country ID at texel c of the world raster (wrapping around in
+// longitude) or of the detail window (clamped). texelFetch only, so it may
+// run in non-uniform control flow.
+float idAt(ivec2 c, ivec2 isz, bool det) {
+    if (det) {
+        return floor(texelFetch(u_idsDetail, clamp(c, ivec2(0), isz - 1), 0).r * 255.0 + 0.5);
+    }
+    c.x = ((c.x % isz.x) + isz.x) % isz.x;
+    c.y = clamp(c.y, 0, isz.y - 1);
+    return floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+}
+
 void main() {
     if (u_mode == 3) {
         // Uniform across the draw, so every pixel quad takes the same path.
@@ -298,8 +312,7 @@ void main() {
     // The raster is fetched, not filtered, so smooth its edges ourselves. Both
     // paths below only call texelFetch and depend on uniforms and on the
     // derivatives computed above, so derivatives elsewhere are unaffected.
-    // At 0 (data not loaded, or zoomed in so far that the coarse raster
-    // would sit visibly off the vector borders) the fill lookups are skipped.
+    // At 0 (data not loaded) the fill lookups are skipped.
     bool political = (u_layer == 0 || u_layer >= 3) && u_political > 0.0;
     float fillW = 0.0;
     vec3 fill = vec3(0.0);
@@ -307,11 +320,27 @@ void main() {
     if (political || u_highlight > 0) {
         ivec2 isz = textureSize(u_ids, 0);
         vec2 q = vec2(u * float(isz.x), uv.y * float(isz.y)) - 0.5;
+        // Texels per unit of u and v.
+        vec2 texPerUv = vec2(isz);
+        // Inside the detail window (two texels from its edges, for the
+        // 4x4 neighborhood below), read the detail IDs instead.
+        bool det = false;
+        if (u_idWin.w > 0.0) {
+            ivec2 dsz = textureSize(u_idsDetail, 0);
+            vec2 lc = vec2(fract(u - u_idWin.x), uv.y - u_idWin.y) / u_idWin.zw;
+            vec2 m = 2.0 / vec2(dsz);
+            if (all(greaterThan(lc, m)) && all(lessThan(lc, 1.0 - m))) {
+                det = true;
+                isz = dsz;
+                q = lc * vec2(dsz) - 0.5;
+                texPerUv = vec2(dsz) / u_idWin.zw;
+            }
+        }
         ivec2 i0 = ivec2(floor(q));
         vec2 f = fract(q);
         float idTexelsPerPx = max(
-            (abs(duvdx.x) + abs(duvdy.x)) * float(isz.x),
-            (abs(duvdx.y) + abs(duvdy.y)) * float(isz.y));
+            (abs(duvdx.x) + abs(duvdy.x)) * texPerUv.x,
+            (abs(duvdx.y) + abs(duvdy.y)) * texPerUv.y);
         float hl = float(u_highlight);
         if (idTexelsPerPx < 0.8) {
             // Magnified: a texel spans several pixels, so a bilinear blend of
@@ -322,10 +351,7 @@ void main() {
             vec4 wy = bspline(f.y);
             float ids[16];
             for (int j = 0; j < 16; j++) {
-                ivec2 c = i0 + ivec2(j & 3, j >> 2) - 1;
-                c.x = ((c.x % isz.x) + isz.x) % isz.x;
-                c.y = clamp(c.y, 0, isz.y - 1);
-                ids[j] = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+                ids[j] = idAt(i0 + ivec2(j & 3, j >> 2) - 1, isz, det);
             }
             if (u_highlight > 0) {
                 for (int j = 0; j < 16; j++) {
@@ -363,10 +389,7 @@ void main() {
             // Minified or near 1:1: bilinear weights of the four nearest texels.
             vec4 wts = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
             for (int k = 0; k < 4; k++) {
-                ivec2 c = i0 + ivec2(k & 1, k >> 1);
-                c.x = ((c.x % isz.x) + isz.x) % isz.x;
-                c.y = clamp(c.y, 0, isz.y - 1);
-                float cid = floor(texelFetch(u_ids, c, 0).r * 255.0 + 0.5);
+                float cid = idAt(i0 + ivec2(k & 1, k >> 1), isz, det);
                 hlMask += cid == hl ? wts[k] : 0.0;
                 if (political && cid > 0.0) {
                     float w = wts[k] * wts[k] * wts[k];
