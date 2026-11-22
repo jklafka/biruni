@@ -170,7 +170,7 @@ impl App {
             self.legend.show_rows(
                 "Language family",
                 &rows,
-                "Seshat: the main family of each polity's languages, often its rulers'. Little data after 1900.",
+                "Seshat, else Wikidata's official languages: the main family of each polity's languages, often its rulers'.",
             );
             return;
         }

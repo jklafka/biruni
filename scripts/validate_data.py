@@ -485,7 +485,7 @@ def check_languages(data):
 def check_history_languages(data):
     """history_languages.tsv (scripts/convert_seshat_languages.py,
     src/history_lang.rs): F lines (families), then P lines (polity, from,
-    to, family indexes, languages). Returns the P line count."""
+    to, family indexes, languages, source S or W). Returns the P line count."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -493,14 +493,14 @@ def check_history_languages(data):
     if not text.endswith("\n"):
         raise Bad("missing final newline")
     lines = text[:-1].split("\n")
-    if lines[0] != "MAPSHISTLANG1":
-        raise Bad("header is not MAPSHISTLANG1")
+    if lines[0] != "MAPSHISTLANG2":
+        raise Bad("header is not MAPSHISTLANG2")
     families, rows = 0, 0
     for number, line in enumerate(lines[1:], start=2):
         f = line.split("\t")
         if f[0] == "F" and len(f) == 2 and f[1] and not rows:
             families += 1
-        elif f[0] == "P" and len(f) == 6 and f[1]:
+        elif f[0] == "P" and len(f) == 7 and f[1] and f[6] in ("S", "W"):
             try:
                 start, end = int(f[2]), int(f[3])
                 fams = [int(x) for x in f[4].split(",")] if f[4] else []
