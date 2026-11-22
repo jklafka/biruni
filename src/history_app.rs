@@ -271,7 +271,8 @@ impl App {
             return;
         }
         let width = self.renderer.ids_width();
-        let ids = t.rasterize(&active, width);
+        let mut ids = std::mem::take(&mut self.history.ids);
+        t.rasterize_into(&active, width, &mut ids);
         if let Err(e) = self.renderer.upload_country_ids(&ids, width) {
             web_sys::console::error_1(&e);
         }
@@ -310,7 +311,8 @@ impl App {
             self.labels.set_labels(l);
         }
         self.history.applied = None;
-        self.history.ids.clear();
+        // Free it for others (deep time) to reuse.
+        self.history.ids = Vec::new();
         let _ = self.canvas.remove_attribute("data-year");
     }
 
