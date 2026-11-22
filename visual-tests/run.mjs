@@ -357,7 +357,7 @@ try {
       if (/[&#]societies=/.test(view.hash)) {
         await page.waitForSelector("#globe[data-societies]", { state: "attached", timeout: 30_000 });
       }
-      if (/[&#]languages=1/.test(view.hash)) {
+      if (/[&#]languages=/.test(view.hash)) {
         await page.waitForSelector("#globe[data-languages]", { state: "attached", timeout: 30_000 });
       }
       if (/[&#]ma=/.test(view.hash)) {
