@@ -157,6 +157,8 @@ const VIEWS = [
   // Surface maps: Mars, the Moon's near side from the Earth's direction,
   // and Jupiter.
   { name: "solar-mars", hash: "#40,-74,800&t=1735689600&view=solar&orbit=mars,120,-15,0.00018" },
+  // Mars from its night side: the ambient light and rim keep the disk visible.
+  { name: "solar-mars-night", hash: "#40,-74,800&t=1735689600&view=solar&orbit=mars,330,-15,0.00018" },
   { name: "solar-moon-map", hash: "#40,-74,800&t=1735689600&view=solar&orbit=moon,40,-10,0.00009" },
   { name: "solar-jupiter", hash: "#40,-74,800&t=1735689600&view=solar&orbit=jupiter,110,-10,0.0038" },
   { name: "solar-phone", hash: "#40,-74,800&t=1735689600&view=solar", viewport: { width: 390, height: 844 } },

@@ -103,8 +103,13 @@ void main() {
             float mu = max(dot(n, -dir), 0.0);
             c *= 0.55 + 0.45 * sqrt(mu);
         } else {
-            // Lambert, with a faint night side so the disk stays visible.
-            c *= 0.02 + max(dot(n, u_sun), 0.0);
+            // Lambert, with an ambient term and a faint rim so the night
+            // side and its outline stay visible against black space (real
+            // night sides are near black; this is for legibility).
+            float lit = max(dot(n, u_sun), 0.0);
+            float mu = max(dot(n, -dir), 0.0);
+            float rim = (1.0 - mu) * (1.0 - mu) * (1.0 - mu) * (1.0 - lit);
+            c = c * (0.16 + 0.84 * lit) + vec3(0.10, 0.12, 0.16) * rim;
         }
         col = vec4(c * cover, cover);
     }
